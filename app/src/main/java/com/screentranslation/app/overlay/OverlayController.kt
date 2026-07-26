@@ -148,6 +148,11 @@ class OverlayController(
             val panel = controlPanel ?: return@runOnMain
             val params = layoutParams ?: return@runOnMain
 
+            // Expansion is a "hold still so I can read this" state. Asking for a
+            // new region ends it -- otherwise recognition stays paused and the
+            // freshly selected region never produces anything.
+            clearExpanded()
+
             selector.visibility = View.VISIBLE
             selector.startSelection()
 
@@ -239,6 +244,9 @@ class OverlayController(
         val selector = selectionView ?: return
         val panel = controlPanel ?: return
         val params = layoutParams ?: return
+
+        // Nothing to keep expanded when there are no results on screen.
+        if (!showResults) clearExpanded()
 
         selector.visibility = View.GONE
         panel.visibility = View.VISIBLE
@@ -481,6 +489,17 @@ class OverlayController(
      * removes the line cap but bounds the scroll view, otherwise a long passage
      * would grow the panel until it covers the content being translated.
      */
+    /**
+     * Leaves the expanded state and lets the capture pipeline resume. Safe to
+     * call when already collapsed.
+     */
+    private fun clearExpanded() {
+        if (!textExpanded) return
+        textExpanded = false
+        applyTextExpansion()
+        onExpandedChanged(false)
+    }
+
     private fun applyTextExpansion() {
         val scroll = textScrollView ?: return
 
