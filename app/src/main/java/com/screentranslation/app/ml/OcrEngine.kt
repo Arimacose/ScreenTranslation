@@ -9,6 +9,7 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.screentranslation.app.util.TextBlockMerger
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -55,9 +56,12 @@ class OcrEngine(sourceLanguage: String) : AutoCloseable {
 
     private fun Text?.toRecognition(): Recognition {
         if (this == null) return Recognition("", emptyList())
+        val raw = textBlocks.map { it.text.trim() }.filter { it.isNotEmpty() }
         return Recognition(
             text = text,
-            blocks = textBlocks.map { it.text.trim() }.filter { it.isNotEmpty() },
+            // A wrapped paragraph arrives as several blocks; translating the
+            // tail of a sentence on its own yields a disconnected fragment.
+            blocks = TextBlockMerger.merge(raw),
         )
     }
 
