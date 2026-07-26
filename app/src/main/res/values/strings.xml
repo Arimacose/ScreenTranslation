@@ -43,6 +43,12 @@
     <string name="overlay_granted">悬浮窗权限：已授予</string>
     <string name="overlay_denied">悬浮窗权限：未授予</string>
 
+    <string name="battery_policy">省电策略</string>
+    <string name="battery_policy_explanation">HyperOS / MIUI 会主动回收后台前台服务。请将本应用的省电策略设为「无限制」，否则长时间翻译可能被系统中断。</string>
+    <string name="open_battery_policy">打开省电策略设置</string>
+    <string name="battery_policy_unrestricted">系统电池优化：已放行</string>
+    <string name="battery_policy_restricted">系统电池优化：未放行（建议设为「无限制」）</string>
+
     <string name="section_capture">开始识别</string>
     <string name="capture_explanation">系统将只共享默认显示器。授权后，请拖动蓝框选择要持续识别的区域。</string>
     <string name="start_translation">开始识屏翻译</string>

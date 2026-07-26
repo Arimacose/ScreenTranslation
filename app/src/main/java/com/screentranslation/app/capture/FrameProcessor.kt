@@ -8,48 +8,51 @@ import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationEngine
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Drains ImageReader frames, throttles work, and serializes the asynchronous
  * OCR -> stability -> translation pipeline.
+ *
+ * Admission control lives in [FrameGate] so it can be unit tested without
+ * Android types.
  */
 class FrameProcessor(
     private val ocrEngine: OcrEngine,
     private val translationEngine: TranslationEngine,
     private val stableTextGate: StableTextGate = StableTextGate(),
-    private val frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
+    frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
     private val onTranslation: (FrameTranslation) -> Unit,
     private val onError: (Throwable) -> Unit = {},
-    private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
+    elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : AutoCloseable {
     data class FrameTranslation(
         val originalText: String,
         val translatedText: String,
     )
 
-    private val processing = AtomicBoolean(false)
-    private val closed = AtomicBoolean(false)
-    private val generation = AtomicLong(0L)
+    private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
 
-    @Volatile
-    private var enabled = true
-
-    @Volatile
-    private var lastAcceptedFrameAt = 0L
-
-    init {
-        require(frameIntervalMs >= 0L) {
-            "frameIntervalMs cannot be negative"
-        }
+    /**
+     * Most of a UI is unchanged between frames, so the same block text is
+     * retranslated over and over without this. Access is synchronized because
+     * ML Kit completes on its own threads.
+     */
+    private val translationCache = object : LinkedHashMap<String, String>(
+        TRANSLATION_CACHE_ENTRIES,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =
+            size > TRANSLATION_CACHE_ENTRIES
     }
 
     fun setEnabled(value: Boolean) {
-        enabled = value
+        gate.setEnabled(value)
     }
 
     fun resetStability() {
-        generation.incrementAndGet()
+        gate.invalidate()
         stableTextGate.reset()
     }
 
@@ -65,27 +68,15 @@ class FrameProcessor(
         val image = try {
             reader.acquireLatestImage()
         } catch (error: IllegalStateException) {
-            if (!closed.get()) onError(error)
+            if (!gate.isClosed) onError(error)
             return
         } ?: return
 
-        if (closed.get() || !enabled || processing.get()) {
+        val frameGeneration = gate.tryAcquire()
+        if (frameGeneration == null) {
             image.close()
             return
         }
-
-        val now = elapsedRealtime()
-        val previousFrameAt = lastAcceptedFrameAt
-        if (previousFrameAt != 0L && now - previousFrameAt < frameIntervalMs) {
-            image.close()
-            return
-        }
-        if (!processing.compareAndSet(false, true)) {
-            image.close()
-            return
-        }
-        lastAcceptedFrameAt = now
-        val frameGeneration = generation.get()
 
         val bitmap = try {
             image.use {
@@ -96,7 +87,7 @@ class FrameProcessor(
                 )
             }
         } catch (error: Throwable) {
-            processing.set(false)
+            gate.release()
             onError(error)
             return
         }
@@ -105,55 +96,114 @@ class FrameProcessor(
     }
 
     private fun recognize(bitmap: Bitmap, frameGeneration: Long) {
-        ocrEngine.recognize(bitmap) { recognition ->
+        ocrEngine.recognize(bitmap) { result ->
             bitmap.recycleSafely()
 
-            if (closed.get() || generation.get() != frameGeneration) {
-                processing.set(false)
+            if (!gate.isCurrent(frameGeneration)) {
+                gate.release()
                 return@recognize
             }
 
-            recognition.fold(
-                onSuccess = { recognizedText ->
-                    val stableText = stableTextGate.offer(recognizedText)
+            result.fold(
+                onSuccess = { recognition ->
+                    // Stability is judged on the whole region: a partially
+                    // repainted UI should not be treated as settled just because
+                    // one block happens to match.
+                    val stableText = stableTextGate.offer(recognition.text)
                     if (stableText == null) {
-                        processing.set(false)
+                        gate.release()
                     } else {
-                        translate(stableText, frameGeneration)
+                        translate(stableText, recognition.blocks, frameGeneration)
                     }
                 },
                 onFailure = { error ->
-                    processing.set(false)
+                    gate.release()
                     onError(error)
                 },
             )
         }
     }
 
-    private fun translate(originalText: String, frameGeneration: Long) {
-        translationEngine.translate(originalText) { translation ->
-            processing.set(false)
-            if (closed.get() || generation.get() != frameGeneration) return@translate
+    /**
+     * Translates each OCR block separately, then rejoins them.
+     *
+     * ML Kit hands back the region as one newline-joined string. Translating
+     * that as a unit lets unrelated UI lines contaminate each other's context,
+     * and on-device translation quality degrades noticeably on long inputs.
+     */
+    private fun translate(
+        originalText: String,
+        blocks: List<String>,
+        frameGeneration: Long,
+    ) {
+        val parts = blocks.ifEmpty { listOf(originalText) }
+        val translated = arrayOfNulls<String>(parts.size)
+        val remaining = AtomicInteger(parts.size)
 
-            translation.fold(
-                onSuccess = { translatedText ->
-                    onTranslation(
-                        FrameTranslation(
-                            originalText = originalText,
-                            translatedText = translatedText,
-                        ),
-                    )
-                },
-                onFailure = onError,
-            )
+        // Guarantees exactly one terminal action even if several blocks fail
+        // concurrently, so the single-flight slot is released exactly once.
+        val settled = AtomicBoolean(false)
+        fun settle(action: () -> Unit) {
+            if (settled.compareAndSet(false, true)) {
+                gate.release()
+                action()
+            }
+        }
+
+        parts.forEachIndexed { index, part ->
+            cached(part)?.let { hit ->
+                translated[index] = hit
+                if (remaining.decrementAndGet() == 0) {
+                    settle { publish(originalText, translated, frameGeneration) }
+                }
+                return@forEachIndexed
+            }
+
+            translationEngine.translate(part) { translation ->
+                translation.fold(
+                    onSuccess = { text ->
+                        translated[index] = text
+                        cache(part, text)
+                        if (remaining.decrementAndGet() == 0) {
+                            settle { publish(originalText, translated, frameGeneration) }
+                        }
+                    },
+                    onFailure = { error ->
+                        settle {
+                            if (gate.isCurrent(frameGeneration)) onError(error)
+                        }
+                    },
+                )
+            }
         }
     }
 
+    private fun publish(
+        originalText: String,
+        translated: Array<String?>,
+        frameGeneration: Long,
+    ) {
+        if (!gate.isCurrent(frameGeneration)) return
+        onTranslation(
+            FrameTranslation(
+                originalText = originalText,
+                translatedText = translated.joinToString("\n") { it.orEmpty() },
+            ),
+        )
+    }
+
+    private fun cached(text: String): String? =
+        synchronized(translationCache) { translationCache[text] }
+
+    private fun cache(text: String, translation: String) {
+        synchronized(translationCache) { translationCache[text] = translation }
+    }
+
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        enabled = false
-        generation.incrementAndGet()
+        if (gate.isClosed) return
+        gate.close()
         stableTextGate.reset()
+        synchronized(translationCache) { translationCache.clear() }
     }
 
     private fun Bitmap.recycleSafely() {
@@ -162,6 +212,7 @@ class FrameProcessor(
 
     companion object {
         const val DEFAULT_FRAME_INTERVAL_MS = 450L
+        private const val TRANSLATION_CACHE_ENTRIES = 128
         private val FULL_FRAME = RectF(0f, 0f, 1f, 1f)
     }
 }

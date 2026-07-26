@@ -6,8 +6,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.PixelFormat
@@ -23,6 +25,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
+import android.util.Log
 import android.view.WindowManager
 import com.screentranslation.app.MainActivity
 import com.screentranslation.app.R
@@ -66,6 +70,14 @@ class ScreenTranslationService : Service() {
     private var regionReady = false
     private var contentVisible = true
 
+    /**
+     * Vendor MediaProjection implementations do not reliably report a blank
+     * screen through [MediaProjection.Callback.onCapturedContentVisibilityChanged],
+     * so screen state is tracked independently as a second pause signal.
+     */
+    private var screenOn = true
+    private var screenReceiver: BroadcastReceiver? = null
+
     @Volatile
     private var normalizedRegion = NormalizedRegion.FULL
 
@@ -83,7 +95,20 @@ class ScreenTranslationService : Service() {
             return START_NOT_STICKY
         }
 
+        // One service lifetime == one projection session, so a second ACTION_START
+        // must be rejected. Each rejection reason is logged separately: they look
+        // identical to the user but mean very different things on a bug report.
         if (intent?.action != ACTION_START || sessionStarted || closing) {
+            when {
+                closing ->
+                    Log.w(TAG, "Ignoring ${intent?.action}: session is shutting down")
+
+                sessionStarted ->
+                    Log.w(TAG, "Ignoring ACTION_START: a session is already running")
+
+                else ->
+                    Log.w(TAG, "Ignoring unsupported service action: ${intent?.action}")
+            }
             if (!sessionStarted) stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -110,6 +135,11 @@ class ScreenTranslationService : Service() {
             sourceLanguage.isNullOrBlank() ||
             targetLanguage.isNullOrBlank()
         ) {
+            Log.w(
+                TAG,
+                "Refusing to start: resultCode=$resultCode hasData=${projectionData != null} " +
+                    "source=$sourceLanguage target=$targetLanguage",
+            )
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -122,7 +152,8 @@ class ScreenTranslationService : Service() {
                 targetLanguage = targetLanguage,
                 frameIntervalMs = frameIntervalMs,
             )
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to start the capture session", error)
             releaseSession()
             stopSelf(startId)
         }
@@ -160,6 +191,8 @@ class ScreenTranslationService : Service() {
         check(overlay.show()) { "Overlay permission is required" }
         overlay.updateStatus(STATUS_SELECT_REGION)
         overlayController = overlay
+
+        registerScreenStateReceiver()
 
         val handlerThread = HandlerThread(CAPTURE_THREAD_NAME).apply { start() }
         val handler = Handler(handlerThread.looper)
@@ -276,6 +309,34 @@ class ScreenTranslationService : Service() {
         }
     }
 
+    /**
+     * ACTION_SCREEN_OFF / ACTION_SCREEN_ON can only be received by a registered
+     * receiver, never from the manifest. This is deliberately independent of
+     * [MediaProjection.Callback.onCapturedContentVisibilityChanged]: that callback
+     * is vendor-dependent and does not reliably fire on a blank screen, which
+     * would leave the OCR pipeline burning battery on frames nobody can see.
+     */
+    private fun registerScreenStateReceiver() {
+        screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val nowOn = intent?.action != Intent.ACTION_SCREEN_OFF
+                if (nowOn == screenOn) return
+                screenOn = nowOn
+                Log.i(TAG, "Screen ${if (nowOn) "on" else "off"}; processing enabled=$nowOn")
+                refreshProcessorState()
+            }
+        }
+        registerReceiver(
+            receiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
+        )
+        screenReceiver = receiver
+    }
+
     private fun newImageReader(spec: CaptureSpec): ImageReader =
         ImageReader.newInstance(
             spec.width,
@@ -329,12 +390,13 @@ class ScreenTranslationService : Service() {
 
     private fun refreshProcessorState() {
         if (closing) return
-        val ready = modelReady && regionReady && contentVisible
+        val ready = modelReady && regionReady && contentVisible && screenOn
         frameProcessor?.setEnabled(ready)
         overlayController?.updateStatus(
             when {
                 !modelReady -> STATUS_PREPARING_MODEL
                 !regionReady -> STATUS_SELECT_REGION
+                !screenOn -> STATUS_SCREEN_OFF
                 !contentVisible -> STATUS_CONTENT_HIDDEN
                 else -> STATUS_RUNNING
             },
@@ -367,7 +429,15 @@ class ScreenTranslationService : Service() {
 
         val replacement = try {
             newImageReader(spec)
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            // Without a new reader the display keeps the old surface size and no
+            // further frames arrive. Say so instead of freezing on stale output.
+            Log.e(TAG, "Could not allocate an ImageReader for ${spec.width}x${spec.height}", error)
+            mainHandler.post {
+                if (!closing) {
+                    overlayController?.updateStatus(STATUS_RESIZE_FAILED)
+                }
+            }
             return
         }
 
@@ -381,8 +451,25 @@ class ScreenTranslationService : Service() {
             captureWidth = spec.width
             captureHeight = spec.height
             captureDensityDpi = spec.densityDpi
+
+            // The region was normalized against the previous capture dimensions.
+            // After a rotation the same fractions map onto a completely different
+            // physical rectangle, so the selection is no longer meaningful. Drop it
+            // and ask for a new one instead of silently recognizing the wrong area
+            // while the overlay still reports "running".
+            regionReady = false
+            normalizedRegion = NormalizedRegion.FULL
+            normalizedOverlayBounds = null
+            frameProcessor?.setEnabled(false)
             frameProcessor?.resetStability()
-        } catch (_: Throwable) {
+            mainHandler.post {
+                if (!closing) {
+                    overlayController?.requestRegionSelection()
+                    refreshProcessorState()
+                }
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "Resize to ${spec.width}x${spec.height} failed; rolling back", error)
             replacement.setOnImageAvailableListener(null, null)
             replacement.close()
             try {
@@ -398,7 +485,8 @@ class ScreenTranslationService : Service() {
                     },
                     captureHandler,
                 )
-            } catch (_: Throwable) {
+            } catch (rollbackError: Throwable) {
+                Log.e(TAG, "Rollback after a failed resize also failed; stopping", rollbackError)
                 mainHandler.post { stopSelf() }
             }
             return
@@ -423,6 +511,15 @@ class ScreenTranslationService : Service() {
         closing = true
         sessionStarted = false
         isRunning = false
+
+        screenReceiver?.let { receiver ->
+            try {
+                unregisterReceiver(receiver)
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "Screen state receiver was already unregistered", error)
+            }
+        }
+        screenReceiver = null
 
         imageReader?.setOnImageAvailableListener(null, null)
         frameProcessor?.close()
@@ -531,6 +628,8 @@ class ScreenTranslationService : Service() {
     }
 
     companion object {
+        private const val TAG = "ScreenTranslation"
+
         private const val ACTION_START =
             "com.screentranslation.app.action.START_SCREEN_TRANSLATION"
         private const val ACTION_STOP =
@@ -553,6 +652,8 @@ class ScreenTranslationService : Service() {
         private const val STATUS_PREPARING_MODEL = "正在准备离线翻译模型…"
         private const val STATUS_RUNNING = "实时翻译中"
         private const val STATUS_CONTENT_HIDDEN = "投屏内容暂不可见，处理已暂停"
+        private const val STATUS_SCREEN_OFF = "屏幕已熄灭，处理已暂停"
+        private const val STATUS_RESIZE_FAILED = "屏幕尺寸变化后无法继续采集，请重新开始"
 
         @Volatile
         var isRunning: Boolean = false

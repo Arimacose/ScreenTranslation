@@ -2,6 +2,7 @@ package com.screentranslation.app.ml
 
 import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
@@ -15,10 +16,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Bundled on-device ML Kit OCR selected by the configured source language.
  */
 class OcrEngine(sourceLanguage: String) : AutoCloseable {
+    /**
+     * @property text the whole region as ML Kit joins it, used for change detection
+     * @property blocks the same content split by [Text.TextBlock], used for translation
+     *
+     * The split matters: translating the joined string lets unrelated UI lines
+     * contaminate each other's context.
+     */
+    data class Recognition(
+        val text: String,
+        val blocks: List<String>,
+    )
+
     private val closed = AtomicBoolean(false)
     private val recognizer: TextRecognizer = createRecognizer(sourceLanguage)
 
-    fun recognize(bitmap: Bitmap, onResult: (Result<String>) -> Unit) {
+    fun recognize(bitmap: Bitmap, onResult: (Result<Recognition>) -> Unit) {
         if (closed.get()) {
             onResult(Result.failure(IllegalStateException("OCR engine is closed")))
             return
@@ -29,7 +42,7 @@ class OcrEngine(sourceLanguage: String) : AutoCloseable {
             .process(input)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    onResult(Result.success(task.result?.text.orEmpty()))
+                    onResult(Result.success(task.result.toRecognition()))
                 } else {
                     onResult(
                         Result.failure(
@@ -38,6 +51,14 @@ class OcrEngine(sourceLanguage: String) : AutoCloseable {
                     )
                 }
             }
+    }
+
+    private fun Text?.toRecognition(): Recognition {
+        if (this == null) return Recognition("", emptyList())
+        return Recognition(
+            text = text,
+            blocks = textBlocks.map { it.text.trim() }.filter { it.isNotEmpty() },
+        )
     }
 
     override fun close() {
