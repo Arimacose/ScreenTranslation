@@ -78,6 +78,9 @@ class ScreenTranslationService : Service() {
     private var screenOn = true
     private var screenReceiver: BroadcastReceiver? = null
 
+    /** True while the overlay shows the full, scrollable result panel. */
+    private var resultsExpanded = false
+
     @Volatile
     private var normalizedRegion = NormalizedRegion.FULL
 
@@ -187,6 +190,8 @@ class ScreenTranslationService : Service() {
             onRegionChanged = ::onPixelRegionChanged,
             onOverlayBoundsChanged = ::onOverlayBoundsChanged,
             onStop = ::stopSelf,
+            onRegionCleared = ::onRegionCleared,
+            onExpandedChanged = ::onResultsExpandedChanged,
         )
         check(overlay.show()) { "Overlay permission is required" }
         overlay.updateStatus(STATUS_SELECT_REGION)
@@ -372,6 +377,38 @@ class ScreenTranslationService : Service() {
         refreshProcessorState()
     }
 
+    /**
+     * The overlay dropped the current selection. Stop recognizing the old
+     * rectangle immediately: it either no longer reflects what the user wants
+     * or, after a re-selection request, nothing at all.
+     */
+    /**
+     * An expanded result panel is tall enough to overlap the selected region,
+     * and the panel rectangle is masked out before OCR. Recognizing through that
+     * would overwrite the long translation the user expanded in order to read.
+     */
+    private fun onResultsExpandedChanged(expanded: Boolean) {
+        if (closing) return
+        resultsExpanded = expanded
+        if (expanded) {
+            frameProcessor?.setEnabled(false)
+        } else {
+            frameProcessor?.resetStability()
+        }
+        refreshProcessorState()
+    }
+
+    private fun onRegionCleared() {
+        if (closing) return
+        regionReady = false
+        normalizedRegion = NormalizedRegion.FULL
+        frameProcessor?.let {
+            it.setEnabled(false)
+            it.resetStability()
+        }
+        refreshProcessorState()
+    }
+
     private fun onOverlayBoundsChanged(bounds: Rect?) {
         normalizedOverlayBounds = if (
             bounds == null ||
@@ -390,7 +427,7 @@ class ScreenTranslationService : Service() {
 
     private fun refreshProcessorState() {
         if (closing) return
-        val ready = modelReady && regionReady && contentVisible && screenOn
+        val ready = modelReady && regionReady && contentVisible && screenOn && !resultsExpanded
         frameProcessor?.setEnabled(ready)
         overlayController?.updateStatus(
             when {
@@ -398,6 +435,7 @@ class ScreenTranslationService : Service() {
                 !regionReady -> STATUS_SELECT_REGION
                 !screenOn -> STATUS_SCREEN_OFF
                 !contentVisible -> STATUS_CONTENT_HIDDEN
+                resultsExpanded -> STATUS_EXPANDED_PAUSED
                 else -> STATUS_RUNNING
             },
         )
@@ -653,6 +691,7 @@ class ScreenTranslationService : Service() {
         private const val STATUS_RUNNING = "实时翻译中"
         private const val STATUS_CONTENT_HIDDEN = "投屏内容暂不可见，处理已暂停"
         private const val STATUS_SCREEN_OFF = "屏幕已熄灭，处理已暂停"
+        private const val STATUS_EXPANDED_PAUSED = "已展开全文，识别暂停；收起后恢复"
         private const val STATUS_RESIZE_FAILED = "屏幕尺寸变化后无法继续采集，请重新开始"
 
         @Volatile

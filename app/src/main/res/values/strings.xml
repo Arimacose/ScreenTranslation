@@ -64,7 +64,12 @@
     <string name="overlay_window_title">识屏翻译悬浮层</string>
     <string name="overlay_region_selector_description">拖动选择需要翻译的屏幕区域</string>
     <string name="overlay_drag_instruction">拖动框选要识别的区域（最小 64dp）</string>
-    <string name="overlay_status_selecting">正在选择识别区域</string>
+    <string name="overlay_status_selecting">拖动画框选择区域；要先切换到别的应用，请点「稍后框选」</string>
+    <string name="overlay_selection_too_small">选区太小，请按住并拖动画出方框（至少 64dp）</string>
+    <string name="overlay_status_idle">已收起。切换到目标应用后，点「重选区域」开始识别</string>
+    <string name="overlay_minimize">稍后框选</string>
+    <string name="overlay_expand">展开</string>
+    <string name="overlay_collapse">收起</string>
     <string name="overlay_status_running">正在识别</string>
     <string name="overlay_waiting_for_text">等待识别原文…</string>
     <string name="overlay_waiting_for_translation">等待翻译结果…</string>

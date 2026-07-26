@@ -466,11 +466,20 @@ class MainActivity : AppCompatActivity() {
     private fun openBatteryPolicySettings() {
         val packageUri = "package:$packageName".toUri()
         val candidates = listOf(
-            Intent(HYPER_OS_POWER_POLICY).apply {
-                putExtra(HYPER_OS_POWER_PACKAGE_EXTRA, packageName)
+            // Verified on HyperOS V816 / Android 16: the per-app power policy
+            // lives inside the vendor app-info screen as its 省电策略 entry.
+            // miui.intent.action.POWER_HIDE_MODE_APP_LIST does not resolve on
+            // this release, and com.miui.securitycenter.action.POWER_SETTINGS
+            // opens the *global* optimization page with no per-app control.
+            Intent().apply {
+                setClassName(
+                    HYPER_OS_SECURITY_CENTER_PACKAGE,
+                    HYPER_OS_APP_DETAILS_ACTIVITY,
+                )
+                putExtra(HYPER_OS_APP_DETAILS_PACKAGE_EXTRA, packageName)
             },
-            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
         )
 
         for (intent in candidates) {
@@ -631,8 +640,8 @@ class MainActivity : AppCompatActivity() {
         private const val HYPER_OS_PERMISSION_EDITOR_ACTIVITY =
             "com.miui.permcenter.permissions.PermissionsEditorActivity"
         private const val HYPER_OS_PACKAGE_EXTRA = "extra_pkgname"
-        private const val HYPER_OS_POWER_POLICY =
-            "miui.intent.action.POWER_HIDE_MODE_APP_LIST"
-        private const val HYPER_OS_POWER_PACKAGE_EXTRA = "package_name"
+        private const val HYPER_OS_APP_DETAILS_ACTIVITY =
+            "com.miui.appmanager.ApplicationsDetailsActivity"
+        private const val HYPER_OS_APP_DETAILS_PACKAGE_EXTRA = "package_name"
     }
 }

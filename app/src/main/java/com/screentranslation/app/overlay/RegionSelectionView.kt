@@ -28,6 +28,14 @@ class RegionSelectionView @JvmOverloads constructor(
 
     var onRegionSelected: ((Rect) -> Unit)? = null
 
+    /**
+     * Invoked when a gesture ended without producing a usable region, including
+     * a plain tap. The selector covers the whole display and swallows every
+     * touch, so silently ignoring these leaves the user with no idea why the
+     * screen stopped responding.
+     */
+    var onSelectionRejected: (() -> Unit)? = null
+
     val region: Rect?
         get() = selectedRegion?.let(::Rect)
 
@@ -157,7 +165,12 @@ class RegionSelectionView @JvmOverloads constructor(
                 }
                 invalidate()
                 performClick()
-                selectedRegion?.let { onRegionSelected?.invoke(Rect(it)) }
+                val selection = selectedRegion
+                if (selection != null) {
+                    onRegionSelected?.invoke(Rect(selection))
+                } else {
+                    onSelectionRejected?.invoke()
+                }
                 return true
             }
 
