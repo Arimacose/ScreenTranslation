@@ -33,8 +33,10 @@ val releaseSigningConfigured = releaseSigningRequested && missingReleaseSigningK
 
 android {
     namespace = "com.screentranslation.app"
-    compileSdk = 36
-    buildToolsVersion = "36.0.0"
+    // androidx.core 1.19.0+ requires compiling against API 37 or newer.
+    // targetSdk stays at 36: this changes what APIs are compilable, not runtime behaviour.
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.screentranslation.app"

@@ -41,8 +41,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4.0.1
 
-      - name: Install Android API 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android API 37
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Validate signing secrets
         shell: bash
@@ -100,8 +100,8 @@ jobs:
           test -s "$apk"
           test -s "$aab"
 
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 -v 4 "$apk"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
 
           version="${{ steps.version.outputs.version_name }}"
           mkdir -p dist
