@@ -51,7 +51,7 @@ jobs:
           build-mode: manual
 
       - name: Build analyzed sources
-        run: ./gradlew --no-daemon --stacktrace clean assembleDebug
+        run: ./gradlew --no-daemon --no-build-cache --stacktrace clean assembleDebug
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
