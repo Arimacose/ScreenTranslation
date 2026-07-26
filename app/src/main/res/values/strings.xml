@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">识屏翻译</string>
+    <string name="screen_title">实时识屏翻译</string>
+    <string name="screen_subtitle">面向 Android 16 · 默认显示器局部识别与端侧翻译</string>
+
+    <string name="section_translation">翻译设置</string>
+    <string name="source_language">屏幕原文语言</string>
+    <string name="target_language">翻译目标语言</string>
+    <string name="frame_interval">识别帧间隔</string>
+    <string name="frame_interval_value">%1$d 毫秒</string>
+    <string name="frame_interval_hint">间隔越短响应越快，但耗电和发热也会增加。</string>
+
+    <string name="language_chinese_simplified">简体中文</string>
+    <string name="language_english">英语</string>
+    <string name="language_japanese">日语</string>
+    <string name="language_korean">韩语</string>
+    <string name="language_french">法语</string>
+    <string name="language_german">德语</string>
+    <string name="language_spanish">西班牙语</string>
+    <string name="language_russian">俄语</string>
+
+    <string name="section_model">离线模型</string>
+    <string name="model_explanation">首次使用一组语言时需要下载翻译模型。准备完成后可在本机处理文本。</string>
+    <string name="prepare_models">准备当前语言模型</string>
+    <string name="model_not_prepared">尚未准备当前语言模型</string>
+    <string name="model_preparing">正在准备 %1$s → %2$s 模型…</string>
+    <string name="model_ready">模型已就绪：%1$s → %2$s</string>
+    <string name="model_failed">模型准备失败：%1$s</string>
+    <string name="model_same_language">原文语言和目标语言需要不同</string>
+    <string name="unknown_error">未知错误</string>
+
+    <string name="section_permissions">运行权限</string>
+    <string name="notification_permission">通知</string>
+    <string name="notification_permission_explanation">前台服务通过常驻通知显示运行状态。</string>
+    <string name="grant_notification_permission">授予通知权限</string>
+    <string name="notification_granted">通知权限：已授予</string>
+    <string name="notification_denied">通知权限：未授予（服务仍会显示在系统任务管理器）</string>
+
+    <string name="overlay_permission">悬浮窗</string>
+    <string name="overlay_permission_explanation">用于框选识别区域，并在其他应用上方显示翻译结果。</string>
+    <string name="grant_overlay_permission">打开悬浮窗授权页</string>
+    <string name="overlay_granted">悬浮窗权限：已授予</string>
+    <string name="overlay_denied">悬浮窗权限：未授予</string>
+
+    <string name="section_capture">开始识别</string>
+    <string name="capture_explanation">系统将只共享默认显示器。授权后，请拖动蓝框选择要持续识别的区域。</string>
+    <string name="start_translation">开始识屏翻译</string>
+    <string name="stop_translation">停止</string>
+    <string name="service_idle">未运行</string>
+    <string name="service_requesting_capture">正在请求系统录屏授权…</string>
+    <string name="service_starting">正在启动，请在屏幕上框选区域…</string>
+    <string name="service_running">识屏翻译已启动</string>
+    <string name="service_stopped">识屏翻译已停止</string>
+    <string name="capture_denied">未获得屏幕共享授权</string>
+    <string name="start_failed">启动失败：%1$s</string>
+
+    <string name="overlay_window_title">识屏翻译悬浮层</string>
+    <string name="overlay_region_selector_description">拖动选择需要翻译的屏幕区域</string>
+    <string name="overlay_drag_instruction">拖动框选要识别的区域（最小 64dp）</string>
+    <string name="overlay_status_selecting">正在选择识别区域</string>
+    <string name="overlay_status_running">正在识别</string>
+    <string name="overlay_waiting_for_text">等待识别原文…</string>
+    <string name="overlay_waiting_for_translation">等待翻译结果…</string>
+    <string name="translation_attribution">Powered by Google Translate</string>
+    <string name="overlay_reselect">重选区域</string>
+    <string name="overlay_stop">停止</string>
+</resources>

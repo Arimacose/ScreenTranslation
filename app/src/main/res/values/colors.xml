@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="screen_primary">#0B57D0</color>
+    <color name="screen_on_primary">#FFFFFF</color>
+    <color name="screen_primary_container">#D8E2FF</color>
+    <color name="screen_on_primary_container">#001A41</color>
+    <color name="screen_secondary">#006A67</color>
+    <color name="screen_on_secondary">#FFFFFF</color>
+    <color name="screen_background">#F9F9FF</color>
+    <color name="screen_surface">#F9F9FF</color>
+    <color name="screen_on_surface">#191C20</color>
+    <color name="screen_outline">#74777F</color>
+
+    <color name="screen_primary_night">#ADC6FF</color>
+    <color name="screen_on_primary_night">#002E69</color>
+    <color name="screen_primary_container_night">#004494</color>
+    <color name="screen_on_primary_container_night">#D8E2FF</color>
+    <color name="screen_secondary_night">#80D5D1</color>
+    <color name="screen_on_secondary_night">#003735</color>
+    <color name="screen_background_night">#111318</color>
+    <color name="screen_surface_night">#111318</color>
+    <color name="screen_on_surface_night">#E2E2E9</color>
+    <color name="screen_outline_night">#8E9099</color>
+</resources>

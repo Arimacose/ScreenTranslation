@@ -1,0 +1,43 @@
+# 第三方组件与条款
+
+ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还依赖以下直接组件；
+各组件仍受其自身许可证或服务条款约束。
+
+## 运行时依赖
+
+| 组件 | 当前版本 | 上游条款 |
+|---|---:|---|
+| AndroidX Core KTX | 1.18.0 | Apache License 2.0 |
+| AndroidX Activity KTX | 1.13.0 | Apache License 2.0 |
+| AndroidX AppCompat | 1.7.1 | Apache License 2.0 |
+| Material Components for Android | 1.14.0 | Apache License 2.0 |
+| ML Kit Text Recognition（Latin/Chinese/Japanese/Korean） | 16.0.1 | ML Kit Terms of Service |
+| ML Kit Translate | 17.0.3 | ML Kit Terms of Service |
+
+## 测试依赖
+
+| 组件 | 当前版本 | 上游条款 |
+|---|---:|---|
+| JUnit 4 | 4.13.2 | Eclipse Public License 1.0 |
+
+## 链接
+
+- [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+- [AndroidX source and licenses](https://cs.android.com/androidx/platform/frameworks/support)
+- [Material Components for Android](https://github.com/material-components/material-components-android)
+- [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms)
+- [ML Kit usage guidelines and attribution](https://developers.google.com/ml-kit/terms)
+- [JUnit 4](https://github.com/junit-team/junit4)
+
+ML Kit Maven POM 将 OCR 与翻译组件的许可证字段标记为 “ML Kit Terms of Service”，
+因此它们不因本仓库采用 Apache-2.0 而转为 Apache-2.0。应用界面保留 Google Translate
+归属说明。
+
+Gradle 还会解析传递依赖。发布维护者应在依赖更新和正式发布前检查：
+
+```bash
+./gradlew :app:dependencies
+./gradlew :app:dependencyInsight --dependency <name> --configuration debugRuntimeClasspath
+```
+
+本文件用于维护者审计，不替代各上游组件随包提供的完整许可证文本。

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ScreenTranslation" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/screen_primary</item>
+        <item name="colorOnPrimary">@color/screen_on_primary</item>
+        <item name="colorPrimaryContainer">@color/screen_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/screen_on_primary_container</item>
+        <item name="colorSecondary">@color/screen_secondary</item>
+        <item name="colorOnSecondary">@color/screen_on_secondary</item>
+        <item name="android:colorAccent">@color/screen_primary</item>
+        <item name="android:colorBackground">@color/screen_background</item>
+        <item name="colorSurface">@color/screen_surface</item>
+        <item name="colorOnSurface">@color/screen_on_surface</item>
+        <item name="colorOutline">@color/screen_outline</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

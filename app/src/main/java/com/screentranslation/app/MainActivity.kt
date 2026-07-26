@@ -1,0 +1,563 @@
+package com.screentranslation.app
+
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
+import android.os.Bundle
+import android.provider.Settings
+import android.view.View
+import android.view.WindowInsets
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.SeekBar
+import android.widget.Spinner
+import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+import com.screentranslation.app.ml.TranslationEngine
+import com.screentranslation.app.model.LanguageOption
+import com.screentranslation.app.prefs.AppPreferences
+import com.screentranslation.app.service.ScreenTranslationService
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var preferences: AppPreferences
+    private lateinit var projectionManager: MediaProjectionManager
+
+    private lateinit var sourceSpinner: Spinner
+    private lateinit var targetSpinner: Spinner
+    private lateinit var intervalSeekBar: SeekBar
+    private lateinit var intervalValueView: TextView
+    private lateinit var prepareModelsButton: Button
+    private lateinit var modelStatusView: TextView
+    private lateinit var notificationPermissionButton: Button
+    private lateinit var notificationPermissionStatusView: TextView
+    private lateinit var overlayPermissionButton: Button
+    private lateinit var overlayPermissionStatusView: TextView
+    private lateinit var startButton: Button
+    private lateinit var stopButton: Button
+    private lateinit var serviceStatusView: TextView
+
+    private var modelPreparationEngine: TranslationEngine? = null
+    private var modelPreparationGeneration = 0
+    private var modelReadyFor: Pair<String, String>? = null
+    private var languageListenersReady = false
+    private var pendingStartAfterNotificationPermission = false
+    private var pendingStartAfterOverlayPermission = false
+    private var projectionRequestInFlight = false
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        refreshPermissionState()
+        if (pendingStartAfterNotificationPermission) {
+            pendingStartAfterNotificationPermission = false
+            continueStartAfterNotificationPermission()
+        }
+    }
+
+    private val overlaySettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        refreshPermissionState()
+        maybeContinueAfterOverlayPermission()
+    }
+
+    private val projectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        projectionRequestInFlight = false
+        val projectionData = result.data
+        if (result.resultCode != Activity.RESULT_OK || projectionData == null) {
+            serviceStatusView.setText(R.string.capture_denied)
+            setServiceRunningUi(false)
+            return@registerForActivityResult
+        }
+
+        val source = selectedSourceLanguage()
+        val target = selectedTargetLanguage()
+        val interval = selectedFrameInterval()
+        preferences.save(source.languageTag, target.languageTag, interval)
+
+        try {
+            val serviceIntent = ScreenTranslationService.startIntent(
+                context = this,
+                resultCode = result.resultCode,
+                resultData = projectionData,
+                sourceLanguage = source.languageTag,
+                targetLanguage = target.languageTag,
+                frameIntervalMs = interval,
+            )
+            ContextCompat.startForegroundService(this, serviceIntent)
+            serviceStatusView.setText(R.string.service_starting)
+            setServiceRunningUi(true)
+        } catch (error: Exception) {
+            serviceStatusView.text = getString(
+                R.string.start_failed,
+                error.localizedMessage ?: error.javaClass.simpleName,
+            )
+            setServiceRunningUi(false)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        preferences = AppPreferences(this)
+        projectionManager = getSystemService(MediaProjectionManager::class.java)
+        bindViews()
+        applySystemBarInsets()
+        configureLanguageSelectors()
+        configureFrameInterval()
+        configureActions()
+        refreshPermissionState()
+        setServiceRunningUi(false)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::overlayPermissionStatusView.isInitialized) {
+            refreshPermissionState()
+            maybeContinueAfterOverlayPermission()
+            val serviceRunning = ScreenTranslationService.isRunning
+            setServiceRunningUi(serviceRunning)
+            if (!projectionRequestInFlight) {
+                serviceStatusView.setText(
+                    if (serviceRunning) {
+                        R.string.service_running
+                    } else {
+                        R.string.service_idle
+                    },
+                )
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        modelPreparationGeneration += 1
+        modelPreparationEngine?.close()
+        modelPreparationEngine = null
+        super.onDestroy()
+    }
+
+    private fun bindViews() {
+        sourceSpinner = findViewById(R.id.spinner_source_language)
+        targetSpinner = findViewById(R.id.spinner_target_language)
+        intervalSeekBar = findViewById(R.id.seek_frame_interval)
+        intervalValueView = findViewById(R.id.text_frame_interval)
+        prepareModelsButton = findViewById(R.id.button_prepare_models)
+        modelStatusView = findViewById(R.id.text_model_status)
+        notificationPermissionButton = findViewById(R.id.button_notification_permission)
+        notificationPermissionStatusView =
+            findViewById(R.id.text_notification_permission_status)
+        overlayPermissionButton = findViewById(R.id.button_overlay_permission)
+        overlayPermissionStatusView = findViewById(R.id.text_overlay_permission_status)
+        startButton = findViewById(R.id.button_start)
+        stopButton = findViewById(R.id.button_stop)
+        serviceStatusView = findViewById(R.id.text_service_status)
+    }
+
+    private fun applySystemBarInsets() {
+        val content = findViewById<View>(android.R.id.content)
+        content.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
+            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        content.requestApplyInsets()
+    }
+
+    private fun configureLanguageSelectors() {
+        val sourceOptions = LanguageOption.sourceOptions
+        val targetOptions = LanguageOption.targetOptions
+        val sourceAdapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            sourceOptions.map { it.displayName(this) },
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val targetAdapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            targetOptions.map { it.displayName(this) },
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        sourceSpinner.adapter = sourceAdapter
+        targetSpinner.adapter = targetAdapter
+
+        val source = LanguageOption.fromLanguageTag(
+            preferences.sourceLanguage,
+            LanguageOption.defaultSource,
+        )
+        val target = LanguageOption.fromLanguageTag(
+            preferences.targetLanguage,
+            LanguageOption.defaultTarget,
+        )
+        sourceSpinner.setSelection(
+            sourceOptions.indexOf(source).takeIf { it >= 0 }
+                ?: sourceOptions.indexOf(LanguageOption.defaultSource),
+            false,
+        )
+        targetSpinner.setSelection(
+            targetOptions.indexOf(target).takeIf { it >= 0 }
+                ?: targetOptions.indexOf(LanguageOption.defaultTarget),
+            false,
+        )
+
+        val listener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long,
+            ) {
+                if (!languageListenersReady) return
+                persistCurrentConfiguration()
+                invalidatePreparedModel()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        sourceSpinner.onItemSelectedListener = listener
+        targetSpinner.onItemSelectedListener = listener
+        languageListenersReady = true
+    }
+
+    private fun configureFrameInterval() {
+        intervalSeekBar.max = FRAME_INTERVAL_OPTIONS_MS.lastIndex
+        val savedInterval = preferences.frameIntervalMs
+        val closestIndex = FRAME_INTERVAL_OPTIONS_MS.indices.minByOrNull { index ->
+            kotlin.math.abs(FRAME_INTERVAL_OPTIONS_MS[index] - savedInterval)
+        } ?: DEFAULT_INTERVAL_INDEX
+        intervalSeekBar.progress = closestIndex
+        updateIntervalLabel()
+
+        intervalSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(
+                seekBar: SeekBar?,
+                progress: Int,
+                fromUser: Boolean,
+            ) {
+                updateIntervalLabel()
+                if (fromUser) persistCurrentConfiguration()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                persistCurrentConfiguration()
+            }
+        })
+    }
+
+    private fun configureActions() {
+        prepareModelsButton.setOnClickListener {
+            prepareCurrentModels()
+        }
+        notificationPermissionButton.setOnClickListener {
+            requestNotificationPermission()
+        }
+        overlayPermissionButton.setOnClickListener {
+            openOverlayPermissionSettings()
+        }
+        startButton.setOnClickListener {
+            beginStartFlow()
+        }
+        stopButton.setOnClickListener {
+            stopTranslationService()
+        }
+    }
+
+    private fun beginStartFlow() {
+        val source = selectedSourceLanguage()
+        val target = selectedTargetLanguage()
+        if (source == target) {
+            modelStatusView.setText(R.string.model_same_language)
+            serviceStatusView.setText(R.string.model_same_language)
+            return
+        }
+
+        persistCurrentConfiguration()
+        val selectedPair = source.languageTag to target.languageTag
+        if (modelReadyFor != selectedPair) {
+            prepareCurrentModels {
+                continueStartAfterModelPreparation()
+            }
+        } else {
+            continueStartAfterModelPreparation()
+        }
+    }
+
+    private fun prepareCurrentModels(onReady: (() -> Unit)? = null) {
+        val source = selectedSourceLanguage()
+        val target = selectedTargetLanguage()
+        if (source == target) {
+            modelStatusView.setText(R.string.model_same_language)
+            return
+        }
+
+        val requestedPair = source.languageTag to target.languageTag
+        val generation = ++modelPreparationGeneration
+        modelPreparationEngine?.close()
+        val engine = TranslationEngine(
+            sourceLanguage = source.languageTag,
+            targetLanguage = target.languageTag,
+        )
+        modelPreparationEngine = engine
+        modelReadyFor = null
+        prepareModelsButton.isEnabled = false
+        startButton.isEnabled = false
+        modelStatusView.text = getString(
+            R.string.model_preparing,
+            source.displayName(this),
+            target.displayName(this),
+        )
+
+        engine.prepare(requireWifi = false) { result ->
+            runOnUiThread {
+                if (generation != modelPreparationGeneration || isDestroyed) {
+                    engine.close()
+                    return@runOnUiThread
+                }
+                if (modelPreparationEngine === engine) {
+                    modelPreparationEngine = null
+                }
+                engine.close()
+                prepareModelsButton.isEnabled = true
+                startButton.isEnabled = true
+
+                val currentPair = selectedSourceLanguage().languageTag to
+                    selectedTargetLanguage().languageTag
+                if (currentPair != requestedPair) {
+                    modelStatusView.setText(R.string.model_not_prepared)
+                    return@runOnUiThread
+                }
+
+                result.fold(
+                    onSuccess = {
+                        modelReadyFor = requestedPair
+                        modelStatusView.text = getString(
+                            R.string.model_ready,
+                            source.displayName(this),
+                            target.displayName(this),
+                        )
+                        onReady?.invoke()
+                    },
+                    onFailure = { error ->
+                        modelReadyFor = null
+                        modelStatusView.text = getString(
+                            R.string.model_failed,
+                            error.localizedMessage ?: getString(R.string.unknown_error),
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    private fun continueStartAfterModelPreparation() {
+        if (!hasNotificationPermission()) {
+            pendingStartAfterNotificationPermission = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        continueStartAfterNotificationPermission()
+    }
+
+    private fun continueStartAfterNotificationPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            pendingStartAfterOverlayPermission = true
+            openOverlayPermissionSettings()
+            return
+        }
+        requestProjectionPermission()
+    }
+
+    private fun requestProjectionPermission() {
+        if (projectionRequestInFlight) return
+        projectionRequestInFlight = true
+        serviceStatusView.setText(R.string.service_requesting_capture)
+
+        val captureIntent = projectionManager.createScreenCaptureIntent(
+            MediaProjectionConfig.createConfigForDefaultDisplay(),
+        )
+        projectionLauncher.launch(captureIntent)
+    }
+
+    private fun requestNotificationPermission() {
+        if (!hasNotificationPermission()) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            refreshPermissionState()
+        }
+    }
+
+    private fun openOverlayPermissionSettings() {
+        val packageUri = "package:$packageName".toUri()
+        val candidates = listOf(
+            // HyperOS 3 ignores the package URI on the standard overlay action
+            // and opens a global app list. Its permission editor reliably opens
+            // this app first; the user then chooses Other permissions > Floating windows.
+            Intent(HYPER_OS_APP_PERMISSION_EDITOR).apply {
+                setClassName(
+                    HYPER_OS_SECURITY_CENTER_PACKAGE,
+                    HYPER_OS_PERMISSION_EDITOR_ACTIVITY,
+                )
+                putExtra(HYPER_OS_PACKAGE_EXTRA, packageName)
+            },
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+        )
+
+        for (intent in candidates) {
+            if (intent.resolveActivity(packageManager) == null) continue
+            try {
+                overlaySettingsLauncher.launch(intent)
+                return
+            } catch (_: Exception) {
+                // Try the next ROM/system settings surface.
+            }
+        }
+    }
+
+    private fun maybeContinueAfterOverlayPermission() {
+        if (!pendingStartAfterOverlayPermission) return
+        if (Settings.canDrawOverlays(this)) {
+            pendingStartAfterOverlayPermission = false
+            requestProjectionPermission()
+        }
+    }
+
+    private fun stopTranslationService() {
+        try {
+            startService(ScreenTranslationService.stopIntent(this))
+            serviceStatusView.setText(R.string.service_stopped)
+        } catch (error: Exception) {
+            serviceStatusView.text = getString(
+                R.string.start_failed,
+                error.localizedMessage ?: error.javaClass.simpleName,
+            )
+        }
+        setServiceRunningUi(false)
+    }
+
+    private fun refreshPermissionState() {
+        val notificationGranted = hasNotificationPermission()
+        notificationPermissionStatusView.setText(
+            if (notificationGranted) {
+                R.string.notification_granted
+            } else {
+                R.string.notification_denied
+            },
+        )
+        notificationPermissionButton.isEnabled = !notificationGranted
+
+        val overlayGranted = Settings.canDrawOverlays(this)
+        overlayPermissionStatusView.setText(
+            if (overlayGranted) R.string.overlay_granted else R.string.overlay_denied,
+        )
+        overlayPermissionButton.isEnabled = !overlayGranted
+    }
+
+    private fun invalidatePreparedModel() {
+        modelPreparationGeneration += 1
+        modelPreparationEngine?.close()
+        modelPreparationEngine = null
+        modelReadyFor = null
+        prepareModelsButton.isEnabled = true
+        startButton.isEnabled = true
+        modelStatusView.setText(
+            if (selectedSourceLanguage() == selectedTargetLanguage()) {
+                R.string.model_same_language
+            } else {
+                R.string.model_not_prepared
+            },
+        )
+    }
+
+    private fun persistCurrentConfiguration() {
+        if (!::preferences.isInitialized) return
+        preferences.save(
+            sourceLanguage = selectedSourceLanguage().languageTag,
+            targetLanguage = selectedTargetLanguage().languageTag,
+            frameIntervalMs = selectedFrameInterval(),
+        )
+    }
+
+    private fun selectedSourceLanguage(): LanguageOption {
+        return LanguageOption.sourceOptions[
+            sourceSpinner.selectedItemPosition.coerceIn(
+                0,
+                LanguageOption.sourceOptions.lastIndex,
+            )
+        ]
+    }
+
+    private fun selectedTargetLanguage(): LanguageOption {
+        return LanguageOption.targetOptions[
+            targetSpinner.selectedItemPosition.coerceIn(
+                0,
+                LanguageOption.targetOptions.lastIndex,
+            )
+        ]
+    }
+
+    private fun selectedFrameInterval(): Long {
+        return FRAME_INTERVAL_OPTIONS_MS[
+            intervalSeekBar.progress.coerceIn(0, FRAME_INTERVAL_OPTIONS_MS.lastIndex)
+        ]
+    }
+
+    private fun updateIntervalLabel() {
+        intervalValueView.text = getString(
+            R.string.frame_interval_value,
+            selectedFrameInterval(),
+        )
+    }
+
+    private fun hasNotificationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun setServiceRunningUi(running: Boolean) {
+        startButton.isEnabled = !running
+        stopButton.isEnabled = running
+        if (running && serviceStatusView.text == getString(R.string.service_idle)) {
+            serviceStatusView.setText(R.string.service_running)
+        }
+    }
+
+    companion object {
+        private val FRAME_INTERVAL_OPTIONS_MS = longArrayOf(
+            250L,
+            500L,
+            750L,
+            1_000L,
+            1_500L,
+            2_000L,
+            3_000L,
+        )
+        private const val DEFAULT_INTERVAL_INDEX = 2
+        private const val HYPER_OS_APP_PERMISSION_EDITOR =
+            "miui.intent.action.APP_PERM_EDITOR"
+        private const val HYPER_OS_SECURITY_CENTER_PACKAGE =
+            "com.miui.securitycenter"
+        private const val HYPER_OS_PERMISSION_EDITOR_ACTIVITY =
+            "com.miui.permcenter.permissions.PermissionsEditorActivity"
+        private const val HYPER_OS_PACKAGE_EXTRA = "extra_pkgname"
+    }
+}

@@ -1,0 +1,40 @@
+* text=auto
+
+# Source and documentation use LF on every platform.
+.editorconfig text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+LICENSE text eol=lf
+keystore.properties.example text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.properties text eol=lf
+*.pro text eol=lf
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows launchers retain native line endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary artifacts must never be line-ending normalized.
+*.jar binary
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.apk binary
+*.aab binary
+*.apks binary
+*.idsig binary
+*.jks binary
+*.keystore binary

@@ -1,0 +1,34 @@
+﻿# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+.fleet/
+.vscode/
+
+# Signing and secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+secrets.properties
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Packaged outputs copied outside Gradle build directories
+*.apk
+*.aab
+*.apks
+*.idsig
+dist/
+
+# Local captures and diagnostics
+captures/
+logs/
