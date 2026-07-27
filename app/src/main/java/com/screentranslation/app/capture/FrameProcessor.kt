@@ -6,6 +6,7 @@ import android.media.ImageReader
 import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationEngine
+import com.screentranslation.app.util.ClauseSplitter
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -136,7 +137,13 @@ class FrameProcessor(
         blocks: List<String>,
         frameGeneration: Long,
     ) {
-        val parts = blocks.ifEmpty { listOf(originalText) }
+        // Two levels, kept apart on purpose: blocks are separate pieces of UI and
+        // stay on their own lines, while the clauses a block was split into are
+        // one sentence and must be rejoined inline.
+        val translationPlan = ClauseSplitter.plan(
+            blocks.ifEmpty { listOf(originalText) },
+        )
+        val parts = translationPlan.parts
         val translated = arrayOfNulls<String>(parts.size)
         val remaining = AtomicInteger(parts.size)
 
@@ -154,7 +161,7 @@ class FrameProcessor(
             cached(part)?.let { hit ->
                 translated[index] = hit
                 if (remaining.decrementAndGet() == 0) {
-                    settle { publish(originalText, translated, frameGeneration) }
+                    settle { publish(originalText, translationPlan, translated, frameGeneration) }
                 }
                 return@forEachIndexed
             }
@@ -165,7 +172,7 @@ class FrameProcessor(
                         translated[index] = text
                         cache(part, text)
                         if (remaining.decrementAndGet() == 0) {
-                            settle { publish(originalText, translated, frameGeneration) }
+                            settle { publish(originalText, translationPlan, translated, frameGeneration) }
                         }
                     },
                     onFailure = { error ->
@@ -180,6 +187,7 @@ class FrameProcessor(
 
     private fun publish(
         originalText: String,
+        translationPlan: ClauseSplitter.Plan,
         translated: Array<String?>,
         frameGeneration: Long,
     ) {
@@ -187,7 +195,9 @@ class FrameProcessor(
         onTranslation(
             FrameTranslation(
                 originalText = originalText,
-                translatedText = translated.joinToString("\n") { it.orEmpty() },
+                translatedText = translationPlan.reassemble(
+                    translated.map { it.orEmpty() },
+                ),
             ),
         )
     }
