@@ -22,6 +22,10 @@ secrets.properties
 Thumbs.db
 *.swp
 
+# Python benchmark tooling
+__pycache__/
+*.py[cod]
+
 # Packaged outputs copied outside Gradle build directories
 *.apk
 *.aab

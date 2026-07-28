@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_benchmark_running">Running ML Kit OCR and translation benchmark…</string>
+</resources>

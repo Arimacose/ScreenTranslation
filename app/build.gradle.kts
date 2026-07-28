@@ -70,6 +70,12 @@ android {
         debug {
             versionNameSuffix = "-debug"
         }
+        create("benchmark") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".benchmark"
+            versionNameSuffix = "-benchmark"
+            matchingFallbacks += listOf("debug")
+        }
         release {
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
