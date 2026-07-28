@@ -66,6 +66,7 @@ class ScreenTranslationService : Service() {
     private var captureDensityDpi = 0
     private var sessionStarted = false
     private var closing = false
+    private var projectionStoppedUnexpectedly = false
     private var modelReady = false
     private var regionReady = false
     private var contentVisible = true
@@ -171,8 +172,12 @@ class ScreenTranslationService : Service() {
     }
 
     override fun onDestroy() {
+        val showProjectionStoppedNotification = projectionStoppedUnexpectedly
         releaseSession()
         stopForeground(STOP_FOREGROUND_REMOVE)
+        if (showProjectionStoppedNotification) {
+            showProjectionStoppedNotification()
+        }
         super.onDestroy()
     }
 
@@ -251,7 +256,15 @@ class ScreenTranslationService : Service() {
         val callback = object : MediaProjection.Callback() {
             override fun onStop() {
                 mainHandler.post {
-                    if (!closing) stopSelf()
+                    if (!closing) {
+                        Log.i(
+                            TAG,
+                            "MediaProjection stopped by the system; fresh user consent is required",
+                        )
+                        needsProjectionRestart = true
+                        projectionStoppedUnexpectedly = true
+                        stopSelf()
+                    }
                 }
             }
 
@@ -292,6 +305,9 @@ class ScreenTranslationService : Service() {
         )
         sessionStarted = true
         isRunning = true
+        needsProjectionRestart = false
+        getSystemService(NotificationManager::class.java)
+            .cancel(PROJECTION_STOPPED_NOTIFICATION_ID)
 
         overlay.updateStatus(STATUS_PREPARING_MODEL)
         translator.prepare(requireWifi = false) { result ->
@@ -633,6 +649,45 @@ class ScreenTranslationService : Service() {
             .build()
     }
 
+    /**
+     * Android 15 QPR1+ ends every active MediaProjection when the device locks.
+     * The old token is invalid after [MediaProjection.Callback.onStop], and
+     * Android 14+ requires fresh user consent for the next capture session.
+     * Keep a non-ongoing notification so the user has a direct, explicit route
+     * back to the consent flow after unlocking.
+     */
+    private fun showProjectionStoppedNotification() {
+        val restartIntent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_PROJECTION_STOPPED, true)
+        val restartPendingIntent = PendingIntent.getActivity(
+            this,
+            PROJECTION_STOPPED_REQUEST_CODE,
+            restartIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.projection_stopped_notification_title))
+            .setContentText(getString(R.string.projection_stopped_notification_text))
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setContentIntent(restartPendingIntent)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(this, R.drawable.ic_notification),
+                    getString(R.string.projection_stopped_notification_action),
+                    restartPendingIntent,
+                ).build(),
+            )
+            .build()
+        getSystemService(NotificationManager::class.java).notify(
+            PROJECTION_STOPPED_NOTIFICATION_ID,
+            notification,
+        )
+    }
+
     private data class CaptureSpec(
         val width: Int,
         val height: Int,
@@ -682,6 +737,8 @@ class ScreenTranslationService : Service() {
         private const val NOTIFICATION_ID = 1101
         private const val STOP_REQUEST_CODE = 1102
         private const val OPEN_APP_REQUEST_CODE = 1103
+        private const val PROJECTION_STOPPED_NOTIFICATION_ID = 1104
+        private const val PROJECTION_STOPPED_REQUEST_CODE = 1105
         private const val VIRTUAL_DISPLAY_NAME = "ScreenTranslationCapture"
         private const val CAPTURE_THREAD_NAME = "screen-translation-capture"
         private const val MAX_IMAGES = 2
@@ -696,6 +753,15 @@ class ScreenTranslationService : Service() {
 
         @Volatile
         var isRunning: Boolean = false
+            private set
+
+        /**
+         * Process-local companion to the restart notification. It lets an
+         * already-created MainActivity explain why capture ended after unlock;
+         * the notification extra covers a later process recreation.
+         */
+        @Volatile
+        var needsProjectionRestart: Boolean = false
             private set
 
         fun startIntent(

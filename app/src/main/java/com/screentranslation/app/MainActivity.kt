@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingStartAfterNotificationPermission = false
     private var pendingStartAfterOverlayPermission = false
     private var projectionRequestInFlight = false
+    private var projectionStoppedNotice = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -120,7 +121,15 @@ class MainActivity : AppCompatActivity() {
         configureFrameInterval()
         configureActions()
         refreshPermissionState()
+        handleLaunchIntent(intent)
         setServiceRunningUi(false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunchIntent(intent)
+        refreshServiceStatus()
     }
 
     override fun onResume() {
@@ -128,17 +137,7 @@ class MainActivity : AppCompatActivity() {
         if (::overlayPermissionStatusView.isInitialized) {
             refreshPermissionState()
             maybeContinueAfterOverlayPermission()
-            val serviceRunning = ScreenTranslationService.isRunning
-            setServiceRunningUi(serviceRunning)
-            if (!projectionRequestInFlight) {
-                serviceStatusView.setText(
-                    if (serviceRunning) {
-                        R.string.service_running
-                    } else {
-                        R.string.service_idle
-                    },
-                )
-            }
+            refreshServiceStatus()
         }
     }
 
@@ -393,6 +392,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestProjectionPermission() {
         if (projectionRequestInFlight) return
+        projectionStoppedNotice = false
         projectionRequestInFlight = true
         serviceStatusView.setText(R.string.service_requesting_capture)
 
@@ -622,7 +622,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleLaunchIntent(launchIntent: Intent?) {
+        if (launchIntent?.getBooleanExtra(EXTRA_PROJECTION_STOPPED, false) == true) {
+            projectionStoppedNotice = true
+            launchIntent.removeExtra(EXTRA_PROJECTION_STOPPED)
+        }
+    }
+
+    private fun refreshServiceStatus() {
+        if (!::serviceStatusView.isInitialized) return
+        val serviceRunning = ScreenTranslationService.isRunning
+        setServiceRunningUi(serviceRunning)
+        if (projectionRequestInFlight) return
+        serviceStatusView.setText(
+            when {
+                serviceRunning -> R.string.service_running
+                projectionStoppedNotice ||
+                    ScreenTranslationService.needsProjectionRestart ->
+                    R.string.service_projection_stopped
+
+                else -> R.string.service_idle
+            },
+        )
+    }
+
     companion object {
+        const val EXTRA_PROJECTION_STOPPED =
+            "com.screentranslation.app.extra.PROJECTION_STOPPED"
+
         private val FRAME_INTERVAL_OPTIONS_MS = longArrayOf(
             250L,
             500L,
