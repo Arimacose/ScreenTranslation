@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Unit tests, lint, and debug APK
+    name: Unit tests, lint, debug APK, and R8 release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -40,7 +40,30 @@ jobs:
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Run verification build
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease
+
+      - name: Verify reflected component registrars after R8
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test -s "$apk"
+          test -x "$apkanalyzer"
+
+          mapfile -t registrars < <(
+            "$apkanalyzer" manifest print "$apk" |
+              sed -n 's/.*android:name="com.google.firebase.components:\([^"]*\)".*/\1/p'
+          )
+          ((${#registrars[@]} > 0))
+
+          for registrar in "${registrars[@]}"; do
+            registrar_code="$("$apkanalyzer" dex code --class "$registrar" "$apk")"
+            if ! grep -Fq '.method public constructor <init>()V' <<<"$registrar_code"; then
+              echo "::error::R8 removed ComponentRegistrar constructor: $registrar"
+              exit 1
+            fi
+          done
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
@@ -58,5 +81,9 @@ jobs:
           path: |
             app/build/reports/lint-results-debug.html
             app/build/reports/tests/testDebugUnitTest/
+            app/build/outputs/mapping/release/configuration.txt
+            app/build/outputs/mapping/release/mapping.txt
+            app/build/outputs/mapping/release/seeds.txt
+            app/build/outputs/mapping/release/usage.txt
           if-no-files-found: warn
           retention-days: 14
