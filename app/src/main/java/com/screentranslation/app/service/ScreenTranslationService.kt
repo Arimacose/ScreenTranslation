@@ -657,9 +657,14 @@ class ScreenTranslationService : Service() {
      * back to the consent flow after unlocking.
      */
     private fun showProjectionStoppedNotification() {
+        // Keep the explicit component assignment separate from the fluent
+        // mutations below. Besides being easier to audit, this lets CodeQL
+        // retain the destination-component fact through Kotlin data flow.
         val restartIntent = Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(MainActivity.EXTRA_PROJECTION_STOPPED, true)
+        restartIntent.addFlags(
+            Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+        )
+        restartIntent.putExtra(MainActivity.EXTRA_PROJECTION_STOPPED, true)
         val restartPendingIntent = PendingIntent.getActivity(
             this,
             PROJECTION_STOPPED_REQUEST_CODE,
