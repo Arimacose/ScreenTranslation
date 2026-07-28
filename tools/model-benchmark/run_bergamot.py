@@ -9,12 +9,16 @@ import importlib
 import json
 import platform
 import re
-import resource
 import statistics
 import sys
 import time
 from pathlib import Path
 from typing import Any
+
+try:
+    import resource
+except ModuleNotFoundError:
+    resource = None
 
 
 TARGET_PREFIX = ">>cmn_Hans<<"
@@ -118,7 +122,11 @@ class Translator:
     def translate(self, texts: list[str]) -> tuple[list[str], float]:
         inputs = self.bergamot.VectorString()
         for text in texts:
-            inputs.append(f"{self.target_prefix} {text}")
+            inputs.append(
+                f"{self.target_prefix} {text}"
+                if self.target_prefix
+                else text
+            )
         started = time.perf_counter_ns()
         responses = self.service.translate(self.model, inputs, self.options)
         latency_ms = (time.perf_counter_ns() - started) / 1_000_000
@@ -144,6 +152,15 @@ def translate_plan(
     return "\n".join(reassembled_blocks), parts, outputs, latency_ms
 
 
+def pipeline_parts(case: dict[str, Any]) -> list[str]:
+    pipeline = case.get("translation_pipeline")
+    if isinstance(pipeline, dict):
+        parts = pipeline.get("parts")
+        if isinstance(parts, list) and all(isinstance(part, str) for part in parts):
+            return list(parts)
+    return split_clause(str(case["source_text"]))
+
+
 def file_metadata(paths: list[Path]) -> list[dict[str, Any]]:
     return [
         {
@@ -164,6 +181,10 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--target-prefix", default=TARGET_PREFIX)
+    parser.add_argument(
+        "--engine-label",
+        help="Exact model/runtime label stored in the result JSON.",
+    )
     parser.add_argument("--bergamot-commit", default="unknown")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -192,7 +213,7 @@ def main() -> None:
             raw_output = outputs[0]
             raw_latencies.append(latency_ms)
 
-        gold_parts = list(baseline_case["translation_pipeline"]["parts"])
+        gold_parts = pipeline_parts(baseline_case)
         pipeline_latencies: list[float] = []
         pipeline_outputs: list[str] = []
         for _ in range(args.repetitions):
@@ -243,7 +264,11 @@ def main() -> None:
         }
         output_cases.append(output_case)
 
-    peak_rss_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    peak_rss_bytes = (
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+        if resource is not None
+        else None
+    )
     result: dict[str, Any] = {
         "schema_version": 1,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -255,7 +280,7 @@ def main() -> None:
         },
         "engines": {
             "ocr": ocr_candidate["engines"]["ocr"],
-            "translation": (
+            "translation": args.engine_label or (
                 f"OPUS-MT en-zho intgemm8 / Bergamot {translator.version}"
             ),
             "source_language": "en",

@@ -14,6 +14,10 @@
 
 ## v0.2 — 翻译质量与长文本体验
 
+- [x] 建立 ML Kit、PP-OCRv6、OPUS-MT 与 Firefox Translations 的固定夹具基准
+- [ ] 将 PP-OCRv6 候选压缩到可接受的延迟、内存和 15 分钟温升范围
+- [ ] 构建 Firefox Translations / Bergamot Android arm64 运行时并完成真机比较
+- [ ] 在翻译前遮蔽、翻译后恢复版本号、标识符、金额、日期和状态字
 - [ ] 让原文与译文面板可展开、滚动和复制
 - [ ] 在不保存历史的前提下改进长句展示
 - [ ] 恢复 OCR 丢失的关键标点并按语义分句

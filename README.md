@@ -28,6 +28,7 @@
 | APK ABI | `arm64-v8a`（小米 15 Pro 目标构建） |
 | Bundled ML Kit OCR | `16.0.1` |
 | ML Kit Translate | `17.0.3` |
+| Benchmark OCR candidate | PP-OCRv6 small ONNX + ONNX Runtime Android 1.26.0 |
 
 OCR 依赖全部是 `com.google.mlkit:*` bundled 版本，不依赖 Google Play 服务在首次识别时分发 OCR 模型。翻译语言模型仍需要首次联网下载，单个模型通常约 30 MB。
 
@@ -46,7 +47,7 @@ app/src/main/java/com/screentranslation/app/
 │   ├── BitmapExtractor.kt           # Image -> Bitmap 与区域裁剪
 │   └── FrameProcessor.kt            # 单飞帧处理与调度
 ├── ml/
-│   ├── OcrEngine.kt                 # 按文字体系选择识别器
+│   ├── OcrEngine.kt                 # OCR 接口与 ML Kit 默认实现
 │   └── TranslationEngine.kt         # 模型下载、翻译与资源释放
 ├── overlay/
 │   ├── OverlayController.kt         # 框选层和译文层
@@ -56,7 +57,9 @@ app/src/main/java/com/screentranslation/app/
 └── util/StableTextGate.kt           # OCR 去抖/稳定门
 ```
 
-设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，真机验收见 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)。
+设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，真机验收见
+[`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)，PP-OCRv6 与候选翻译模型的可复现
+数据见 [`docs/MODEL_BENCHMARK_2026-07-28.md`](docs/MODEL_BENCHMARK_2026-07-28.md)。
 
 ## 构建
 

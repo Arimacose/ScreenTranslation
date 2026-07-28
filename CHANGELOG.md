@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- 增加隔离的 `benchmark` 变体、固定识屏夹具和 OCR/翻译质量评分工具。
+- 增加 PP-OCRv6 small + ONNX Runtime Android 候选实现及小米 15 Pro 真机基准。
+- 增加固定版本、校验哈希的 Firefox Translations 英中模型获取与 Bergamot 基准流程。
+
+### Changed
+
+- 将 OCR 抽象为 `OcrEngine` 接口，Release 继续使用 `MlKitOcrEngine` 默认实现。
+
 ## [0.1.0] - 2026-07-26
 
 ### Added

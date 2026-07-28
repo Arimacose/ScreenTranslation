@@ -14,6 +14,15 @@ assert SPEC is not None and SPEC.loader is not None
 score = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(score)
 
+BERGAMOT_MODULE_PATH = Path(__file__).with_name("run_bergamot.py")
+BERGAMOT_SPEC = importlib.util.spec_from_file_location(
+    "model_benchmark_bergamot",
+    BERGAMOT_MODULE_PATH,
+)
+assert BERGAMOT_SPEC is not None and BERGAMOT_SPEC.loader is not None
+bergamot = importlib.util.module_from_spec(BERGAMOT_SPEC)
+BERGAMOT_SPEC.loader.exec_module(bergamot)
+
 
 class CriticalCheckTest(unittest.TestCase):
     def evaluate_case(self, case_id: str, text: str) -> list[bool]:
@@ -34,6 +43,16 @@ class CriticalCheckTest(unittest.TestCase):
         )
         self.assertEqual([True, True], self.evaluate_case("issue18_long_compound", text))
 
+    def test_issue18_mozilla_continuity_wording_passes(self) -> None:
+        text = (
+            "文本永远不会离开手机，即使完全没有网络连接，该模型仍能持续运行。"
+        )
+        self.assertEqual([True, True], self.evaluate_case("issue18_long_compound", text))
+
+    def test_notification_mozilla_active_wording_passes(self) -> None:
+        text = "捕获服务仍保持活跃状态，随后恢复了所选区域的翻译。"
+        self.assertEqual([True, True], self.evaluate_case("notification_recovery", text))
+
     def test_compact_status_tokens_pass(self) -> None:
         text = "网络状态: OFFLINE。Worker 10/ 10 仍在运行；重试 1.5 s。"
         self.assertEqual([True, True], self.evaluate_case("offline_status", text))
@@ -51,6 +70,29 @@ class CriticalCheckTest(unittest.TestCase):
     def test_wrong_version_currency_fails(self) -> None:
         text = "版本 v.1.0，构建 37，金额 12 345.67 英镑，日期 2026-07-31。"
         self.assertEqual([False], self.evaluate_case("version_amount_date", text))
+
+
+class BergamotInputTest(unittest.TestCase):
+    def test_pipeline_parts_reuse_full_baseline_plan(self) -> None:
+        case = {
+            "source_text": "Ignored fallback.",
+            "translation_pipeline": {"parts": ["First clause.", "Second clause."]},
+        }
+        self.assertEqual(
+            ["First clause.", "Second clause."],
+            bergamot.pipeline_parts(case),
+        )
+
+    def test_pipeline_parts_support_ocr_only_baseline(self) -> None:
+        source = (
+            "The translation engine runs entirely on your device, "
+            "which means the text captured from the screen never leaves the phone "
+            "and the model keeps working even when there is no network connection."
+        )
+        parts = bergamot.pipeline_parts({"source_text": source})
+        self.assertGreaterEqual(len(parts), 2)
+        self.assertTrue(all(parts))
+        self.assertIn("which means", " ".join(parts))
 
 
 if __name__ == "__main__":

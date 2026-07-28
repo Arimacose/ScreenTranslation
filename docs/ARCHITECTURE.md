@@ -22,7 +22,7 @@ ScreenTranslation 是单 Activity、单前台服务的 Android 16 原生应用�
 | `RegionSelectionView` | 手势框选并将屏幕坐标区域提交给控制器 | 输出规范化、非空且位于可用显示区域内的矩形 |
 | `FrameProcessor` | 限速、单飞处理、丢弃过期帧和串联 OCR/翻译 | 不允许并发处理两帧；结果带代次校验 |
 | `BitmapExtractor` | 从 ImageReader 图像读取 stride，构造 Bitmap 并裁剪 | 每个 `Image` 均在 `finally` 中关闭 |
-| `OcrEngine` | 根据文字体系复用相应 ML Kit TextRecognizer | Latin/Chinese/Japanese/Korean 客户端按需创建并最终关闭 |
+| `OcrEngine` | 为帧处理层提供统一 OCR 接口；Release 当前使用 `MlKitOcrEngine` | 候选实现复用同一回调与资源释放契约 |
 | `StableTextGate` | 文本规范化、去空白抖动、稳定次数门限、重复抑制 | 纯 Kotlin，可单元测试 |
 | `TranslationEngine` | 建立指定语言对 Translator、下载模型、提交翻译、关闭旧客户端 | 切换语言对时使旧回调失效 |
 | `AppPreferences` | 保存源/目标语言和采样间隔 | 不保存选择区域、截图、OCR 文本或翻译历史 |
@@ -64,7 +64,12 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 ### 3.2 OCR 与稳定门
 
 - 区域选择使用屏幕坐标，裁剪前按当前捕获帧尺寸映射并夹紧边界。
-- OCR 识别器由用户指定的源语言决定：`zh` / `ja` / `ko` 使用各自模型，英语、法语、德语和西班牙语使用 Latin 模型。俄语当前只作为翻译目标语言。四个 OCR 模型随 APK/AAB 打包，首次识别不等待 Play 服务下载。
+- Release 的 `MlKitOcrEngine` 由用户指定的源语言决定：`zh` / `ja` / `ko`
+  使用各自模型，英语、法语、德语和西班牙语使用 Latin 模型。俄语当前只作为
+  翻译目标语言。四个 OCR 模型随 APK/AAB 打包，首次识别不等待 Play 服务下载。
+- `benchmark` 变体另含 PP-OCRv6 small + ONNX Runtime Android 候选实现，模型固定
+  版本并校验哈希，不进入 Debug/Release 包。候选的真机参数、内存与质量数据见
+  [`MODEL_BENCHMARK_2026-07-28.md`](MODEL_BENCHMARK_2026-07-28.md)。
 - OCR 结果先做首尾空白清理和连续空白归一化。
 - `StableTextGate` 只放行达到稳定条件且不同于上次已提交内容的文本；
   即使整体相似度很高，持续两帧的单词或数字变化也会作为新内容提交。

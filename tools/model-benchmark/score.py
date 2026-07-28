@@ -32,7 +32,7 @@ CRITICAL_CHECKS: dict[str, list[dict[str, Any]]] = {
             "name": "model continues working offline",
             "all_regex": [
                 r"(没有|无).*网络",
-                r"(继续|仍然|保持).*(工作|运行|有效)",
+                r"(继续|仍然|保持|持续).*(工作|运行|有效|活跃)",
             ],
             "forbid_regex": [r"(不会|不再|停止).{0,8}(继续|保持).{0,4}工作"],
         },
@@ -40,7 +40,9 @@ CRITICAL_CHECKS: dict[str, list[dict[str, Any]]] = {
     "notification_recovery": [
         {
             "name": "capture service survives",
-            "any_regex": [r"(保持|仍然|依然).{0,8}(运行|存活|活着|有效)"],
+            "any_regex": [
+                r"(保持|仍然|依然|持续).{0,8}(运行|存活|活着|有效|活跃)",
+            ],
         },
         {
             "name": "translation resumes",

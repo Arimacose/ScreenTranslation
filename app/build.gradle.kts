@@ -1,8 +1,139 @@
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.Properties
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
 plugins {
     id("com.android.application")
 }
+
+@DisableCachingByDefault(
+    because = "The task keeps hash-verified model files in the local build directory.",
+)
+abstract class PreparePpOcrv6AssetsTask : DefaultTask() {
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02X".format(byte) }
+    }
+
+    private fun downloadVerified(
+        url: String,
+        expectedSha256: String,
+        target: File,
+    ) {
+        if (target.isFile && sha256(target) == expectedSha256) return
+        target.parentFile.mkdirs()
+        val partial = target.resolveSibling("${target.name}.part")
+        val connection = URI(url).toURL().openConnection().apply {
+            connectTimeout = 30_000
+            readTimeout = 180_000
+        }
+        connection.getInputStream().buffered().use { input ->
+            partial.outputStream().buffered().use { output -> input.copyTo(output) }
+        }
+        check(sha256(partial) == expectedSha256) {
+            "SHA-256 mismatch for $url"
+        }
+        Files.move(
+            partial.toPath(),
+            target.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+    }
+
+    @TaskAction
+    fun prepare() {
+        val assetDirectory = outputDirectory.get().dir("ppocrv6_small")
+        val detectionAsset = assetDirectory.file("det.onnx").asFile
+        val recognitionAsset = assetDirectory.file("rec.onnx").asFile
+        val charactersAsset = assetDirectory.file("characters.txt").asFile
+        downloadVerified(
+            url = "https://huggingface.co/PaddlePaddle/" +
+                "PP-OCRv6_small_det_onnx/resolve/" +
+                "28fe5895c24fd108c19eb3e8479f4ab385fbfc62/" +
+                "inference.onnx?download=true",
+            expectedSha256 =
+                "D73E0058B7A8086BBD57F3D10B8BCD4FF95363F67E06E2762B5E814FE9C9410E",
+            target = detectionAsset,
+        )
+        downloadVerified(
+            url = "https://huggingface.co/PaddlePaddle/" +
+                "PP-OCRv6_small_rec_onnx/resolve/" +
+                "b8f84f0b80c529de40b4fbb3544b84fa7233a513/" +
+                "inference.onnx?download=true",
+            expectedSha256 =
+                "5435FD747C9E0EFE15A96D0B378D5BD157E9492ED8FD80EDF08F30D02FA24634",
+            target = recognitionAsset,
+        )
+
+        val recognitionYaml = temporaryDir.resolve("rec-inference.yml")
+        downloadVerified(
+            url = "https://huggingface.co/PaddlePaddle/" +
+                "PP-OCRv6_small_rec_onnx/resolve/" +
+                "b8f84f0b80c529de40b4fbb3544b84fa7233a513/" +
+                "inference.yml?download=true",
+            expectedSha256 =
+                "AB078671BB49F06228EADCCD34F1BB501E157F7A047095FFB943BA81512C77D1",
+            target = recognitionYaml,
+        )
+        val yamlLines = recognitionYaml.readLines(Charsets.UTF_8)
+        val dictionaryStart = yamlLines.indexOf("  character_dict:")
+        check(dictionaryStart >= 0)
+        val characters = yamlLines
+            .drop(dictionaryStart + 1)
+            .takeWhile { line -> line.startsWith("  - ") }
+            .map { line ->
+                val scalar = line.removePrefix("  - ")
+                if (scalar.length >= 2 && scalar.first() == '\'' && scalar.last() == '\'') {
+                    scalar.substring(1, scalar.lastIndex).replace("''", "'")
+                } else {
+                    scalar
+                }
+            }
+        check(characters.size == 18_708)
+        check(characters.all { character ->
+            character.codePointCount(0, character.length) == 1
+        })
+        charactersAsset.parentFile.mkdirs()
+        charactersAsset.writeText(
+            characters.joinToString(separator = "\n", postfix = "\n"),
+            Charsets.UTF_8,
+        )
+        check(
+            sha256(charactersAsset) ==
+                "B5F2BFE2BDD9448429E3E82B51C789775D9B42F2403D082B00662EB77E401C5D",
+        )
+    }
+}
+
+val preparePpOcrv6BenchmarkAssets =
+    tasks.register<PreparePpOcrv6AssetsTask>(
+        "preparePpOcrv6BenchmarkAssets",
+    ) {
+        group = "build setup"
+        description =
+            "Downloads pinned official PP-OCRv6 small ONNX benchmark assets."
+        outputDirectory.set(
+            layout.buildDirectory.dir("generated/ppocrv6BenchmarkAssets"),
+        )
+    }
 
 val releaseSigningPropertiesFile = rootProject.file("keystore.properties")
 val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
@@ -98,6 +229,10 @@ android {
         viewBinding = true
     }
 
+    androidResources {
+        noCompress += "onnx"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -107,6 +242,22 @@ android {
     lint {
         abortOnError = true
         checkReleaseBuilds = true
+    }
+}
+
+androidComponents {
+    beforeVariants(selector().withBuildType("benchmark")) { variant ->
+        val applicationVariant =
+            variant as com.android.build.api.variant.ApplicationVariantBuilder
+        applicationVariant.hostTests[
+            com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE
+        ]?.enable = true
+    }
+    onVariants(selector().withBuildType("benchmark")) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            preparePpOcrv6BenchmarkAssets,
+            PreparePpOcrv6AssetsTask::outputDirectory,
+        )
     }
 }
 
@@ -124,6 +275,11 @@ dependencies {
 
     // Translation models are downloaded on demand, then run on device.
     implementation("com.google.mlkit:translate:17.0.3")
+
+    add(
+        "benchmarkImplementation",
+        "com.microsoft.onnxruntime:onnxruntime-android:1.26.0",
+    )
 
     testImplementation("junit:junit:4.13.2")
 }
