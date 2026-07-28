@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -657,10 +658,11 @@ class ScreenTranslationService : Service() {
      * back to the consent flow after unlocking.
      */
     private fun showProjectionStoppedNotification() {
-        // Keep the explicit component assignment separate from the fluent
-        // mutations below. Besides being easier to audit, this lets CodeQL
-        // retain the destination-component fact through Kotlin data flow.
-        val restartIntent = Intent(this, MainActivity::class.java)
+        // Spell out the destination and use a purely immutable PendingIntent.
+        // The request code and payload are stable across restart notifications,
+        // so FLAG_UPDATE_CURRENT is neither needed nor desirable here.
+        val restartIntent = Intent()
+        restartIntent.component = ComponentName(this, MainActivity::class.java)
         restartIntent.addFlags(
             Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
@@ -669,7 +671,7 @@ class ScreenTranslationService : Service() {
             this,
             PROJECTION_STOPPED_REQUEST_CODE,
             restartIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
