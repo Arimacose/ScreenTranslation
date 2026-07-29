@@ -30,7 +30,7 @@
 | Production OCR | PP-OCRv6 small ONNX，固定检测/识别模型提交 |
 | OCR runtime | ONNX Runtime Android `1.26.0` |
 | ML Kit Translate | `17.0.3` |
-| Experimental translation candidate | Bergamot `v0.4.5+9271618` + Firefox en→zh `base-memory` |
+| Experimental translation candidate | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
 
 PP-OCRv6 检测模型、识别模型和字符表随 APK/AAB 打包，运行时无需下载 OCR
 权重。首次构建会从 PaddlePaddle 官方仓库获取约 31 MB 的固定 ONNX 资产，
@@ -43,10 +43,13 @@ ML Kit 官方将端侧翻译定位为日常和简单翻译；文学长句、专�
 本项目的英文原著长句真机测试显示 OCR 准确，但长句译文存在明显语义和流畅度退化，因此后续会区分
 端侧快速模式与更高质量的翻译模式。
 
-Bergamot Android ARM64 概念验证已经在目标真机完成：核心运行时可部署，
-但 10 例质量互有胜负且稳态 RSS 明显高于 ML Kit，因此尚未切换生产默认引擎。
-构建、2,000 次组执行压力测试与逐句对比见
-[`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](docs/BERGAMOT_ANDROID_POC_2026-07-29.md)。
+Bergamot Android ARM64 概念验证已经在目标真机完成：核心运行时可部署。
+扩展后的 40 条英中与 40 条日中对比显示，英中 Bergamot 质量略优；日中
+`ja→en→zh` 级联与 ML Kit 互有胜负，但中位延迟更高且峰值 RSS 约
+767.63 MiB，因此尚未切换生产默认引擎。初始 PoC 与压力测试见
+[`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](docs/BERGAMOT_ANDROID_POC_2026-07-29.md)，
+多元英/日中报告见
+[`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
 ## 工程结构
 
@@ -72,7 +75,9 @@ app/src/main/java/com/screentranslation/app/
 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)，PP-OCRv6 与候选翻译模型的可复现
 数据见 [`docs/MODEL_BENCHMARK_2026-07-28.md`](docs/MODEL_BENCHMARK_2026-07-28.md)，
 Bergamot Android 核心 PoC 见
-[`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](docs/BERGAMOT_ANDROID_POC_2026-07-29.md)。
+[`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](docs/BERGAMOT_ANDROID_POC_2026-07-29.md)，
+多语言翻译质量对比见
+[`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
 ## 构建
 
@@ -184,7 +189,8 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - 长结果默认折叠，可通过展开模式在限高面板内滚动查看。
 - ML Kit 端侧翻译适合简短日常文本，文学长句质量不作为当前版本保证。
 - Bergamot 目前仅为 `tools/bergamot-android-poc` 下的实验性 ARM64 核心，
-  尚未进入生产 APK；默认翻译器仍为 ML Kit。
+  尚未进入生产 APK；Mozilla 当前无直接日中候选，双模型级联内存过高，
+  默认翻译器仍为 ML Kit。
 
 ## 开源维护
 

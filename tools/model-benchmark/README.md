@@ -8,8 +8,8 @@ misdiagnosed as a translation-model failure.
 
 1. **OCR**: generated screen-like PNG to recognized English; report CER, WER,
    exact cases, and inference latency.
-2. **Translation raw**: gold English directly to the translation engine.
-3. **Translation pipeline**: gold English through the app's current
+2. **Translation raw**: gold source text directly to the translation engine.
+3. **Translation pipeline**: gold source text through the app's current
    `ClauseSplitter`, then to the translation engine.
 4. **End to end**: rendered PNG through OCR, block merging, clause splitting,
    and translation.
@@ -49,10 +49,31 @@ adb shell am start -W -n `
   --ez translation_only true
 ```
 
-This mode uses the gold source strings, adds dynamic alpha/beta samples and the
-611-character Dickens fixture, and writes `translation-mlkit-android.json`.
-It records model preparation, warm-up, translation latency, and process memory
-snapshots.
+This mode loads the requested suite from
+`app/src/benchmark/assets/translation-fixtures.json`, uses its gold source
+strings, and records model preparation, warm-up, translation latency, and
+process memory snapshots. The retained suites are:
+
+- `en-zh-diverse-v2`: 40 English-to-Chinese cases;
+- `ja-zh-diverse-v1`: 40 Japanese-to-Chinese cases.
+
+The default writes `translation-mlkit-en-zh-android.json`. Run Japanese to
+Chinese explicitly:
+
+```powershell
+adb shell am start -W -n `
+  com.screentranslation.app.benchmark/com.screentranslation.app.benchmark.ModelBenchmarkActivity `
+  --ez translation_only true `
+  --es source_language ja `
+  --es target_language zh `
+  --es fixture_suite ja-zh-diverse-v1 `
+  --ei translation_repetitions 3
+```
+
+The Japanese completion and error files are
+`translation-mlkit-ja-zh.done` and
+`translation-mlkit-ja-zh-error.txt`; each language pair has independent
+result markers.
 
 The default is three repetitions. A sustained run accepts up to 100:
 
@@ -76,12 +97,13 @@ The scorer emits:
 - OCR corpus and per-case CER/WER;
 - Chinese BLEU and chrF++ for raw, split-pipeline, and end-to-end output;
 - latency summaries;
-- critical meaning checks for negation, offline operation, service recovery,
-  identifiers, quantities, dates, and amounts.
+- per-category translation scores and critical meaning checks for negation,
+  conditions, identifiers, quantities, dates, safety-domain text, idioms,
+  politeness, and word sense.
 
-BLEU/chrF++ use one reference per fixture, so they are directional comparison
-signals rather than standalone acceptance criteria. Critical checks and human
-review remain release gates.
+BLEU/chrF++ use every available project-authored reference for a fixture and
+remain directional comparison signals rather than standalone acceptance
+criteria. Critical checks and human review remain release gates.
 
 ## Candidate-engine contract
 
@@ -183,17 +205,17 @@ python tools/model-benchmark/run_bergamot.py \
 ## Current Firefox Translations candidate
 
 The preferred self-hosted candidate is the current Mozilla Firefox
-Translations English-to-Chinese `base-memory` model rather than the older
-Helsinki-NLP archive. Fetch its pinned package and produce a beam-4 Bergamot
-configuration:
+Translations `base-memory` models rather than the older Helsinki-NLP archive.
+Fetch a pinned package and produce a beam-4 Bergamot configuration:
 
 ```powershell
-python .\tools\model-benchmark\fetch_mozilla_model.py --beam-size 4
+python .\tools\model-benchmark\fetch_mozilla_model.py --pair en-zh --beam-size 4
+python .\tools\model-benchmark\fetch_mozilla_model.py --pair ja-en --beam-size 4
 ```
 
 The fetcher verifies compressed downloads, decompressed runtime files, sizes,
-hashes, and upstream metadata. It writes the model only under the ignored
-`app/build/model-benchmark/mozilla-en-zh-base-memory-2026-07-28` directory.
+hashes, and upstream metadata. It writes v2 manifests with explicit runtime
+file maps under ignored `app/build/model-benchmark` directories.
 
 After building Bergamot's Python binding in WSL, run the candidate:
 
@@ -232,9 +254,11 @@ report only.
 ## Bergamot Android ARM64 proof of concept
 
 The native Android harness under `tools/bergamot-android-poc` consumes
-`translation-mlkit-android.json`, runs the pinned Firefox Translations model on
-the same device and inputs, and emits a scorer-compatible candidate. It verifies
-local and remote hashes and rejects output that changes between repetitions.
+one of the pair-specific ML Kit JSON files, runs one or more pinned Firefox
+Translations stages on the same device and inputs, and emits a scorer-compatible
+candidate. It verifies the complete model-language chain, local and remote
+hashes, and rejects final or intermediate output that changes between
+repetitions.
 
 See:
 
@@ -242,4 +266,6 @@ See:
   for the exact build and ADB workflow;
 - [`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](../../docs/BERGAMOT_ANDROID_POC_2026-07-29.md)
   for the Xiaomi 15 Pro quality, memory, latency, thermal, and feasibility
-  decision.
+  decision from the initial English PoC;
+- [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](../../docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)
+  for the expanded 40-case English and 40-case Japanese comparison.

@@ -1,5 +1,9 @@
 # Bergamot Android proof of concept — 2026-07-29
 
+> 后续的 40 条英中、40 条日中与 `ja→en→zh` 级联测试见
+> [`TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)；
+> 本文保留初始 10 条 PoC 和 100 轮压力测试记录。
+
 ## 结论
 
 **Bergamot 的 Android ARM64 核心部署可行，但本轮结果不足以替换生产默认的

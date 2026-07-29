@@ -25,6 +25,7 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 | ML Kit Text Recognition（Latin/Chinese/Japanese/Korean） | 16.0.1 | ML Kit Terms of Service |
 | Bergamot Translator Android PoC | `9271618ebbdc5d21ac4dc4df9e72beb7ce644774` | Mozilla Public License 2.0 |
 | Firefox Translations en→zh `base-memory` model | pinned benchmark manifest | Mozilla Public License 2.0 |
+| Firefox Translations ja→en `base-memory` model | pinned benchmark manifest | Mozilla Public License 2.0 |
 
 ## 测试依赖
 

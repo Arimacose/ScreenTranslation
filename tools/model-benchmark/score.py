@@ -237,48 +237,137 @@ def evaluate_check(text: str, check: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def references_for_case(case: dict[str, Any]) -> list[str]:
+    references = case.get("reference_translations")
+    if references is None:
+        references = [case["reference_translation"]]
+    normalized = [str(reference) for reference in references if str(reference).strip()]
+    if not normalized:
+        raise ValueError(f"Case {case.get('id')} has no translation references")
+    return normalized
+
+
+def corpus_reference_sets(cases: list[dict[str, Any]]) -> list[list[str]]:
+    references = [references_for_case(case) for case in cases]
+    maximum = max(len(case_references) for case_references in references)
+    return [
+        [
+            case_references[min(reference_index, len(case_references) - 1)]
+            for case_references in references
+        ]
+        for reference_index in range(maximum)
+    ]
+
+
+def case_check_definitions(case: dict[str, Any]) -> list[dict[str, Any]]:
+    if "critical_checks" in case:
+        return list(case["critical_checks"])
+    return CRITICAL_CHECKS.get(case["id"], [])
+
+
+def layer_latencies(case: dict[str, Any], layer: str) -> list[float]:
+    if layer == "end_to_end":
+        return [float(case[layer]["latency_ms"])]
+    return [float(value) for value in case[layer]["latencies_ms"]]
+
+
+def summarize_translation_group(
+    cases: list[dict[str, Any]],
+    layer: str,
+) -> dict[str, Any]:
+    outputs = [case[layer]["output_text"] for case in cases]
+    references = corpus_reference_sets(cases)
+    checks = [
+        evaluate_check(case[layer]["output_text"], definition)
+        for case in cases
+        for definition in case_check_definitions(case)
+    ]
+    latencies = [
+        latency
+        for case in cases
+        for latency in layer_latencies(case, layer)
+    ]
+    return {
+        "case_count": len(cases),
+        "corpus_bleu": round(BLEU_ZH.corpus_score(outputs, references).score, 3),
+        "corpus_chrf_pp": round(
+            CHRF_PP.corpus_score(outputs, references).score,
+            3,
+        ),
+        "critical_checks_passed": sum(check["passed"] for check in checks),
+        "critical_checks_total": len(checks),
+        "latency": summarize_latency(latencies),
+    }
+
+
 def score_translation_layer(
     cases: list[dict[str, Any]],
     layer: str,
 ) -> dict[str, Any]:
     scored_cases = [case for case in cases if case.get("translation_scored", True)]
     outputs = [case[layer]["output_text"] for case in scored_cases]
-    references = [case["reference_translation"] for case in scored_cases]
+    reference_sets = corpus_reference_sets(scored_cases)
     case_results = []
     latency_values: list[float] = []
     critical_passes = critical_total = 0
 
-    for case, output, reference in zip(scored_cases, outputs, references):
+    for case, output in zip(scored_cases, outputs):
+        references = references_for_case(case)
         checks = [
             evaluate_check(output, definition)
-            for definition in CRITICAL_CHECKS.get(case["id"], [])
+            for definition in case_check_definitions(case)
         ]
         critical_passes += sum(check["passed"] for check in checks)
         critical_total += len(checks)
-        if layer == "end_to_end":
-            latency_values.append(float(case[layer]["latency_ms"]))
-        else:
-            latency_values.extend(float(value) for value in case[layer]["latencies_ms"])
+        latency_values.extend(layer_latencies(case, layer))
 
-        case_results.append(
+        case_result = {
+            "id": case["id"],
+            "category": case.get("category", "uncategorized"),
+            "tags": case.get("tags", []),
+            "risk": case.get("risk", "general"),
+            "bleu": round(BLEU_ZH.sentence_score(output, references).score, 3),
+            "chrf_pp": round(CHRF_PP.sentence_score(output, references).score, 3),
+            "critical_checks": checks,
+            "output_text": output,
+            "reference_translation": references[0],
+            "reference_translations": references,
+        }
+        if "pivot_outputs" in case[layer]:
+            case_result["pivot_outputs"] = case[layer]["pivot_outputs"]
+        case_results.append(case_result)
+
+    categories = {
+        category: summarize_translation_group(
+            [
+                case
+                for case in scored_cases
+                if case.get("category", "uncategorized") == category
+            ],
+            layer,
+        )
+        for category in sorted(
             {
-                "id": case["id"],
-                "bleu": round(BLEU_ZH.sentence_score(output, [reference]).score, 3),
-                "chrf_pp": round(CHRF_PP.sentence_score(output, [reference]).score, 3),
-                "critical_checks": checks,
-                "output_text": output,
-                "reference_translation": reference,
+                case.get("category", "uncategorized")
+                for case in scored_cases
             }
         )
+    }
 
     return {
-        "corpus_bleu": round(BLEU_ZH.corpus_score(outputs, [references]).score, 3),
-        "corpus_chrf_pp": round(
-            CHRF_PP.corpus_score(outputs, [references]).score, 3
+        "corpus_bleu": round(
+            BLEU_ZH.corpus_score(outputs, reference_sets).score,
+            3,
         ),
+        "corpus_chrf_pp": round(
+            CHRF_PP.corpus_score(outputs, reference_sets).score,
+            3,
+        ),
+        "maximum_references_per_case": len(reference_sets),
         "critical_checks_passed": critical_passes,
         "critical_checks_total": critical_total,
         "latency": summarize_latency(latency_values),
+        "categories": categories,
         "cases": case_results,
     }
 
@@ -301,7 +390,7 @@ def main() -> None:
         if all(layer in case for case in cases)
     ]
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "source_result": str(args.result_json.resolve()),
         "device": source["device"],
         "engines": source["engines"],
@@ -316,9 +405,10 @@ def main() -> None:
                 "Case-folded CER is also reported."
             ),
             "translation": (
-                "BLEU and chrF++ use one Chinese reference per fixture and are "
-                "directional signals; critical semantic checks and human review "
-                "remain acceptance gates."
+                "BLEU and chrF++ use all available project-authored Chinese "
+                "references and remain directional signals; per-category scores, "
+                "critical semantic checks, and human review remain acceptance "
+                "gates."
             ),
         },
     }

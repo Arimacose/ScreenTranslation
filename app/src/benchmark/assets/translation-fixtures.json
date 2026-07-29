@@ -1,4 +1,2128 @@
 {
-  "schema_version": 1,
-  "suites": []
+  "schema_version": 2,
+  "description": "Synthetic and public-domain translation-only fixtures for directional mobile model comparison. References are project-authored.",
+  "suites": [
+    {
+      "id": "en-zh-diverse-v2",
+      "source_language": "en",
+      "target_language": "zh",
+      "cases": [
+        {
+          "id": "issue18_long_compound",
+          "category": "technical",
+          "tags": [
+            "privacy",
+            "offline",
+            "long"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The translation engine runs entirely on your device, which means the text captured from the screen never leaves the phone and the model keeps working even when there is no network connection available at all.",
+          "reference_translations": [
+            "翻译引擎完全在你的设备上运行，这意味着从屏幕捕获的文本绝不会离开手机，而且即使完全没有网络连接，模型也会继续工作。",
+            "翻译引擎全程在设备端运行，因此屏幕文字始终留在手机上；即便彻底断网，模型仍可继续工作。"
+          ],
+          "critical_checks": [
+            {
+              "name": "screen text stays on device",
+              "any_regex": [
+                "(绝不|不会|从不|未曾|永远不).{0,8}离开.{0,8}(手机|设备)",
+                "(文字|文本).{0,8}(留在|保留在).{0,8}(手机|设备)"
+              ]
+            },
+            {
+              "name": "offline continuity",
+              "all_regex": [
+                "(没有|无|断开|断网).{0,4}网络",
+                "(继续|仍然|保持|持续).*(工作|运行|可用)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "literary_long_sentence",
+          "category": "literary",
+          "tags": [
+            "idiom",
+            "long"
+          ],
+          "risk": "general",
+          "provenance": "public_domain",
+          "source_text": "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
+          "reference_translations": [
+            "凡是有钱的单身汉，总想娶位太太，这已经成了一条举世公认的真理。",
+            "一个拥有丰厚财产的单身男子必定想娶妻，这是一条举世公认的真理。"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "notification_recovery",
+          "category": "system",
+          "tags": [
+            "lifecycle",
+            "long"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Although the overlay was briefly hidden by a notification, the capture service remained alive, and it resumed translating the selected region as soon as the foreground content became stable again.",
+          "reference_translations": [
+            "尽管浮窗曾被通知短暂遮挡，捕获服务仍保持运行，并在前台内容重新稳定后立即恢复翻译所选区域。"
+          ],
+          "critical_checks": [
+            {
+              "name": "capture service survives",
+              "any_regex": [
+                "(保持|仍然|依然|持续).{0,8}(运行|存活|活着|有效|活跃)"
+              ]
+            },
+            {
+              "name": "translation resumes",
+              "all_regex": [
+                "恢复",
+                "(翻译|转换)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "numbers_and_symbols",
+          "category": "numbers",
+          "tags": [
+            "currency",
+            "date",
+            "identifier"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Order XT-2048 ships on 2026-07-31 at 09:45; total: £1,249.50 (tax included).",
+          "reference_translations": [
+            "订单 XT-2048 将于 2026-07-31 09:45 发货；总计 1,249.50 英镑（含税）。"
+          ],
+          "critical_checks": [
+            {
+              "name": "identifiers and quantities",
+              "all_literals": [
+                "XT-2048",
+                "2026-07-31",
+                "09:45"
+              ],
+              "all_compact_literals": [
+                "1,249.50"
+              ],
+              "any_regex": [
+                "(£|英镑)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "offline_status",
+          "category": "system",
+          "tags": [
+            "status",
+            "numeric"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Network status: OFFLINE. Worker 10/10 is still running; retry in 1.5 s.",
+          "reference_translations": [
+            "网络状态：离线。工作进程 10/10 仍在运行；1.5 秒后重试。"
+          ],
+          "critical_checks": [
+            {
+              "name": "offline state and quantities",
+              "all_literals": [
+                "1.5"
+              ],
+              "all_compact_literals": [
+                "10/10"
+              ],
+              "any_regex": [
+                "(离线|脱机|OFFLINE)"
+              ]
+            },
+            {
+              "name": "worker active",
+              "any_regex": [
+                "(仍|继续|保持).{0,8}(运行|工作)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "low_contrast_confusables",
+          "category": "ocr_robustness",
+          "tags": [
+            "quoted_text",
+            "confusable"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Small low-contrast text should remain readable without turning \"minimum\" into \"minirnum\".",
+          "reference_translations": [
+            "小号低对比度文本仍应清晰可读，且不应把“minimum”识别成“minirnum”。"
+          ],
+          "critical_checks": [
+            {
+              "name": "quoted tokens preserved",
+              "all_literals": [
+                "minimum",
+                "minirnum"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "version_amount_date",
+          "category": "numbers",
+          "tags": [
+            "version",
+            "currency",
+            "date"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Version v0.1.0 — build 37; amount: ¥12,345.67; date: 2026-07-31.",
+          "reference_translations": [
+            "版本 v0.1.0——构建号 37；金额：¥12,345.67；日期：2026-07-31。"
+          ],
+          "critical_checks": [
+            {
+              "name": "version amount date",
+              "all_literals": [
+                "v0.1.0",
+                "37",
+                "2026-07-31"
+              ],
+              "all_compact_literals": [
+                "12,345.67"
+              ],
+              "any_regex": [
+                "(¥|日元|人民币)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dynamic_alpha",
+          "category": "runtime",
+          "tags": [
+            "foreground"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The translation service is processing sample alpha while the target application remains visible.",
+          "reference_translations": [
+            "翻译服务正在处理 alpha 样本，同时目标应用仍保持可见。"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "dynamic_beta",
+          "category": "runtime",
+          "tags": [
+            "lifecycle"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The translation service is processing sample beta and remains alive during this measurement.",
+          "reference_translations": [
+            "翻译服务正在处理 beta 样本，并在本次测量期间保持运行。"
+          ],
+          "critical_checks": [
+            {
+              "name": "beta token",
+              "any_regex": [
+                "(beta|β)"
+              ]
+            },
+            {
+              "name": "service remains active",
+              "any_regex": [
+                "(保持|仍然|依然).{0,6}(运行|活跃|存活)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dickens_611",
+          "category": "literary",
+          "tags": [
+            "public_domain",
+            "very_long",
+            "contrast"
+          ],
+          "risk": "general",
+          "provenance": "public_domain",
+          "source_text": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.",
+          "reference_translations": [
+            "这是最好的时代，也是最坏的时代；这是智慧的时代，也是愚蠢的时代；这是信仰的时期，也是怀疑的时期；这是光明的季节，也是黑暗的季节；这是希望之春，也是绝望之冬；我们面前应有尽有，我们面前一无所有；我们都将直上天堂，我们都将直下地狱——简而言之，那个时代与现在如此相似，以至于当时最喧嚣的权威坚持认为，无论好坏，都只能用最高级来形容它。",
+            "那是最美好的时代，也是最糟糕的时代；那是智慧的年头，也是愚昧的年头；那是信仰的时期，也是怀疑的时期；那是光明的季节，也是黑暗的季节；那是希望之春，也是绝望之冬。我们面前无所不有，我们面前一无所有；我们都在直奔天堂，我们都在直奔相反的方向。总之，那个时代与当今如此相像，以至于最喧嚣的权威坚持认为，无论善恶，只能用最高级来评价它。"
+          ],
+          "critical_checks": [
+            {
+              "name": "best and worst contrast",
+              "all_regex": [
+                "(最好|美好)",
+                "(最坏|最糟)"
+              ]
+            },
+            {
+              "name": "light and darkness contrast",
+              "all_regex": [
+                "光明",
+                "黑暗"
+              ]
+            },
+            {
+              "name": "hope and despair contrast",
+              "all_regex": [
+                "希望",
+                "绝望"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ui_unsaved_changes",
+          "category": "ui",
+          "tags": [
+            "confirmation",
+            "destructive"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "You have unsaved changes. Discard them and close the window?",
+          "reference_translations": [
+            "你有未保存的更改。要放弃这些更改并关闭窗口吗？",
+            "更改尚未保存。是否放弃更改并关闭窗口？"
+          ],
+          "critical_checks": [
+            {
+              "name": "unsaved state",
+              "any_regex": [
+                "(未|尚未).{0,4}保存"
+              ]
+            },
+            {
+              "name": "discard action",
+              "any_regex": [
+                "(放弃|舍弃|丢弃).{0,4}(更改|修改)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ui_permission_once",
+          "category": "ui",
+          "tags": [
+            "permission",
+            "scope"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Allow this app to record your screen only this time?",
+          "reference_translations": [
+            "仅允许此应用在本次使用时录制你的屏幕吗？"
+          ],
+          "critical_checks": [
+            {
+              "name": "one-time scope",
+              "any_regex": [
+                "(仅|只).{0,6}(本次|这一次|一次)"
+              ]
+            },
+            {
+              "name": "screen recording",
+              "all_regex": [
+                "屏幕",
+                "(录制|记录)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ui_delete_irreversible",
+          "category": "ui",
+          "tags": [
+            "destructive",
+            "negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Deleting this backup cannot be undone.",
+          "reference_translations": [
+            "删除此备份后不可撤销。",
+            "此备份一经删除便无法恢复。"
+          ],
+          "critical_checks": [
+            {
+              "name": "irreversible deletion",
+              "all_regex": [
+                "删除",
+                "(不可撤销|无法恢复|不能恢复|无法还原)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ui_sync_paused",
+          "category": "ui",
+          "tags": [
+            "battery",
+            "action"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Sync paused to save battery; tap Resume to continue.",
+          "reference_translations": [
+            "为节省电量，同步已暂停；点击“继续”即可恢复。"
+          ],
+          "critical_checks": [
+            {
+              "name": "paused state",
+              "any_regex": [
+                "(暂停|已停)"
+              ]
+            },
+            {
+              "name": "resume action",
+              "any_regex": [
+                "(继续|恢复)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "system_airplane_exception",
+          "category": "system",
+          "tags": [
+            "contrast",
+            "connectivity"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Airplane mode is on, but Wi-Fi and Bluetooth can still be enabled separately.",
+          "reference_translations": [
+            "飞行模式已开启，但仍可分别启用 Wi-Fi 和蓝牙。"
+          ],
+          "critical_checks": [
+            {
+              "name": "airplane enabled",
+              "all_regex": [
+                "飞行模式",
+                "(开启|已开)"
+              ]
+            },
+            {
+              "name": "radios still available",
+              "all_regex": [
+                "仍",
+                "Wi-Fi",
+                "蓝牙"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "system_battery_schedule",
+          "category": "system",
+          "tags": [
+            "battery",
+            "time"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Battery is at 11%. Power saving mode will turn on automatically at 23:30.",
+          "reference_translations": [
+            "电量为 11%。省电模式将在 23:30 自动开启。"
+          ],
+          "critical_checks": [
+            {
+              "name": "battery and schedule",
+              "all_literals": [
+                "11"
+              ],
+              "all_regex": [
+                "(省电|节电)",
+                "23(:|时|小时)30"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "system_security_update",
+          "category": "system",
+          "tags": [
+            "date",
+            "restart"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The security update dated 2026-08-05 is ready to install after the next restart.",
+          "reference_translations": [
+            "日期为 2026-08-05 的安全更新已准备就绪，将在下次重启后安装。"
+          ],
+          "critical_checks": [
+            {
+              "name": "date and restart",
+              "all_literals": [
+                "2026-08-05"
+              ],
+              "all_regex": [
+                "重启",
+                "安装"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "system_approximate_location",
+          "category": "system",
+          "tags": [
+            "privacy",
+            "contrast"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Approximate location is shared; precise location remains off.",
+          "reference_translations": [
+            "当前仅共享大致位置，精确位置仍处于关闭状态。"
+          ],
+          "critical_checks": [
+            {
+              "name": "approximate shared",
+              "all_regex": [
+                "(大致|粗略|近似).{0,4}位置",
+                "(共享|提供)"
+              ]
+            },
+            {
+              "name": "precise off",
+              "all_regex": [
+                "精确.{0,4}位置",
+                "(关闭|未开启)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "numbers_temperature_range",
+          "category": "numbers",
+          "tags": [
+            "temperature",
+            "percentage"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Temperature range: −3.5°C to 18°C; relative humidity: 72%.",
+          "reference_translations": [
+            "温度范围：−3.5°C 至 18°C；相对湿度：72%。"
+          ],
+          "critical_checks": [
+            {
+              "name": "weather quantities",
+              "all_compact_literals": [
+                "−3.5°C",
+                "18°C",
+                "72%"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "numbers_route_summary",
+          "category": "numbers",
+          "tags": [
+            "distance",
+            "duration",
+            "currency"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "12.4 km, 37 minutes, estimated toll ¥18.",
+          "reference_translations": [
+            "全程 12.4 公里，预计用时 37 分钟，通行费约 18 元。"
+          ],
+          "critical_checks": [
+            {
+              "name": "route quantities",
+              "all_literals": [
+                "12.4",
+                "37",
+                "18"
+              ],
+              "all_regex": [
+                "(公里|km)",
+                "(元|¥)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "numbers_discount_coupon",
+          "category": "numbers",
+          "tags": [
+            "percentage",
+            "identifier",
+            "currency"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "30% off with coupon SAVE20; minimum purchase ¥199.",
+          "reference_translations": [
+            "使用优惠码 SAVE20 可享七折优惠，最低消费 199 元。"
+          ],
+          "critical_checks": [
+            {
+              "name": "coupon and threshold",
+              "all_literals": [
+                "SAVE20",
+                "199"
+              ],
+              "any_regex": [
+                "(30%|七折)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "numbers_download_progress",
+          "category": "numbers",
+          "tags": [
+            "storage",
+            "percentage"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Downloaded 1.25 GiB of 4.00 GiB (31.3%).",
+          "reference_translations": [
+            "已下载 1.25 GiB，共 4.00 GiB（31.3%）。"
+          ],
+          "critical_checks": [
+            {
+              "name": "download quantities",
+              "all_compact_literals": [
+                "1.25GiB",
+                "4.00GiB",
+                "31.3%"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "numbers_timezone_deadline",
+          "category": "numbers",
+          "tags": [
+            "date",
+            "time",
+            "timezone"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Deadline: 2026-08-01 00:30 UTC+9 (2026-07-31 15:30 UTC).",
+          "reference_translations": [
+            "截止时间：2026-08-01 00:30（UTC+9），即 2026-07-31 15:30（UTC）。"
+          ],
+          "critical_checks": [
+            {
+              "name": "both timezone timestamps",
+              "all_literals": [
+                "2026-08-01",
+                "00:30",
+                "UTC+9",
+                "2026-07-31",
+                "15:30"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "logic_unless_backup",
+          "category": "negation_logic",
+          "tags": [
+            "unless",
+            "condition"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Unless you disable backup, photos will continue to upload over Wi-Fi.",
+          "reference_translations": [
+            "除非你关闭备份，否则照片会继续通过 Wi-Fi 上传。"
+          ],
+          "critical_checks": [
+            {
+              "name": "unless condition",
+              "all_regex": [
+                "除非",
+                "(否则|要不然)",
+                "继续.{0,8}上传"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "logic_not_every_warning",
+          "category": "negation_logic",
+          "tags": [
+            "partial_negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Not every warning means the operation has failed.",
+          "reference_translations": [
+            "并非每条警告都表示操作已经失败。",
+            "不是所有警告都意味着操作失败。"
+          ],
+          "critical_checks": [
+            {
+              "name": "partial negation",
+              "any_regex": [
+                "并非每",
+                "不是所有",
+                "不代表全部"
+              ]
+            },
+            {
+              "name": "failure meaning",
+              "all_regex": [
+                "警告",
+                "失败"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "logic_not_uncommon",
+          "category": "negation_logic",
+          "tags": [
+            "double_negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "It is not uncommon for the first result to be less accurate.",
+          "reference_translations": [
+            "第一次得到的结果不够准确并不少见。",
+            "初次结果准确度较低是很常见的。"
+          ],
+          "critical_checks": [
+            {
+              "name": "common occurrence",
+              "any_regex": [
+                "(并不少见|很常见|经常)"
+              ]
+            },
+            {
+              "name": "lower accuracy",
+              "any_regex": [
+                "(不够准确|准确度较低|精度较低)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "logic_only_if_permission",
+          "category": "negation_logic",
+          "tags": [
+            "only_if",
+            "permission"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The service restarts only if the user grants permission again.",
+          "reference_translations": [
+            "只有用户再次授予权限，服务才会重启。"
+          ],
+          "critical_checks": [
+            {
+              "name": "only-if direction",
+              "all_regex": [
+                "只有",
+                "才",
+                "再次.{0,4}(授予|允许)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "logic_no_longer_supported",
+          "category": "negation_logic",
+          "tags": [
+            "contrast",
+            "continuity"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "This device is no longer supported, although installed features will keep working.",
+          "reference_translations": [
+            "此设备已不再受支持，但已安装的功能仍会继续运行。"
+          ],
+          "critical_checks": [
+            {
+              "name": "support ended",
+              "any_regex": [
+                "(不再|已停止).{0,6}支持",
+                "支持已结束"
+              ]
+            },
+            {
+              "name": "features continue",
+              "all_regex": [
+                "已安装",
+                "(仍|继续).{0,6}(运行|工作|可用)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "conversation_sarcastic_update",
+          "category": "conversation",
+          "tags": [
+            "sarcasm",
+            "contrast"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Great, another update that fixes one bug and introduces two more.",
+          "reference_translations": [
+            "太好了，又一次修复一个错误、再引入两个错误的更新。",
+            "真棒，又来了一个修好一个问题却新增两个问题的更新。"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "conversation_bank_context",
+          "category": "conversation",
+          "tags": [
+            "word_sense",
+            "context"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "I left the bank after depositing the check.",
+          "reference_translations": [
+            "我存完支票后离开了银行。"
+          ],
+          "critical_checks": [
+            {
+              "name": "financial bank sense",
+              "all_regex": [
+                "银行",
+                "(存|存入).{0,4}支票"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "conversation_pronoun_ambiguity",
+          "category": "conversation",
+          "tags": [
+            "ambiguity",
+            "pronoun"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Maya gave Lina the key because she was leaving early.",
+          "reference_translations": [
+            "玛雅把钥匙给了莉娜，因为她要提前离开。"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "conversation_fragment_choice",
+          "category": "conversation",
+          "tags": [
+            "fragment",
+            "question"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Coming with us, or staying here?",
+          "reference_translations": [
+            "跟我们走，还是留在这里？",
+            "你是和我们一起去，还是待在这儿？"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "idiom_break_the_ice",
+          "category": "idiom",
+          "tags": [
+            "nonliteral"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The host told a joke to break the ice.",
+          "reference_translations": [
+            "主持人讲了个笑话来活跃气氛。",
+            "主人讲了个笑话来打破冷场。"
+          ],
+          "critical_checks": [
+            {
+              "name": "social ice-breaking meaning",
+              "any_regex": [
+                "(活跃气氛|打破冷场|缓和气氛)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "idiom_spill_the_beans",
+          "category": "idiom",
+          "tags": [
+            "nonliteral",
+            "negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Don't spill the beans before the announcement.",
+          "reference_translations": [
+            "公告发布前别泄露秘密。",
+            "正式宣布之前不要把消息说出去。"
+          ],
+          "critical_checks": [
+            {
+              "name": "do not reveal",
+              "all_regex": [
+                "(别|不要|请勿)",
+                "(泄露|说出去|透露)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "idiom_under_the_weather",
+          "category": "idiom",
+          "tags": [
+            "nonliteral",
+            "health"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "I'm feeling under the weather, so I'll work from home today.",
+          "reference_translations": [
+            "我今天身体不舒服，所以会在家办公。",
+            "我有点不适，今天就在家工作。"
+          ],
+          "critical_checks": [
+            {
+              "name": "feeling unwell",
+              "any_regex": [
+                "(不舒服|不适|身体欠佳)"
+              ]
+            },
+            {
+              "name": "work from home",
+              "any_regex": [
+                "(在家办公|在家工作|居家办公)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "idiom_bite_the_bullet",
+          "category": "idiom",
+          "tags": [
+            "nonliteral",
+            "technical"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "We may have to bite the bullet and replace the entire module.",
+          "reference_translations": [
+            "我们可能得硬着头皮更换整个模块。",
+            "我们也许只能下定决心，把整个模块换掉。"
+          ],
+          "critical_checks": [
+            {
+              "name": "replace entire module",
+              "all_regex": [
+                "(更换|换掉)",
+                "整个.{0,4}模块"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "technical_worker_main_thread",
+          "category": "technical",
+          "tags": [
+            "software",
+            "threading"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "The callback runs on a worker thread; update the UI on the main thread.",
+          "reference_translations": [
+            "回调在线程池工作线程上运行；请在主线程更新界面。"
+          ],
+          "critical_checks": [
+            {
+              "name": "thread distinction",
+              "all_regex": [
+                "工作线程",
+                "主线程",
+                "(界面|UI)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "technical_cache_not_data",
+          "category": "technical",
+          "tags": [
+            "software",
+            "negation",
+            "destructive"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "Clear the cache, not the app data, or the downloaded models will be removed.",
+          "reference_translations": [
+            "请清除缓存，而不是应用数据，否则已下载的模型会被删除。"
+          ],
+          "critical_checks": [
+            {
+              "name": "cache not data",
+              "all_regex": [
+                "(清除|擦除).{0,4}缓存",
+                "(不是|而不是).{0,8}应用(程序)?数据"
+              ]
+            },
+            {
+              "name": "model deletion consequence",
+              "all_regex": [
+                "模型",
+                "(删除|移除)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "safety_medication_limit",
+          "category": "safety_domain",
+          "tags": [
+            "medical",
+            "dosage",
+            "negation"
+          ],
+          "risk": "safety_critical",
+          "provenance": "synthetic",
+          "source_text": "Take one 5 mg tablet twice daily with food; do not exceed 10 mg in 24 hours.",
+          "reference_translations": [
+            "每日随餐服用两次，每次一片 5 mg；24 小时内请勿超过 10 mg。"
+          ],
+          "critical_checks": [
+            {
+              "name": "dose quantities",
+              "all_regex": [
+                "5\\s*(mg|毫克)",
+                "10\\s*(mg|毫克)"
+              ],
+              "all_literals": [
+                "24"
+              ]
+            },
+            {
+              "name": "maximum warning",
+              "any_regex": [
+                "(请勿|不得|不可|不要).{0,6}超过"
+              ]
+            },
+            {
+              "name": "twice daily",
+              "any_regex": [
+                "(每日|每天).{0,6}(两次|2次)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "safety_refund_exception",
+          "category": "safety_domain",
+          "tags": [
+            "legal",
+            "unless",
+            "deadline"
+          ],
+          "risk": "safety_critical",
+          "provenance": "synthetic",
+          "source_text": "A refund is available within 14 days unless the software has been activated.",
+          "reference_translations": [
+            "可在 14 天内申请退款，但软件一经激活则不适用。"
+          ],
+          "critical_checks": [
+            {
+              "name": "refund deadline",
+              "all_literals": [
+                "14"
+              ],
+              "all_regex": [
+                "退款"
+              ]
+            },
+            {
+              "name": "activation exception",
+              "all_regex": [
+                "激活",
+                "(不适用|除外|不予)"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ja-zh-diverse-v1",
+      "source_language": "ja",
+      "target_language": "zh",
+      "cases": [
+        {
+          "id": "ja_ui_save_changes",
+          "category": "ui",
+          "tags": [
+            "confirmation",
+            "negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "変更内容を保存しますか？保存しない場合、編集内容は失われます。",
+          "reference_translations": [
+            "更改要保存吗？若不保存，编辑内容将会丢失。",
+            "是否保存更改？如果不保存，所做的编辑将丢失。"
+          ],
+          "critical_checks": [
+            {
+              "name": "save question",
+              "all_regex": [
+                "保存",
+                "(吗|是否)"
+              ]
+            },
+            {
+              "name": "loss consequence",
+              "all_regex": [
+                "(不保存|若不保存|如果不保存)",
+                "(丢失|消失)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_ui_permission_once",
+          "category": "ui",
+          "tags": [
+            "permission",
+            "scope"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "このアプリに今回のみ画面の録画を許可しますか？",
+          "reference_translations": [
+            "仅允许此应用在本次使用时录制屏幕吗？"
+          ],
+          "critical_checks": [
+            {
+              "name": "one-time scope",
+              "any_regex": [
+                "(仅|只).{0,6}(本次|这一次|一次)",
+                "(这次|本次).{0,12}(仅|只)"
+              ]
+            },
+            {
+              "name": "record screen",
+              "all_regex": [
+                "屏幕",
+                "(录制|记录)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_ui_delete_irreversible",
+          "category": "ui",
+          "tags": [
+            "destructive",
+            "negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "バックアップを削除すると元に戻せません。",
+          "reference_translations": [
+            "删除备份后无法恢复。",
+            "备份一经删除便不可还原。"
+          ],
+          "critical_checks": [
+            {
+              "name": "irreversible deletion",
+              "all_regex": [
+                "删除",
+                "(无法恢复|不可还原|不可撤销)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_ui_sync_paused",
+          "category": "ui",
+          "tags": [
+            "status",
+            "action"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "同期を一時停止しました。再開するにはタップしてください。",
+          "reference_translations": [
+            "同步已暂停。请点击以恢复同步。"
+          ],
+          "critical_checks": [
+            {
+              "name": "pause and resume",
+              "all_regex": [
+                "暂停",
+                "(恢复|重新开始|继续)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_ui_storage_warning",
+          "category": "ui",
+          "tags": [
+            "storage",
+            "minimum"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "空き容量が512 MBしかありません。更新前に少なくとも2 GBを確保してください。",
+          "reference_translations": [
+            "可用空间仅剩 512 MB。请在更新前至少腾出 2 GB 空间。"
+          ],
+          "critical_checks": [
+            {
+              "name": "storage quantities",
+              "all_compact_literals": [
+                "512MB",
+                "2GB"
+              ],
+              "any_regex": [
+                "(至少|最少)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_system_airplane_exception",
+          "category": "system",
+          "tags": [
+            "contrast",
+            "connectivity"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "機内モードはオンですが、Wi-FiとBluetoothは個別に有効にできます。",
+          "reference_translations": [
+            "飞行模式已开启，但 Wi-Fi 和蓝牙仍可分别启用。"
+          ],
+          "critical_checks": [
+            {
+              "name": "airplane and radios",
+              "all_regex": [
+                "(飞行|飞机)模式",
+                "Wi-Fi",
+                "蓝牙",
+                "(仍|可以|可)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_system_battery_schedule",
+          "category": "system",
+          "tags": [
+            "battery",
+            "time"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "バッテリー残量は11%です。23時30分に省電力モードが自動的に有効になります。",
+          "reference_translations": [
+            "电池剩余 11%。省电模式将在 23:30 自动开启。"
+          ],
+          "critical_checks": [
+            {
+              "name": "battery schedule",
+              "all_literals": [
+                "11"
+              ],
+              "all_regex": [
+                "(省电|节电)",
+                "23(:|时|小时)30"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_system_earthquake_alert",
+          "category": "system",
+          "tags": [
+            "emergency",
+            "instruction"
+          ],
+          "risk": "safety_critical",
+          "provenance": "synthetic",
+          "source_text": "強い揺れに警戒してください。落ち着いて、身の安全を確保してください。",
+          "reference_translations": [
+            "请警惕强烈震动。保持冷静，确保自身安全。",
+            "请注意强震，冷静行动并保护好自己。"
+          ],
+          "critical_checks": [
+            {
+              "name": "strong shaking warning",
+              "any_regex": [
+                "(强烈|强).{0,3}(震动|摇晃|地震)"
+              ]
+            },
+            {
+              "name": "personal safety",
+              "any_regex": [
+                "(确保|保护).{0,6}(自己|自身|人身)?.{0,2}安全"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_system_train_door",
+          "category": "system",
+          "tags": [
+            "transport",
+            "direction"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "次は新宿です。右側のドアが開きます。",
+          "reference_translations": [
+            "下一站是新宿。右侧车门将打开。"
+          ],
+          "critical_checks": [
+            {
+              "name": "station and side",
+              "all_regex": [
+                "新宿",
+                "右(侧|边)",
+                "(车门|门)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_system_approximate_location",
+          "category": "system",
+          "tags": [
+            "privacy",
+            "contrast"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "位置情報は「おおよそ」のみ共有され、正確な位置情報はオフのままです。",
+          "reference_translations": [
+            "仅共享大致位置，精确位置仍保持关闭。"
+          ],
+          "critical_checks": [
+            {
+              "name": "approximate only",
+              "all_regex": [
+                "(仅|只)",
+                "位置",
+                "(大致|粗略|近似|大约)"
+              ]
+            },
+            {
+              "name": "precise off",
+              "all_regex": [
+                "(精确|准确|具体).{0,4}位置",
+                "(关闭|未开启|保持关闭)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_numbers_order",
+          "category": "numbers",
+          "tags": [
+            "identifier",
+            "date",
+            "currency"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "注文番号XT-2048は2026年7月31日9時45分に発送され、合計は1,249.50ポンドです。",
+          "reference_translations": [
+            "订单 XT-2048 将于 2026-07-31 09:45 发货，总计 1,249.50 英镑。"
+          ],
+          "critical_checks": [
+            {
+              "name": "order quantities",
+              "all_literals": [
+                "XT-2048"
+              ],
+              "all_compact_literals": [
+                "2026-07-31",
+                "09:45",
+                "1,249.50"
+              ],
+              "any_regex": [
+                "(英镑|£)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_numbers_temperature",
+          "category": "numbers",
+          "tags": [
+            "temperature",
+            "percentage"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "気温はマイナス3.5度から18度、湿度は72%です。",
+          "reference_translations": [
+            "气温为零下 3.5°C 至 18°C，湿度为 72%。"
+          ],
+          "critical_checks": [
+            {
+              "name": "weather quantities",
+              "all_literals": [
+                "3.5",
+                "18",
+                "72"
+              ],
+              "any_regex": [
+                "(零下|负)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_numbers_era_date",
+          "category": "numbers",
+          "tags": [
+            "era",
+            "date",
+            "time"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "令和8年8月1日（土）午前9時30分に受付を開始します。",
+          "reference_translations": [
+            "将于令和 8 年 8 月 1 日（星期六）上午 9:30 开始受理。",
+            "受理时间为令和八年八月一日（周六）上午九点半。"
+          ],
+          "critical_checks": [
+            {
+              "name": "era date and time",
+              "all_regex": [
+                "令和.{0,3}(8|八)",
+                "8月1日",
+                "(9:30|九点半)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_numbers_download",
+          "category": "numbers",
+          "tags": [
+            "storage",
+            "percentage"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "4.00 GiBのうち1.25 GiBをダウンロードしました（31.3%）。",
+          "reference_translations": [
+            "已下载 1.25 GiB，共 4.00 GiB（31.3%）。"
+          ],
+          "critical_checks": [
+            {
+              "name": "download quantities",
+              "all_literals": [
+                "1.25",
+                "4.00",
+                "31.3"
+              ],
+              "any_regex": [
+                "(GiB|GIB|吉布)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_numbers_reservation",
+          "category": "numbers",
+          "tags": [
+            "identifier",
+            "date"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "予約番号A-4096を入力し、2026年8月3日の便を確認してください。",
+          "reference_translations": [
+            "请输入预约编号 A-4096，并确认 2026-08-03 的班次。"
+          ],
+          "critical_checks": [
+            {
+              "name": "reservation identifier and date",
+              "all_literals": [
+                "A-4096"
+              ],
+              "all_regex": [
+                "2026(年|-)?0?8(月|-)?0?3日?"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_logic_unless_backup",
+          "category": "negation_logic",
+          "tags": [
+            "unless",
+            "condition"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "バックアップを無効にしない限り、写真はWi-Fi経由でアップロードされ続けます。",
+          "reference_translations": [
+            "除非关闭备份，否则照片会继续通过 Wi-Fi 上传。"
+          ],
+          "critical_checks": [
+            {
+              "name": "unless condition",
+              "all_regex": [
+                "除非",
+                "(否则|要不然)",
+                "继续.{0,8}上传"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_logic_not_all",
+          "category": "negation_logic",
+          "tags": [
+            "partial_negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "すべての警告が操作の失敗を意味するわけではありません。",
+          "reference_translations": [
+            "并非所有警告都意味着操作失败。",
+            "不是每一条警告都表示操作已经失败。"
+          ],
+          "critical_checks": [
+            {
+              "name": "partial negation",
+              "any_regex": [
+                "并非所有",
+                "不是每",
+                "不代表全部"
+              ]
+            },
+            {
+              "name": "warning and failure",
+              "all_regex": [
+                "警告",
+                "失败"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_logic_not_uncommon",
+          "category": "negation_logic",
+          "tags": [
+            "double_negation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "初回の結果が不正確であることは珍しくありません。",
+          "reference_translations": [
+            "第一次的结果不准确并不少见。",
+            "初次结果不够准确是很常见的。"
+          ],
+          "critical_checks": [
+            {
+              "name": "common occurrence",
+              "any_regex": [
+                "(并不少见|并不罕见|很常见|经常)"
+              ]
+            },
+            {
+              "name": "inaccuracy",
+              "any_regex": [
+                "(不准确|不正确|不够准确|精度较低)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_logic_only_if_permission",
+          "category": "negation_logic",
+          "tags": [
+            "only_if",
+            "permission"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "ユーザーが再び許可した場合にのみ、サービスは再起動します。",
+          "reference_translations": [
+            "只有用户再次授予权限，服务才会重启。"
+          ],
+          "critical_checks": [
+            {
+              "name": "only-if direction",
+              "all_regex": [
+                "只有",
+                "才",
+                "再次.{0,4}(授予|允许)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_logic_no_longer_supported",
+          "category": "negation_logic",
+          "tags": [
+            "contrast",
+            "continuity"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "この端末はサポート対象外になりましたが、インストール済みの機能は引き続き動作します。",
+          "reference_translations": [
+            "此设备已不再受支持，但已安装的功能仍会继续运行。"
+          ],
+          "critical_checks": [
+            {
+              "name": "support ended",
+              "any_regex": [
+                "(不再|已停止).{0,6}支持",
+                "支持范围之外"
+              ]
+            },
+            {
+              "name": "installed features continue",
+              "all_regex": [
+                "已安装",
+                "(仍|继续).{0,6}(运行|工作)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_honorific_request",
+          "category": "politeness",
+          "tags": [
+            "honorific",
+            "request"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "恐れ入りますが、こちらの書類にご記入いただけますでしょうか。",
+          "reference_translations": [
+            "劳驾，能请您填写这份文件吗？",
+            "不好意思，可以请您填写一下这份资料吗？"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "ja_honorific_sensei",
+          "category": "politeness",
+          "tags": [
+            "honorific",
+            "reporting"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "先生がおっしゃった内容を、後ほど皆様にお伝えします。",
+          "reference_translations": [
+            "稍后我会把老师所说的内容转告给大家。"
+          ],
+          "critical_checks": [
+            {
+              "name": "speaker and audience",
+              "all_regex": [
+                "老师",
+                "(转告|告诉|传达)",
+                "大家"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_omitted_subject_sent",
+          "category": "politeness",
+          "tags": [
+            "omitted_subject",
+            "request"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "先ほど送りましたので、ご確認ください。",
+          "reference_translations": [
+            "刚才已经发给您了，请确认。",
+            "我刚刚发过去了，请查收。"
+          ],
+          "critical_checks": [
+            {
+              "name": "already sent",
+              "any_regex": [
+                "(刚才|刚刚|先前|之前|早些时候).{0,6}(发|发送|寄)"
+              ]
+            },
+            {
+              "name": "please confirm",
+              "any_regex": [
+                "(请确认|请查收|请查看|请检查)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_benefactive_kureta",
+          "category": "politeness",
+          "tags": [
+            "benefactive",
+            "omitted_object"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "田中さんが資料を送ってくれました。",
+          "reference_translations": [
+            "田中先生把资料发给我了。",
+            "田中给我发来了资料。"
+          ],
+          "critical_checks": [
+            {
+              "name": "benefactive recipient",
+              "all_regex": [
+                "田中",
+                "(资料|文件|文档)",
+                "(给.{0,2}我|发来)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_conversation_surprise",
+          "category": "conversation",
+          "tags": [
+            "surprise",
+            "question"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "えっ、もう終わったの？",
+          "reference_translations": [
+            "咦，已经结束了吗？",
+            "啊，这就结束了？"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "ja_conversation_litotes",
+          "category": "conversation",
+          "tags": [
+            "litotes",
+            "contrast"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "別に嫌いじゃないけど、毎日は食べたくない。",
+          "reference_translations": [
+            "倒也不是不喜欢，只是不想每天都吃。",
+            "我并不讨厌它，但不想天天吃。"
+          ],
+          "critical_checks": [
+            {
+              "name": "not dislike",
+              "any_regex": [
+                "(不是不喜欢|并不讨厌|倒也不讨厌)"
+              ]
+            },
+            {
+              "name": "not every day",
+              "any_regex": [
+                "(不想|不要).{0,4}(每天|天天)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_conversation_iketara",
+          "category": "conversation",
+          "tags": [
+            "pragmatic_hedge",
+            "conditional"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "行けたら行く。",
+          "reference_translations": [
+            "有空的话我会去。",
+            "如果去得了，我就去。"
+          ],
+          "critical_checks": []
+        },
+        {
+          "id": "ja_conversation_soft_refusal",
+          "category": "conversation",
+          "tags": [
+            "hedge",
+            "soft_refusal"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "それ、ちょっと難しいかもしれません。",
+          "reference_translations": [
+            "那件事可能有点难办。",
+            "这个恐怕有些困难。"
+          ],
+          "critical_checks": [
+            {
+              "name": "hedged difficulty",
+              "any_regex": [
+                "(可能有点(难|困难)|恐怕.{0,4}困难|也许.{0,4}难)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_idiom_cat_hand",
+          "category": "idiom",
+          "tags": [
+            "nonliteral"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "猫の手も借りたいほど忙しい。",
+          "reference_translations": [
+            "忙得恨不得多找几个人来帮忙。",
+            "忙得连猫的手都想借来用。"
+          ],
+          "critical_checks": [
+            {
+              "name": "extremely busy",
+              "any_regex": [
+                "(忙得|非常忙|很忙|太忙|忙到)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_idiom_three_years",
+          "category": "idiom",
+          "tags": [
+            "proverb",
+            "nonliteral"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "石の上にも三年。",
+          "reference_translations": [
+            "功到自然成。",
+            "只要有耐心，坚持终会成功。"
+          ],
+          "critical_checks": [
+            {
+              "name": "perseverance meaning",
+              "any_regex": [
+                "(坚持|耐心|功到自然成|持之以恒)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_idiom_slip_tongue",
+          "category": "idiom",
+          "tags": [
+            "nonliteral",
+            "accidental"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "口が滑って秘密を話してしまった。",
+          "reference_translations": [
+            "我一时说漏了嘴，把秘密说了出来。",
+            "我不小心泄露了秘密。"
+          ],
+          "critical_checks": [
+            {
+              "name": "accidental disclosure",
+              "all_regex": [
+                "(不小心|说漏.{0,2}嘴|一时)",
+                "(秘密|泄露)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_idiom_after_rain",
+          "category": "idiom",
+          "tags": [
+            "proverb",
+            "nonliteral"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "雨降って地固まる。",
+          "reference_translations": [
+            "不打不相识，风波过后关系反而更牢固。",
+            "经历风雨后，基础会变得更加稳固。"
+          ],
+          "critical_checks": [
+            {
+              "name": "stronger after trouble",
+              "any_regex": [
+                "(风波|风雨|困难).{0,8}(更牢固|更稳固|更好)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_technical_callback",
+          "category": "technical",
+          "tags": [
+            "software",
+            "threading"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "コールバックはワーカースレッドで実行されます。UIの更新はメインスレッドで行ってください。",
+          "reference_translations": [
+            "回调在工作线程上运行。请在主线程更新 UI。"
+          ],
+          "critical_checks": [
+            {
+              "name": "thread distinction",
+              "all_regex": [
+                "工作线程",
+                "主线程",
+                "UI"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_technical_cache_not_data",
+          "category": "technical",
+          "tags": [
+            "software",
+            "negation",
+            "destructive"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "アプリのデータではなくキャッシュを消去してください。データを消すと、ダウンロード済みのモデルも削除されます。",
+          "reference_translations": [
+            "请清除缓存，而不是应用数据；清除数据也会删除已下载的模型。"
+          ],
+          "critical_checks": [
+            {
+              "name": "cache not app data",
+              "all_regex": [
+                "(清除|擦除).{0,4}缓存",
+                "(不是|而不是).{0,8}应用(程序)?(的)?数据"
+              ]
+            },
+            {
+              "name": "model deletion",
+              "all_regex": [
+                "模型",
+                "删除"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_technical_offline_model",
+          "category": "technical",
+          "tags": [
+            "offline",
+            "on_device"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "翻訳モデルは端末上で動作するため、ネットワークがなくても処理を続けられます。",
+          "reference_translations": [
+            "翻译模型在设备上运行，因此即使没有网络也能继续处理。"
+          ],
+          "critical_checks": [
+            {
+              "name": "on-device",
+              "any_regex": [
+                "(设备|终端|手机).{0,5}(上|端).{0,5}运行"
+              ]
+            },
+            {
+              "name": "offline continuity",
+              "all_regex": [
+                "(没有|无).{0,3}网络",
+                "继续.{0,5}(处理|运行|工作)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_technical_keys_logs",
+          "category": "technical",
+          "tags": [
+            "security",
+            "negation"
+          ],
+          "risk": "safety_critical",
+          "provenance": "synthetic",
+          "source_text": "鍵は端末内で生成され、ログには決して書き込まれません。",
+          "reference_translations": [
+            "密钥在设备内生成，且绝不写入日志。"
+          ],
+          "critical_checks": [
+            {
+              "name": "keys generated locally",
+              "all_regex": [
+                "密钥",
+                "(设备|终端|手机)(内|中|本地)?.{0,4}生成"
+              ]
+            },
+            {
+              "name": "never logged",
+              "all_regex": [
+                "(绝不|永不|不会|从未).{0,5}写入.{0,3}日志"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_safety_medication",
+          "category": "safety_domain",
+          "tags": [
+            "medical",
+            "dosage",
+            "negation"
+          ],
+          "risk": "safety_critical",
+          "provenance": "synthetic",
+          "source_text": "1回1錠（5 mg）を1日2回、食後に服用してください。24時間以内に10 mgを超えてはいけません。",
+          "reference_translations": [
+            "请在饭后服用，每日两次，每次一片 5 mg；24 小时内请勿超过 10 mg。"
+          ],
+          "critical_checks": [
+            {
+              "name": "dose quantities",
+              "all_regex": [
+                "5\\s*(mg|毫克)",
+                "10\\s*(mg|毫克)"
+              ],
+              "all_literals": [
+                "24"
+              ]
+            },
+            {
+              "name": "daily frequency",
+              "any_regex": [
+                "(每日|每天).{0,6}(两次|2次)"
+              ]
+            },
+            {
+              "name": "maximum warning",
+              "any_regex": [
+                "(请勿|不得|不可|不要).{0,6}超过"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_safety_refund",
+          "category": "safety_domain",
+          "tags": [
+            "legal",
+            "only_if",
+            "deadline"
+          ],
+          "risk": "safety_critical",
+          "provenance": "synthetic",
+          "source_text": "ソフトウェアを有効化していない場合に限り、購入後14日以内であれば返金を申請できます。",
+          "reference_translations": [
+            "仅在软件尚未激活的情况下，才可在购买后 14 天内申请退款。"
+          ],
+          "critical_checks": [
+            {
+              "name": "activation condition",
+              "all_regex": [
+                "(仅|只有)",
+                "(尚未|未).{0,4}激活",
+                "才"
+              ]
+            },
+            {
+              "name": "refund deadline",
+              "all_regex": [
+                "(14|十四).{0,2}天",
+                "退款"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_literary_wagahai",
+          "category": "literary",
+          "tags": [
+            "public_domain",
+            "style"
+          ],
+          "risk": "general",
+          "provenance": "public_domain",
+          "source_text": "吾輩は猫である。名前はまだ無い。",
+          "reference_translations": [
+            "我是猫。名字还没有。",
+            "咱家是猫，尚且没有名字。"
+          ],
+          "critical_checks": [
+            {
+              "name": "cat identity and unnamed",
+              "all_regex": [
+                "(我是(一只)?猫|咱家是猫)",
+                "(没有名字|还没名字|尚且没有名字|名字还没有)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_ambiguity_hashi",
+          "category": "word_sense",
+          "tags": [
+            "homophone",
+            "kanji"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "source_text": "橋の端で箸を落とした。",
+          "reference_translations": [
+            "我在桥边掉了一双筷子。",
+            "我在桥的一端把筷子掉了。"
+          ],
+          "critical_checks": [
+            {
+              "name": "bridge edge chopsticks",
+              "all_regex": [
+                "桥",
+                "(边|一端|尽头)",
+                "筷子"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

@@ -1,17 +1,19 @@
 # Bergamot Android PoC
 
-This directory contains a reproducible Android ARM64 proof of concept for the
-pinned Firefox Translations English-to-Chinese model and Bergamot runtime. It
-builds a native command-line benchmark, runs it through `adb`, and emits the
-same result schema used by the ML Kit translation benchmark.
+This directory contains a reproducible Android ARM64 proof of concept for
+pinned Firefox Translations models and the Bergamot runtime. It builds a native
+command-line benchmark, runs one or more translation stages through `adb`, and
+emits the same result schema used by the ML Kit translation benchmark.
 
 The PoC proves that Bergamot's native translation core executes on the target
 Android linker and CPU. It is intentionally separate from the production APK:
 a JNI lifecycle wrapper, model delivery, and signed Release/R8 acceptance are
 still required before it can become an application engine.
 
-The measured Xiaomi 15 Pro result and the ML Kit comparison are recorded in
+The initial English Xiaomi 15 Pro result is recorded in
 [`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](../../docs/BERGAMOT_ANDROID_POC_2026-07-29.md).
+The expanded English and Japanese comparison is recorded in
+[`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](../../docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md).
 
 ## Pinned inputs
 
@@ -21,7 +23,7 @@ The measured Xiaomi 15 Pro result and the ML Kit comparison are recorded in
 | Android NDK | r23b / `23.1.7779620` |
 | Android ABI | `arm64-v8a` |
 | Android API used for native build | 28 |
-| Firefox model | `en` -> `zh`, `base-memory`, `int8Alpha` |
+| Firefox models | `en` → `zh` and `ja` → `en`, `base-memory`, `int8Alpha` |
 | Decoder | beam size 4 |
 
 The build follows Bergamot's own Android ARM64 configuration: Ruy, NEON, CPU
@@ -38,12 +40,13 @@ inference, and static libc++.
 The NDK directory is external to the repository. Model weights and all
 generated results stay under ignored `app/build` directories.
 
-## 1. Fetch and verify the model
+## 1. Fetch and verify models
 
 From PowerShell:
 
 ```powershell
-python .\tools\model-benchmark\fetch_mozilla_model.py --beam-size 4
+python .\tools\model-benchmark\fetch_mozilla_model.py --pair en-zh --beam-size 4
+python .\tools\model-benchmark\fetch_mozilla_model.py --pair ja-en --beam-size 4
 ```
 
 The fetcher pins upstream metadata, verifies every compressed and decompressed
@@ -51,6 +54,7 @@ file, and creates:
 
 ```text
 app/build/model-benchmark/mozilla-en-zh-base-memory-2026-07-28/
+app/build/model-benchmark/mozilla-ja-en-base-memory-2026-07-29/
 ```
 
 ## 2. Build the Android ARM64 benchmark
@@ -83,7 +87,7 @@ adb shell am start -W -n `
   --ez translation_only true
 ```
 
-Wait for `translation-mlkit.done`, then pull the application benchmark
+Wait for `translation-mlkit-en-zh.done`, then pull the application benchmark
 directory:
 
 ```powershell
@@ -92,14 +96,23 @@ adb pull `
   .\app\build\model-benchmark\device-run
 ```
 
-The paired baseline file is `translation-mlkit-android.json`. It bypasses OCR
-with the gold English strings so translation quality and latency are isolated.
+The paired baseline file is `translation-mlkit-en-zh-android.json`. It bypasses
+OCR with gold source strings so translation quality and latency are isolated.
+For Japanese, add:
+
+```powershell
+--es source_language ja `
+--es target_language zh `
+--es fixture_suite ja-zh-diverse-v1
+```
+
+and wait for `translation-mlkit-ja-zh.done`.
 
 ## 4. Run Bergamot on the same device and fixtures
 
 ```powershell
 python .\tools\bergamot-android-poc\run_device.py `
-  .\app\build\model-benchmark\device-run\translation-mlkit-android.json `
+  .\app\build\model-benchmark\device-run\translation-mlkit-en-zh-android.json `
   --binary `
     .\app\build\bergamot-android-poc\bin\arm64-v8a\bergamot-android-benchmark `
   --model-dir `
@@ -108,27 +121,48 @@ python .\tools\bergamot-android-poc\run_device.py `
   --workers 1 `
   --repetitions 3 `
   --output `
-    .\app\build\model-benchmark\device-run\translation-bergamot-android.json
+    .\app\build\model-benchmark\device-run\translation-bergamot-en-zh-android.json
+```
+
+Mozilla's current production registry has no direct `ja` → `zh` model. Run the
+measured `ja` → `en` → `zh` cascade by repeating `--model-dir` in translation
+order:
+
+```powershell
+python .\tools\bergamot-android-poc\run_device.py `
+  .\app\build\model-benchmark\device-run\translation-mlkit-ja-zh-android.json `
+  --binary `
+    .\app\build\bergamot-android-poc\bin\arm64-v8a\bergamot-android-benchmark `
+  --model-dir `
+    .\app\build\model-benchmark\mozilla-ja-en-base-memory-2026-07-29 `
+  --model-dir `
+    .\app\build\model-benchmark\mozilla-en-zh-base-memory-2026-07-28 `
+  --service blocking `
+  --workers 1 `
+  --repetitions 3 `
+  --output `
+    .\app\build\model-benchmark\device-run\translation-bergamot-ja-en-zh-android.json
 ```
 
 `run_device.py` performs the following checks before accepting a result:
 
-1. validates the model manifest, file sizes, and SHA-256 values;
-2. records the device identity and state;
-3. pushes the binary, model, config, and generated TSV groups;
-4. verifies remote SHA-256 values;
-5. runs raw and app-`ClauseSplitter` inputs;
-6. requires every repetition of a group to produce exactly the same text;
-7. records load, warm-up, inference, RSS, and high-water memory values;
-8. writes a candidate JSON compatible with the shared scorer.
+1. validates every v2 model manifest, runtime file, size, and SHA-256 value;
+2. requires the model stages to form the baseline language route exactly;
+3. records the device identity and state;
+4. pushes the binary, models, configs, and generated TSV groups;
+5. verifies remote SHA-256 values;
+6. runs raw and app-`ClauseSplitter` inputs;
+7. requires every repetition to produce identical final and intermediate text;
+8. records per-stage load, warm-up, inference, RSS, and high-water memory;
+9. writes a candidate JSON compatible with the shared scorer.
 
 Score both engines:
 
 ```powershell
 python .\tools\model-benchmark\score.py `
-  .\app\build\model-benchmark\device-run\translation-mlkit-android.json
+  .\app\build\model-benchmark\device-run\translation-mlkit-en-zh-android.json
 python .\tools\model-benchmark\score.py `
-  .\app\build\model-benchmark\device-run\translation-bergamot-android.json
+  .\app\build\model-benchmark\device-run\translation-bergamot-en-zh-android.json
 ```
 
 For a sustained maximum-throughput pass, change `--repetitions` to `100` and

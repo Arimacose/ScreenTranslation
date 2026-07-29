@@ -61,13 +61,19 @@ class ModelBenchmarkActivity : Activity() {
                     EXTRA_TRANSLATION_ONLY,
                     false,
                 )
+                val translationSource = intent.getStringExtra(
+                    EXTRA_SOURCE_LANGUAGE,
+                )?.trim()?.lowercase() ?: SOURCE_LANGUAGE
+                val translationTarget = intent.getStringExtra(
+                    EXTRA_TARGET_LANGUAGE,
+                )?.trim()?.lowercase() ?: TARGET_LANGUAGE
                 val doneFile = if (translationOnly) {
-                    TRANSLATION_ONLY_DONE_FILE
+                    translationDoneFile(translationSource, translationTarget)
                 } else {
                     DONE_FILE
                 }
                 val errorFile = if (translationOnly) {
-                    TRANSLATION_ONLY_ERROR_FILE
+                    translationErrorFile(translationSource, translationTarget)
                 } else {
                     ERROR_FILE
                 }
@@ -76,7 +82,11 @@ class ModelBenchmarkActivity : Activity() {
 
                 runCatching {
                     if (translationOnly) {
-                        runTranslationOnlyBenchmark(outputDirectory)
+                        runTranslationOnlyBenchmark(
+                            outputDirectory,
+                            translationSource,
+                            translationTarget,
+                        )
                     } else {
                         runBenchmark(outputDirectory)
                     }
@@ -86,7 +96,12 @@ class ModelBenchmarkActivity : Activity() {
                         TAG,
                         if (translationOnly) {
                             "Translation benchmark complete: " +
-                                outputDirectory.resolve(TRANSLATION_ONLY_RESULT_FILE)
+                                outputDirectory.resolve(
+                                    translationResultFile(
+                                        translationSource,
+                                        translationTarget,
+                                    ),
+                                )
                         } else {
                             "Benchmark complete: " +
                                 "${outputDirectory.resolve(BASELINE_RESULT_FILE)}, " +
@@ -140,7 +155,11 @@ class ModelBenchmarkActivity : Activity() {
         }
     }
 
-    private fun runTranslationOnlyBenchmark(outputDirectory: File) {
+    private fun runTranslationOnlyBenchmark(
+        outputDirectory: File,
+        sourceLanguage: String,
+        targetLanguage: String,
+    ) {
         val repetitions = intent.getIntExtra(
             EXTRA_TRANSLATION_REPETITIONS,
             REPETITIONS,
@@ -149,8 +168,12 @@ class ModelBenchmarkActivity : Activity() {
             "$EXTRA_TRANSLATION_REPETITIONS must be between 1 and " +
                 MAX_TRANSLATION_REPETITIONS
         }
+        val fixtureSuite = loadTranslationFixtureSuite(
+            sourceLanguage,
+            targetLanguage,
+        )
         val memoryBeforeEngine = processMemory()
-        val translationEngine = TranslationEngine(SOURCE_LANGUAGE, TARGET_LANGUAGE)
+        val translationEngine = TranslationEngine(sourceLanguage, targetLanguage)
         try {
             val memoryAfterClient = processMemory()
             val preparationStarted = SystemClock.elapsedRealtimeNanos()
@@ -160,12 +183,16 @@ class ModelBenchmarkActivity : Activity() {
 
             val warmup = awaitTranslation(
                 translationEngine,
-                "Warm-up sentence.",
+                if (sourceLanguage == "ja") {
+                    "これはウォームアップ用の文です。"
+                } else {
+                    "Warm-up sentence."
+                },
             )
             val memoryAfterWarmup = processMemory()
 
             val cases = JSONArray()
-            FIXTURES.forEach { fixture ->
+            fixtureSuite.cases.forEach { fixture ->
                 val rawLatencies = mutableListOf<Double>()
                 val rawOutputs = mutableListOf<String>()
                 repeat(repetitions) {
@@ -206,7 +233,19 @@ class ModelBenchmarkActivity : Activity() {
                         .put("source_text", fixture.source)
                         .put(
                             "reference_translation",
-                            fixture.referenceTranslation,
+                            fixture.referenceTranslations.first(),
+                        )
+                        .put(
+                            "reference_translations",
+                            JSONArray(fixture.referenceTranslations),
+                        )
+                        .put("category", fixture.category)
+                        .put("tags", JSONArray(fixture.tags))
+                        .put("risk", fixture.risk)
+                        .put("provenance", fixture.provenance)
+                        .put(
+                            "critical_checks",
+                            JSONArray(fixture.criticalChecks.toString()),
                         )
                         .put("translation_scored", fixture.translationScored)
                         .put(
@@ -276,14 +315,16 @@ class ModelBenchmarkActivity : Activity() {
                     JSONObject()
                         .put("ocr", "pass-through gold source (translation-only)")
                         .put("translation", "ML Kit Translate 17.0.3")
-                        .put("source_language", SOURCE_LANGUAGE)
-                        .put("target_language", TARGET_LANGUAGE),
+                        .put("source_language", sourceLanguage)
+                        .put("target_language", targetLanguage),
                 )
                 .put(
                     "method",
                     JSONObject()
                         .put("translation_only", true)
                         .put("translation_repetitions", repetitions)
+                        .put("fixture_schema_version", fixtureSuite.schemaVersion)
+                        .put("fixture_suite", fixtureSuite.id)
                         .put(
                             "latency_clock",
                             "SystemClock.elapsedRealtimeNanos",
@@ -308,13 +349,112 @@ class ModelBenchmarkActivity : Activity() {
                 )
                 .put("cases", cases)
 
-            outputDirectory.resolve(TRANSLATION_ONLY_RESULT_FILE).writeText(
+            outputDirectory.resolve(
+                translationResultFile(sourceLanguage, targetLanguage),
+            ).writeText(
                 result.toString(2),
                 Charsets.UTF_8,
             )
         } finally {
             translationEngine.close()
         }
+    }
+
+    private fun loadTranslationFixtureSuite(
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): TranslationFixtureSuite {
+        require(sourceLanguage.matches(LANGUAGE_CODE_PATTERN)) {
+            "Invalid source language code: $sourceLanguage"
+        }
+        require(targetLanguage.matches(LANGUAGE_CODE_PATTERN)) {
+            "Invalid target language code: $targetLanguage"
+        }
+        val requestedSuite = intent.getStringExtra(EXTRA_FIXTURE_SUITE)?.trim()
+        val document = assets.open(TRANSLATION_FIXTURES_ASSET)
+            .bufferedReader(Charsets.UTF_8)
+            .use { reader -> JSONObject(reader.readText()) }
+        val schemaVersion = document.getInt("schema_version")
+        require(schemaVersion == TRANSLATION_FIXTURE_SCHEMA_VERSION) {
+            "Unsupported translation fixture schema: $schemaVersion"
+        }
+        val suites = document.getJSONArray("suites")
+        for (suiteIndex in 0 until suites.length()) {
+            val suite = suites.getJSONObject(suiteIndex)
+            val suiteId = suite.getString("id")
+            val matches = if (requestedSuite.isNullOrEmpty()) {
+                suite.getString("source_language") == sourceLanguage &&
+                    suite.getString("target_language") == targetLanguage
+            } else {
+                suiteId == requestedSuite
+            }
+            if (!matches) continue
+            require(suite.getString("source_language") == sourceLanguage) {
+                "Fixture suite $suiteId source language does not match $sourceLanguage"
+            }
+            require(suite.getString("target_language") == targetLanguage) {
+                "Fixture suite $suiteId target language does not match $targetLanguage"
+            }
+            val fixtureArray = suite.getJSONArray("cases")
+            val fixtures = buildList {
+                for (caseIndex in 0 until fixtureArray.length()) {
+                    val fixture = fixtureArray.getJSONObject(caseIndex)
+                    val referencesJson = fixture.getJSONArray(
+                        "reference_translations",
+                    )
+                    val references = buildList {
+                        for (referenceIndex in 0 until referencesJson.length()) {
+                            add(referencesJson.getString(referenceIndex))
+                        }
+                    }
+                    require(references.isNotEmpty()) {
+                        "Fixture ${fixture.getString("id")} has no references"
+                    }
+                    val tagsJson = fixture.optJSONArray("tags") ?: JSONArray()
+                    val tags = buildList {
+                        for (tagIndex in 0 until tagsJson.length()) {
+                            add(tagsJson.getString(tagIndex))
+                        }
+                    }
+                    add(
+                        TranslationFixture(
+                            id = fixture.getString("id"),
+                            category = fixture.getString("category"),
+                            tags = tags,
+                            risk = fixture.optString("risk", "general"),
+                            provenance = fixture.optString(
+                                "provenance",
+                                "synthetic",
+                            ),
+                            source = fixture.getString("source_text"),
+                            referenceTranslations = references,
+                            criticalChecks = fixture.optJSONArray(
+                                "critical_checks",
+                            ) ?: JSONArray(),
+                            translationScored = fixture.optBoolean(
+                                "translation_scored",
+                                true,
+                            ),
+                        ),
+                    )
+                }
+            }
+            require(fixtures.isNotEmpty()) {
+                "Fixture suite $suiteId is empty"
+            }
+            require(fixtures.map { it.id }.distinct().size == fixtures.size) {
+                "Fixture suite $suiteId contains duplicate IDs"
+            }
+            return TranslationFixtureSuite(
+                id = suiteId,
+                schemaVersion = schemaVersion,
+                cases = fixtures,
+            )
+        }
+        throw IllegalArgumentException(
+            "No translation fixture suite for $sourceLanguage-$targetLanguage" +
+                requestedSuite?.let { " with id $it" }.orEmpty(),
+        )
     }
 
     private fun processMemory(): JSONObject {
@@ -692,29 +832,70 @@ class ModelBenchmarkActivity : Activity() {
         val monospace: Boolean = false,
     )
 
+    private data class TranslationFixtureSuite(
+        val id: String,
+        val schemaVersion: Int,
+        val cases: List<TranslationFixture>,
+    )
+
+    private data class TranslationFixture(
+        val id: String,
+        val category: String,
+        val tags: List<String>,
+        val risk: String,
+        val provenance: String,
+        val source: String,
+        val referenceTranslations: List<String>,
+        val criticalChecks: JSONArray,
+        val translationScored: Boolean,
+    )
+
     private companion object {
         const val TAG = "ModelBenchmark"
         const val OUTPUT_DIRECTORY = "model-benchmark"
         const val BASELINE_RESULT_FILE = "baseline-mlkit.json"
         const val PP_OCR_RESULT_FILE = "candidate-ppocrv6-small-android.json"
-        const val TRANSLATION_ONLY_RESULT_FILE = "translation-mlkit-android.json"
         const val DONE_FILE = "baseline-mlkit.done"
         const val ERROR_FILE = "baseline-mlkit-error.txt"
-        const val TRANSLATION_ONLY_DONE_FILE = "translation-mlkit.done"
-        const val TRANSLATION_ONLY_ERROR_FILE = "translation-mlkit-error.txt"
         const val EXTRA_INCLUDE_TRANSLATION = "include_translation"
         const val EXTRA_TRANSLATION_ONLY = "translation_only"
         const val EXTRA_TRANSLATION_REPETITIONS = "translation_repetitions"
+        const val EXTRA_SOURCE_LANGUAGE = "source_language"
+        const val EXTRA_TARGET_LANGUAGE = "target_language"
+        const val EXTRA_FIXTURE_SUITE = "fixture_suite"
         const val SOURCE_LANGUAGE = "en"
         const val TARGET_LANGUAGE = "zh"
         const val REPETITIONS = 3
         const val MAX_TRANSLATION_REPETITIONS = 100
+        const val TRANSLATION_FIXTURES_ASSET = "translation-fixtures.json"
+        const val TRANSLATION_FIXTURE_SCHEMA_VERSION = 2
         const val MODEL_TIMEOUT_SECONDS = 300L
         const val INFERENCE_TIMEOUT_SECONDS = 60L
         const val PADDING_PX = 64
         const val MINIMUM_HEIGHT_PX = 420
         const val LINE_SPACING_EXTRA_PX = 10f
         const val LINE_SPACING_MULTIPLIER = 1.08f
+
+        val LANGUAGE_CODE_PATTERN = Regex("[a-z]{2,3}(?:-[a-z0-9]+)*")
+
+        fun translationResultFile(source: String, target: String): String =
+            "translation-mlkit-${translationPairSlug(source, target)}-android.json"
+
+        fun translationDoneFile(source: String, target: String): String =
+            "translation-mlkit-${translationPairSlug(source, target)}.done"
+
+        fun translationErrorFile(source: String, target: String): String =
+            "translation-mlkit-${translationPairSlug(source, target)}-error.txt"
+
+        private fun translationPairSlug(source: String, target: String): String {
+            require(source.matches(LANGUAGE_CODE_PATTERN)) {
+                "Invalid source language code: $source"
+            }
+            require(target.matches(LANGUAGE_CODE_PATTERN)) {
+                "Invalid target language code: $target"
+            }
+            return "$source-$target"
+        }
 
         val FIXTURES = listOf(
             Fixture(
