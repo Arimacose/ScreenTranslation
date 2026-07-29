@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.Debug
 import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
@@ -56,21 +57,44 @@ class ModelBenchmarkActivity : Activity() {
                 val outputDirectory = checkNotNull(getExternalFilesDir(null))
                     .resolve(OUTPUT_DIRECTORY)
                     .apply { mkdirs() }
-                outputDirectory.resolve(DONE_FILE).delete()
-                outputDirectory.resolve(ERROR_FILE).delete()
+                val translationOnly = intent.getBooleanExtra(
+                    EXTRA_TRANSLATION_ONLY,
+                    false,
+                )
+                val doneFile = if (translationOnly) {
+                    TRANSLATION_ONLY_DONE_FILE
+                } else {
+                    DONE_FILE
+                }
+                val errorFile = if (translationOnly) {
+                    TRANSLATION_ONLY_ERROR_FILE
+                } else {
+                    ERROR_FILE
+                }
+                outputDirectory.resolve(doneFile).delete()
+                outputDirectory.resolve(errorFile).delete()
 
                 runCatching {
-                    runBenchmark(outputDirectory)
+                    if (translationOnly) {
+                        runTranslationOnlyBenchmark(outputDirectory)
+                    } else {
+                        runBenchmark(outputDirectory)
+                    }
                 }.onSuccess {
-                    outputDirectory.resolve(DONE_FILE).writeText("ok\n")
+                    outputDirectory.resolve(doneFile).writeText("ok\n")
                     Log.i(
                         TAG,
-                        "Benchmark complete: " +
-                            "${outputDirectory.resolve(BASELINE_RESULT_FILE)}, " +
-                            outputDirectory.resolve(PP_OCR_RESULT_FILE),
+                        if (translationOnly) {
+                            "Translation benchmark complete: " +
+                                outputDirectory.resolve(TRANSLATION_ONLY_RESULT_FILE)
+                        } else {
+                            "Benchmark complete: " +
+                                "${outputDirectory.resolve(BASELINE_RESULT_FILE)}, " +
+                                outputDirectory.resolve(PP_OCR_RESULT_FILE)
+                        },
                     )
                 }.onFailure { error ->
-                    outputDirectory.resolve(ERROR_FILE).writeText(
+                    outputDirectory.resolve(errorFile).writeText(
                         error.stackTraceToString(),
                     )
                     Log.e(TAG, "Benchmark failed", error)
@@ -114,6 +138,210 @@ class ModelBenchmarkActivity : Activity() {
         } finally {
             translationEngine?.close()
         }
+    }
+
+    private fun runTranslationOnlyBenchmark(outputDirectory: File) {
+        val repetitions = intent.getIntExtra(
+            EXTRA_TRANSLATION_REPETITIONS,
+            REPETITIONS,
+        )
+        require(repetitions in 1..MAX_TRANSLATION_REPETITIONS) {
+            "$EXTRA_TRANSLATION_REPETITIONS must be between 1 and " +
+                MAX_TRANSLATION_REPETITIONS
+        }
+        val memoryBeforeEngine = processMemory()
+        val translationEngine = TranslationEngine(SOURCE_LANGUAGE, TARGET_LANGUAGE)
+        try {
+            val memoryAfterClient = processMemory()
+            val preparationStarted = SystemClock.elapsedRealtimeNanos()
+            awaitPreparation(translationEngine)
+            val preparationLatencyMs = elapsedMilliseconds(preparationStarted)
+            val memoryAfterPreparation = processMemory()
+
+            val warmup = awaitTranslation(
+                translationEngine,
+                "Warm-up sentence.",
+            )
+            val memoryAfterWarmup = processMemory()
+
+            val cases = JSONArray()
+            FIXTURES.forEach { fixture ->
+                val rawLatencies = mutableListOf<Double>()
+                val rawOutputs = mutableListOf<String>()
+                repeat(repetitions) {
+                    val measurement = awaitTranslation(
+                        translationEngine,
+                        fixture.source,
+                    )
+                    rawOutputs += measurement.value
+                    rawLatencies += measurement.latencyMs
+                }
+                check(rawOutputs.distinct().size == 1) {
+                    "ML Kit raw output changed between repetitions: ${fixture.id}"
+                }
+
+                val plan = ClauseSplitter.plan(listOf(fixture.source))
+                val pipelineLatencies = mutableListOf<Double>()
+                val pipelines = mutableListOf<PlanMeasurement>()
+                repeat(repetitions) {
+                    val pipeline = awaitPlan(translationEngine, plan)
+                    pipelines += pipeline
+                    pipelineLatencies += pipeline.latencyMs
+                }
+                check(
+                    pipelines
+                        .map { measurement ->
+                            measurement.output to measurement.partOutputs
+                        }
+                        .distinct()
+                        .size == 1,
+                ) {
+                    "ML Kit pipeline output changed between repetitions: ${fixture.id}"
+                }
+                val pipeline = pipelines.first()
+
+                cases.put(
+                    JSONObject()
+                        .put("id", fixture.id)
+                        .put("source_text", fixture.source)
+                        .put(
+                            "reference_translation",
+                            fixture.referenceTranslation,
+                        )
+                        .put("translation_scored", fixture.translationScored)
+                        .put(
+                            "ocr",
+                            JSONObject()
+                                .put("output_text", fixture.source)
+                                .put("blocks", JSONArray(listOf(fixture.source)))
+                                .put("latencies_ms", JSONArray(listOf(0.0)))
+                                .put("median_latency_ms", 0.0),
+                        )
+                        .put(
+                            "translation_raw",
+                            JSONObject()
+                                .put("output_text", rawOutputs.first())
+                                .put(
+                                    "latencies_ms",
+                                    JSONArray(rawLatencies),
+                                )
+                                .put(
+                                    "median_latency_ms",
+                                    median(rawLatencies),
+                                ),
+                        )
+                        .put(
+                            "translation_pipeline",
+                            JSONObject()
+                                .put("parts", JSONArray(pipeline.parts))
+                                .put(
+                                    "part_outputs",
+                                    JSONArray(pipeline.partOutputs),
+                                )
+                                .put("output_text", pipeline.output)
+                                .put(
+                                    "latencies_ms",
+                                    JSONArray(pipelineLatencies),
+                                )
+                                .put(
+                                    "median_latency_ms",
+                                    median(pipelineLatencies),
+                                ),
+                        ),
+                )
+            }
+
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            val result = JSONObject()
+                .put("schema_version", 1)
+                .put("generated_at", Instant.now().toString())
+                .put(
+                    "device",
+                    JSONObject()
+                        .put("manufacturer", Build.MANUFACTURER)
+                        .put("model", Build.MODEL)
+                        .put("android", Build.VERSION.RELEASE)
+                        .put("sdk", Build.VERSION.SDK_INT)
+                        .put("display_build", Build.DISPLAY),
+                )
+                .put(
+                    "app",
+                    JSONObject()
+                        .put("package", packageName)
+                        .put("version_name", packageInfo.versionName)
+                        .put("version_code", packageInfo.longVersionCode),
+                )
+                .put(
+                    "engines",
+                    JSONObject()
+                        .put("ocr", "pass-through gold source (translation-only)")
+                        .put("translation", "ML Kit Translate 17.0.3")
+                        .put("source_language", SOURCE_LANGUAGE)
+                        .put("target_language", TARGET_LANGUAGE),
+                )
+                .put(
+                    "method",
+                    JSONObject()
+                        .put("translation_only", true)
+                        .put("translation_repetitions", repetitions)
+                        .put(
+                            "latency_clock",
+                            "SystemClock.elapsedRealtimeNanos",
+                        )
+                        .put(
+                            "preparation_latency_ms",
+                            preparationLatencyMs,
+                        )
+                        .put("warmup_latency_ms", warmup.latencyMs)
+                        .put(
+                            "memory",
+                            JSONObject()
+                                .put("before_engine", memoryBeforeEngine)
+                                .put("after_client", memoryAfterClient)
+                                .put(
+                                    "after_preparation",
+                                    memoryAfterPreparation,
+                                )
+                                .put("after_warmup", memoryAfterWarmup)
+                                .put("after_suite", processMemory()),
+                        ),
+                )
+                .put("cases", cases)
+
+            outputDirectory.resolve(TRANSLATION_ONLY_RESULT_FILE).writeText(
+                result.toString(2),
+                Charsets.UTF_8,
+            )
+        } finally {
+            translationEngine.close()
+        }
+    }
+
+    private fun processMemory(): JSONObject {
+        val memoryInfo = Debug.MemoryInfo()
+        Debug.getMemoryInfo(memoryInfo)
+        val runtime = Runtime.getRuntime()
+        val procStatus = File("/proc/self/status")
+            .takeIf(File::isFile)
+            ?.readLines()
+            .orEmpty()
+        fun statusKiB(name: String): Long = procStatus
+            .firstOrNull { line -> line.startsWith("$name:") }
+            ?.trim()
+            ?.split(Regex("\\s+"))
+            ?.getOrNull(1)
+            ?.toLongOrNull()
+            ?: 0L
+
+        return JSONObject()
+            .put("total_pss_kib", memoryInfo.totalPss)
+            .put("total_private_dirty_kib", memoryInfo.totalPrivateDirty)
+            .put("total_shared_dirty_kib", memoryInfo.totalSharedDirty)
+            .put("rss_kib", statusKiB("VmRSS"))
+            .put("hwm_kib", statusKiB("VmHWM"))
+            .put("java_heap_used_bytes", runtime.totalMemory() - runtime.freeMemory())
+            .put("java_heap_total_bytes", runtime.totalMemory())
+            .put("java_heap_max_bytes", runtime.maxMemory())
     }
 
     private fun runSuite(
@@ -469,12 +697,18 @@ class ModelBenchmarkActivity : Activity() {
         const val OUTPUT_DIRECTORY = "model-benchmark"
         const val BASELINE_RESULT_FILE = "baseline-mlkit.json"
         const val PP_OCR_RESULT_FILE = "candidate-ppocrv6-small-android.json"
+        const val TRANSLATION_ONLY_RESULT_FILE = "translation-mlkit-android.json"
         const val DONE_FILE = "baseline-mlkit.done"
         const val ERROR_FILE = "baseline-mlkit-error.txt"
+        const val TRANSLATION_ONLY_DONE_FILE = "translation-mlkit.done"
+        const val TRANSLATION_ONLY_ERROR_FILE = "translation-mlkit-error.txt"
         const val EXTRA_INCLUDE_TRANSLATION = "include_translation"
+        const val EXTRA_TRANSLATION_ONLY = "translation_only"
+        const val EXTRA_TRANSLATION_REPETITIONS = "translation_repetitions"
         const val SOURCE_LANGUAGE = "en"
         const val TARGET_LANGUAGE = "zh"
         const val REPETITIONS = 3
+        const val MAX_TRANSLATION_REPETITIONS = 100
         const val MODEL_TIMEOUT_SECONDS = 300L
         const val INFERENCE_TIMEOUT_SECONDS = 60L
         const val PADDING_PX = 64
@@ -538,6 +772,38 @@ class ModelBenchmarkActivity : Activity() {
                 referenceTranslation = "版本 v0.1.0——构建号 37；金额：¥12,345.67；日期：2026-07-31。",
                 textSizePx = 32f,
                 monospace = true,
+            ),
+            Fixture(
+                id = "dynamic_alpha",
+                source = "The translation service is processing sample alpha while the " +
+                    "target application remains visible.",
+                referenceTranslation = "翻译服务正在处理 alpha 样本，同时目标应用仍保持可见。",
+                textSizePx = 36f,
+            ),
+            Fixture(
+                id = "dynamic_beta",
+                source = "The translation service is processing sample beta and remains " +
+                    "alive during this measurement.",
+                referenceTranslation = "翻译服务正在处理 beta 样本，并在本次测量期间保持运行。",
+                textSizePx = 36f,
+            ),
+            Fixture(
+                id = "dickens_611",
+                source = "It was the best of times, it was the worst of times, it was the " +
+                    "age of wisdom, it was the age of foolishness, it was the epoch of " +
+                    "belief, it was the epoch of incredulity, it was the season of Light, " +
+                    "it was the season of Darkness, it was the spring of hope, it was the " +
+                    "winter of despair, we had everything before us, we had nothing before " +
+                    "us, we were all going direct to Heaven, we were all going direct the " +
+                    "other way—in short, the period was so far like the present period, " +
+                    "that some of its noisiest authorities insisted on its being received, " +
+                    "for good or for evil, in the superlative degree of comparison only.",
+                referenceTranslation = "这是最好的时代，也是最坏的时代；这是智慧的时代，也是愚蠢的时代；" +
+                    "这是信仰的时期，也是怀疑的时期；这是光明的季节，也是黑暗的季节；" +
+                    "这是希望之春，也是绝望之冬；我们面前应有尽有，我们面前一无所有；" +
+                    "我们都将直上天堂，我们都将直下地狱——简而言之，那个时代与现在如此相似，" +
+                    "以至于当时最喧嚣的权威坚持认为，无论好坏，都只能用最高级来形容它。",
+                textSizePx = 27f,
             ),
         )
     }

@@ -40,6 +40,29 @@ does not block OCR comparison. It writes `baseline-mlkit.json` and
 Add `--ez include_translation true` to the `am start` command when the paired
 ML Kit translation model is already prepared and the full pipeline is needed.
 
+To isolate translation from OCR and produce the paired Android baseline for a
+candidate runtime:
+
+```powershell
+adb shell am start -W -n `
+  com.screentranslation.app.benchmark/com.screentranslation.app.benchmark.ModelBenchmarkActivity `
+  --ez translation_only true
+```
+
+This mode uses the gold source strings, adds dynamic alpha/beta samples and the
+611-character Dickens fixture, and writes `translation-mlkit-android.json`.
+It records model preparation, warm-up, translation latency, and process memory
+snapshots.
+
+The default is three repetitions. A sustained run accepts up to 100:
+
+```powershell
+adb shell am start -W -n `
+  com.screentranslation.app.benchmark/com.screentranslation.app.benchmark.ModelBenchmarkActivity `
+  --ez translation_only true `
+  --ei translation_repetitions 100
+```
+
 ## Score
 
 ```powershell
@@ -205,3 +228,18 @@ WSL host latency.
 Downloaded models, generated fixtures, JSON results, and runtime logs belong
 under ignored build directories. Commit the harness and summarized benchmark
 report only.
+
+## Bergamot Android ARM64 proof of concept
+
+The native Android harness under `tools/bergamot-android-poc` consumes
+`translation-mlkit-android.json`, runs the pinned Firefox Translations model on
+the same device and inputs, and emits a scorer-compatible candidate. It verifies
+local and remote hashes and rejects output that changes between repetitions.
+
+See:
+
+- [`tools/bergamot-android-poc/README.md`](../bergamot-android-poc/README.md)
+  for the exact build and ADB workflow;
+- [`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](../../docs/BERGAMOT_ANDROID_POC_2026-07-29.md)
+  for the Xiaomi 15 Pro quality, memory, latency, thermal, and feasibility
+  decision.
