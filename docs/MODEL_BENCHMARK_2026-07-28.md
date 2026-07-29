@@ -1,4 +1,9 @@
-# Model benchmark ? 2026-07-28
+# Model benchmark — 2026-07-28
+
+> Production follow-up, 2026-07-29: the exact retained PP-OCRv6 configuration
+> measured in this report is now the Debug/Release default. ML Kit OCR remains
+> available only in the `benchmark` variant as the v0.1.0 comparison baseline.
+> Historical measurements and the decision record below are preserved as taken.
 
 This report records the first migration gate from ML Kit OCR to PP-OCRv6 and
 compares the current ML Kit translator with two Bergamot-compatible English to
@@ -20,14 +25,15 @@ broad model-quality leaderboard.
   separate columns. The mixed end-to-end value adds the measured Android OCR
   time to the WSL translation time only as a planning estimate.
 
-The production service still instantiates `MlKitOcrEngine`. PP-OCRv6 is isolated
-in the `benchmark` source set while its latency, memory, and long-session thermal
-behavior are optimized. The shared `OcrEngine` interface makes the eventual
-production selection a small, reviewable change.
+At measurement time the production service still instantiated
+`MlKitOcrEngine`, while PP-OCRv6 was isolated in the `benchmark` source set.
+The shared `OcrEngine` interface subsequently made the production promotion a
+small, reviewable change.
 
 ## PP-OCRv6 integration
 
-The benchmark variant now contains a real Android implementation with:
+The implementation evaluated here, now shared by Debug, Release, and benchmark
+variants, contains:
 
 - official PP-OCRv6 small detection and recognition ONNX models;
 - pinned upstream revisions and SHA-256 verification during asset preparation;
@@ -138,10 +144,10 @@ terms are recorded alongside the package metadata.
 | Fixture | ML Kit finding | Firefox beam-4 finding |
 |---|---|---|
 | Long offline explanation | Preserves the meaning after clause splitting, with repetition. | Fluent; preserves device-local text and offline operation. |
-| Literary sentence | ?must endure a wife? reverses the idiom. | Correctly expresses that the wealthy single man wants a wife, though less literary than the reference. |
-| Notification recovery | Raw output changes ?translating? to ?averaging?; splitting changes it to ?conversion?. | Correctly preserves service continuity and translation recovery. |
-| Version/currency/date | Preserves every protected value. | Preserves `v0.1.0`, `?12,345.67`, and the date. |
-| Order line | Natural UI phrasing. | Preserves identifiers and amounts, while ??????? is awkward. |
+| Literary sentence | `must endure a wife` reverses the idiom. | Correctly expresses that the wealthy single man wants a wife, though less literary than the reference. |
+| Notification recovery | Raw output changes `translating` to `averaging`; splitting changes it to `conversion`. | Correctly preserves service continuity and translation recovery. |
+| Version/currency/date | Preserves every protected value. | Preserves `v0.1.0`, `¥12,345.67`, and the date. |
+| Order line | Natural UI phrasing. | Preserves identifiers and amounts, but the Chinese order-line phrasing is awkward. |
 | Low-contrast quoted words | Preserves the two English quoted tokens. | Translates both quoted tokens to the same Chinese word, losing the contrast. |
 
 The Firefox model is substantially better than the legacy OPUS archive and is
@@ -164,10 +170,10 @@ useful fallback runtime, especially for a future compact Marian checkpoint.
 Large multilingual models offer broader coverage but have a much higher memory,
 storage, and thermal cost than a dedicated English-to-Chinese model.
 
-## Migration decision
+## Migration decision recorded on 2026-07-28
 
 1. Keep the new `OcrEngine` abstraction and PP-OCRv6 Android implementation.
-2. Keep ML Kit OCR as the release default for the moment; use the benchmark
+2. At the time, keep ML Kit OCR as the release default; use the benchmark
    build to reduce PP-OCRv6 latency and retained memory before a production
    switch.
 3. Next OCR experiment: quantized detector/recognizer plus a Qualcomm QNN or
@@ -179,6 +185,11 @@ storage, and thermal cost than a dedicated English-to-Chinese model.
 6. A release-default change requires stable repeated capture, acceptable
    thermal behavior, no critical-check regression, and a signed Release/R8
    device pass.
+
+Follow-up: item 2 was superseded on 2026-07-29 when the measured CPU4/batch1/
+det640/arena-off configuration became the production default. Item 3 and the
+signed Release/R8 long-session gate remain active optimization and acceptance
+work.
 
 ## Reproducibility
 

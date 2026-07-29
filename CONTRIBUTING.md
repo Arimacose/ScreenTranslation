@@ -15,8 +15,8 @@ MediaProjection 生命周期、隐私边界和小米 15 Pro / HyperOS 的可验�
 ## 开发环境
 
 - JDK 17
-- Android SDK Platform 36
-- Android SDK Build Tools 36.0.0
+- Android SDK Platform 37（运行目标仍为 API 36）
+- Android SDK Build Tools 37.0.0
 - Git
 - 可选：Android 16 设备；ROM 相关修改需要小米 15 Pro / HyperOS 复测
 
@@ -39,6 +39,9 @@ Windows PowerShell：
 ```properties
 sdk.dir=C\:\\Android\\Sdk
 ```
+
+首次构建会运行 `preparePpOcrv6Assets`，从 PaddlePaddle 官方仓库下载固定版本
+ONNX 权重并校验 SHA-256。模型缓存属于 `app/build` 生成物，不提交到 Git。
 
 ## 分支与提交
 
@@ -79,7 +82,7 @@ assembleDebug
 | 稳定门、调度、语言映射 | 对应 JVM 单元测试 |
 | 权限或服务生命周期 | 授权、拒绝、停止、撤销、任务移除 |
 | MediaProjection 或区域坐标 | 旋转、尺寸变化、重新框选、悬浮层遮蔽 |
-| OCR 或翻译 | 固定文本夹具、语言对、空文本、模型缺失 |
+| OCR 或翻译 | 固定文本夹具、语言对、空文本、模型缺失；OCR 还需报告 CER/WER、延迟和内存 |
 | HyperOS 行为 | 小米 15 Pro 真机，记录 ROM 与 Android 构建号 |
 | UI | 明暗主题、超长文本、字体缩放、edge-to-edge |
 

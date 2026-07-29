@@ -8,6 +8,10 @@
     native <methods>;
 }
 
+# ONNX Runtime resolves Java classes and methods from JNI. Keep the complete
+# binding surface so R8 full mode cannot rename or remove those entry points.
+-keep class ai.onnxruntime.** { *; }
+
 # Firebase ComponentDiscovery instantiates registrars by their manifest class
 # names. R8 full mode otherwise removes their no-argument constructors.
 -keep class * implements com.google.firebase.components.ComponentRegistrar {

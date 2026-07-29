@@ -85,7 +85,17 @@ Dependabot 每周检查 Gradle 和 GitHub Actions。合并前：
 
 - 安全修复优先处理。
 - AGP、Gradle、compileSdk 和 JDK 作为一组升级并验证兼容矩阵。
-- ML Kit 更新必须复测模型下载、离线行为、翻译归属、APK 大小和数据披露。
+- ML Kit Translate 更新必须复测模型下载、离线行为、翻译归属、APK 大小和数据披露。
+- ONNX Runtime 更新必须执行普通 JVM 后处理测试、Debug/Release/R8 构建和
+  小米 15 Pro 真机 OCR；目标 ROM 上曾出现 XNNPACK 原生崩溃，execution provider
+  变化需要单独记录。
+- `app/proguard-rules.pro` 中的 `-keep class ai.onnxruntime.** { *; }` 是
+  ONNX Runtime JNI 的 Release/R8 运行约束；修改前须同时通过 APK DEX 校验与
+  签名 Release 真机启动、识别测试。
+- PP-OCRv6 权重更新必须同时修改固定上游提交、期望字节数和 SHA-256，重新生成
+  字符表，并在同一批夹具上报告 CER、WER、精确匹配、延迟、PSS/RSS 与温升。
+- `preparePpOcrv6Assets` 只接受哈希完全匹配的官方资产；模型文件继续留在
+  `app/build/generated/ppocrv6Assets`，不直接提交到 Git。
 - GitHub Actions 大版本更新先阅读运行时与 runner 最低版本要求。
 - 不自动合并未经构建与许可证审查的依赖 PR。
 
@@ -94,6 +104,7 @@ Dependabot 每周检查 Gradle 和 GitHub Actions。合并前：
 维护者保持以下证据：
 
 - `docs/DEVICE_TEST.md`：设备、ROM、构建、功能和功耗记录；
+- `docs/MODEL_BENCHMARK_2026-07-28.md`：PP-OCRv6 生产配置的来源与迁移基线；
 - `docs/ARCHITECTURE.md`：数据流与系统边界；
 - `CHANGELOG.md`：用户可见变化；
 - `PRIVACY.md`：实际数据处理；

@@ -83,13 +83,13 @@ python .\tools\model-benchmark\run_ppocr.py `
 This is a pre-integration quality check. Host latency must not be compared with
 Android latency.
 
-## PP-OCRv6 Android candidate
+## PP-OCRv6 Android production engine and ML Kit baseline
 
-The `benchmark` variant contains the Android candidate and keeps ONNX Runtime
-and the model assets out of debug and release packages. Its build task downloads
-the official PP-OCRv6 small detector and recognizer at pinned upstream
-revisions, verifies their SHA-256 values, and extracts the pinned recognition
-dictionary.
+Debug and Release use the PP-OCRv6 Android engine. The `benchmark` variant adds
+the former ML Kit OCR implementation so both engines can still run against the
+same fixtures. `preparePpOcrv6Assets` downloads the official PP-OCRv6 small
+detector and recognizer at pinned upstream revisions, verifies their SHA-256
+values, and extracts the pinned recognition dictionary for every variant.
 
 The retained Xiaomi 15 Pro configuration uses the ORT CPU provider, four
 intra-op threads, recognition batch size 1, a 640 px detector long-side cap,

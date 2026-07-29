@@ -13,7 +13,10 @@
 
 ### Changed
 
-- 将 OCR 抽象为 `OcrEngine` 接口，Release 继续使用 `MlKitOcrEngine` 默认实现。
+- 将 PP-OCRv6 small + ONNX Runtime Android 从隔离基准提升为 Debug/Release
+  默认 OCR；官方检测/识别权重固定提交并在构建时校验 SHA-256。
+- ML Kit Text Recognition 仅保留在 `benchmark` 变体中作为 v0.1.0 对照，
+  生产包继续使用 ML Kit Translate。
 
 ## [0.1.0] - 2026-07-26
 

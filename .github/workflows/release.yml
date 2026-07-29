@@ -91,7 +91,7 @@ jobs:
       - name: Run release verification build
         run: ./gradlew --no-daemon --stacktrace clean testDebugUnitTest lintRelease assembleRelease bundleRelease
 
-      - name: Verify reflected component registrars after R8
+      - name: Verify JNI and reflected classes after R8
         shell: bash
         run: |
           set -euo pipefail
@@ -113,6 +113,21 @@ jobs:
               exit 1
             fi
           done
+
+          tensor_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OnnxTensor "$apk")"
+          session_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OrtSession "$apk")"
+          grep -Fq '.class public Lai/onnxruntime/OnnxTensor;' <<<"$tensor_code" || {
+            echo "::error::R8 removed or renamed ai.onnxruntime.OnnxTensor"
+            exit 1
+          }
+          grep -Fq '.method public static createTensor(' <<<"$tensor_code" || {
+            echo "::error::R8 removed or renamed OnnxTensor.createTensor"
+            exit 1
+          }
+          grep -Fq '.method private native run(' <<<"$session_code" || {
+            echo "::error::R8 removed or renamed OrtSession.run JNI binding"
+            exit 1
+          }
 
       - name: Verify and stage artifacts
         id: artifacts

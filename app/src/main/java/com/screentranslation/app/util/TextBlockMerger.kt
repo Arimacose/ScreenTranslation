@@ -4,8 +4,8 @@ package com.screentranslation.app.util
  * Rejoins OCR text blocks that are really one sentence split across a layout
  * boundary, before each block is translated separately.
  *
- * ML Kit splits a wrapped paragraph into several [Text.TextBlock][com.google.mlkit.vision.text.Text.TextBlock]s.
- * Translating the tail of a sentence on its own produces a disconnected
+ * OCR can split a wrapped paragraph into several text blocks. Translating the
+ * tail of a sentence on its own produces a disconnected
  * fragment: "...no network connection" / "available at all." came back as a
  * standalone 「可用。」 on device.
  *
@@ -17,7 +17,7 @@ package com.screentranslation.app.util
  * merely the absence of a full stop.
  *
  * Scripts without letter case (Chinese, Japanese, Korean) never satisfy the
- * lowercase test, so they simply keep today's one-block-per-unit behaviour.
+ * lowercase test, so they retain one-block-per-unit behaviour.
  */
 object TextBlockMerger {
 

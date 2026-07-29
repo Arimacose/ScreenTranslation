@@ -2,6 +2,37 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
+## 2026-07-29 PP-OCRv6 生产包验收
+
+### 本机构建与包检查
+
+| 项目 | 实测值 |
+|---|---|
+| 分支 | `codex/ppocrv6-production` |
+| 版本 | `0.1.0` |
+| 生产 OCR | PP-OCRv6 small det/rec + ONNX Runtime Android 1.26.0 |
+| 保留配置 | CPU4、batch 1、检测最长边 640、memory pattern/CPU arena 关闭 |
+| JVM 测试 | Debug 52/52、Benchmark 52/52，通过且无跳过 |
+| Lint | `lintDebug` 0 error、7 warning |
+| 构建 | Debug、Benchmark、Release/R8 APK 与 Release AAB 全部成功 |
+| QA APK | `app/build/outputs/apk/qa/ScreenTranslation-0.1.0-ppocrv6-qa.apk` |
+| QA APK 大小 | 77,615,403 B |
+| QA APK SHA-256 | `DA207612678980A6DA9DA5D489EE11B6C45F06230BA4D0C11247E523D1DBB18C` |
+| QA 签名 | Android Debug，证书 SHA-256 `D5EE8BD74DEDF58DFCE208E27A5FB2A38B08176F748C9BA669ACBB4FA971393D` |
+
+Release APK 中的检测模型、识别模型和字符表均按固定字节数与 SHA-256
+复核通过；包内 ABI 只有 `arm64-v8a`，生产 JNI 只有 ONNX Runtime 与
+ML Kit Translate，未带入 benchmark 专用的 ML Kit OCR。R8 后还直接检查了
+`OnnxTensor.createTensor`、`OrtSession.run` 和两个 Firebase registrar
+构造器，APK 通过 16 KiB page-aware zipalign 与 APK Signature Scheme v3 验证。
+
+本次构建时 `adb devices -l` 返回空设备列表，因此这里记录的是生产集成、
+R8 和可安装包验收。相同 PP-OCRv6 配置此前已在下述小米 15 Pro 上完成独立
+模型基准（CER `0.1218%`、WER `0.5263%`、7 例精确匹配 6 例、中位
+`403.429 ms`、p95 `810.762 ms`、HWM `399,964 KiB`）；把新 QA APK
+装入同一目标机后的 MediaProjection → PP-OCRv6 → ML Kit Translate →
+悬浮窗长会话仍作为合并前的独立验收项。
+
 ## 2026-07-28 Issue #7 锁屏生命周期验收
 
 ### 构建与设备
@@ -281,16 +312,17 @@ adb shell dumpsys activity services com.screentranslation.app |
 
 准备四张静态、对比度足够的测试页，每张包含至少两行文字：
 
-| OCR 文字体系 | 输入样例类型 | 目标语言 | 预期 |
+| PP-OCRv6 文字体系 | 输入样例类型 | 目标语言 | 预期 |
 |---|---|---|---|
 | Latin | 英文网页/本地测试页 | 中文 | 稳定识别后显示中文译文 |
 | Chinese | 简体与常见标点 | 英文 | 中文识别完整，标点不导致持续抖动 |
-| Japanese | 平假名、片假名、汉字混排 | 英文/中文 | 使用日文识别器并得到对应译文 |
+| Japanese | 平假名、片假名、汉字混排 | 英文/中文 | 多语言模型保留日文文字并得到对应译文 |
 | Korean | 谚文与空格 | 英文/中文 | 保留合理分词并得到对应译文 |
 
 每一行执行：
 
-1. 在应用中选择对应源语言与目标语言；确认源语言自动路由到预期 OCR 体系；
+1. 在应用中选择对应源语言与目标语言；确认 PP-OCRv6 使用同一多语言权重，
+   源语言只配置后续翻译；
 2. 开始投影，在测试页上框选固定区域；
 3. 等待文本稳定，记录首次 OCR 与首次翻译耗时；
 4. 保持画面不动 10 秒，译文不应高频闪烁或重复刷新；
@@ -426,7 +458,7 @@ adb shell dumpsys gfxinfo com.screentranslation.app
 - [ ] 通知拒绝/允许均无崩溃
 - [ ] 每次投影都经过系统授权
 - [ ] FGS 类型确认为 `mediaProjection`
-- [ ] Latin/Chinese/Japanese/Korean 四套 OCR 通过
+- [ ] PP-OCRv6 的 Latin/Chinese/Japanese/Korean 四类夹具通过
 - [ ] 首次模型下载与同语言离线翻译通过
 - [ ] 区域边界、旋转、小窗/分屏按目标范围通过
 - [ ] `FLAG_SECURE`/DRM 场景不泄露内容且不崩溃

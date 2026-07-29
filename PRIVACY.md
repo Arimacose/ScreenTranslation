@@ -1,6 +1,6 @@
 # 隐私说明
 
-最近更新：2026-07-26
+最近更新：2026-07-29
 
 ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。本文件描述当前开源代码的
 数据流；发行者若修改代码、接入服务或增加分析 SDK，应发布相应版本的隐私说明。
@@ -29,15 +29,22 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 
 ## 本地保存
 
-应用只保存源语言、目标语言和采样间隔等设置。翻译语言模型由 ML Kit 下载到应用专属存储；
-卸载应用时通常随应用数据一并删除。选择区域、截图和识别历史不持久化。
+应用只保存源语言、目标语言和采样间隔等设置。PP-OCRv6 权重随安装包提供，
+首次启动 OCR 时复制到应用 `codeCacheDir` 供 ONNX Runtime 读取；翻译语言模型
+由 ML Kit 下载到应用专属存储。两类文件均位于应用专属空间，卸载应用时随应用
+数据删除。选择区域、截图和识别历史不持久化。
 
-## 网络与 ML Kit
+## 本地 OCR、网络与 ML Kit
 
-OCR 使用随 APK 打包的 ML Kit 模型。翻译语言模型在首次使用相应语言对时按需下载，之后翻译
-推理在设备端执行。
+OCR 使用随 APK/AAB 打包的 PP-OCRv6 small ONNX 模型，通过 ONNX Runtime 在设备端
+处理屏幕帧。运行中的 OCR 路径不上传画面，也不下载权重。构建系统从 PaddlePaddle
+官方模型仓库获取固定版本资产并校验 SHA-256；这是构建时供应链步骤，并非应用运行时
+网络请求。
 
-Google 的 ML Kit 数据披露说明指出，相关 Android SDK 还可能为诊断和使用分析收集：
+翻译语言模型在首次使用相应语言对时由 ML Kit 按需下载，之后翻译推理在设备端执行。
+
+Google 的 ML Kit Translate 数据披露说明指出，相关 Android SDK 还可能为诊断和使用
+分析收集：
 
 - 设备制造商、型号、OS 版本、构建和可用 ML 加速器；
 - 应用包名与版本；
@@ -53,12 +60,15 @@ Google 表示这些数据通过 HTTPS 传输，且其披露页面列出的数据
 - [ML Kit Android 数据披露](https://developers.google.com/ml-kit/android-data-disclosure)
 - [ML Kit 端侧翻译](https://developers.google.com/ml-kit/language/translation/android)
 - [ML Kit 模型安装路径](https://developers.google.com/ml-kit/tips/installation-paths)
+- [PP-OCRv6 small detection ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx)
+- [PP-OCRv6 small recognition ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx)
+- [ONNX Runtime](https://github.com/microsoft/onnxruntime)
 
 ## Android 权限
 
 | 权限/能力 | 用途 |
 |---|---|
-| `INTERNET` | 下载翻译模型及 ML Kit SDK 网络行为 |
+| `INTERNET` | 下载翻译模型及 ML Kit Translate SDK 网络行为 |
 | `ACCESS_NETWORK_STATE` | 展示连接状态和模型准备反馈 |
 | `SYSTEM_ALERT_WINDOW` | 框选区域并在其他应用上方显示结果 |
 | `POST_NOTIFICATIONS` | 显示前台捕获任务通知 |

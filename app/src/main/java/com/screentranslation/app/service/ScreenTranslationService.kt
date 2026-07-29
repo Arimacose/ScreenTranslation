@@ -32,8 +32,8 @@ import android.view.WindowManager
 import com.screentranslation.app.MainActivity
 import com.screentranslation.app.R
 import com.screentranslation.app.capture.FrameProcessor
-import com.screentranslation.app.ml.MlKitOcrEngine
 import com.screentranslation.app.ml.OcrEngine
+import com.screentranslation.app.ml.PpOcrv6Engine
 import com.screentranslation.app.ml.TranslationEngine
 import com.screentranslation.app.overlay.OverlayController
 import com.screentranslation.app.util.StableTextGate
@@ -211,7 +211,7 @@ class ScreenTranslationService : Service() {
         captureThread = handlerThread
         captureHandler = handler
 
-        val ocr = MlKitOcrEngine(sourceLanguage)
+        val ocr = PpOcrv6Engine(this)
         val translator = TranslationEngine(sourceLanguage, targetLanguage)
         val processor = FrameProcessor(
             ocrEngine = ocr,

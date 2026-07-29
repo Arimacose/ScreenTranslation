@@ -20,14 +20,15 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * PP-OCRv6 small proof of concept for the benchmark build.
+ * Production PP-OCRv6 small pipeline for multilingual screen text.
  *
- * The two official ONNX models are pinned and hash-checked by Gradle. They are
- * copied out of the APK once because ORT can memory-map a file-backed model.
- * Inference stays serialized on one worker; ORT's CPU execution provider owns
- * the four compute threads used inside each model invocation. XNNPACK 1.26
- * crashed in recognition inference on the target HyperOS build, so it is not
- * selected by this candidate.
+ * Gradle pins and hash-checks both official ONNX models. They are copied from
+ * APK assets into code cache once so ORT can memory-map file-backed weights.
+ * Model materialization, session creation, and inference stay serialized on
+ * one worker so service startup never performs model I/O on the main thread.
+ * ORT's CPU execution provider owns the four compute threads used inside each
+ * invocation. XNNPACK 1.26 crashed reproducibly during recognition on the
+ * target HyperOS build, so production retains the measured CPU configuration.
  */
 internal class PpOcrv6Engine(context: Context) : OcrEngine {
     private val appContext = context.applicationContext
@@ -35,37 +36,10 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
     private val executor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "ppocrv6-small").apply { priority = Thread.NORM_PRIORITY }
     }
-    private val environment = OrtEnvironment.getEnvironment()
-    private val sessionOptions = createSessionOptions()
-    private val detectionSession: OrtSession
-    private val recognitionSession: OrtSession
-    private val characters: List<String>
+    private val runtimeCloseLock = Any()
 
-    init {
-        val detectionModel = materializeModel(
-            assetPath = DETECTION_MODEL_ASSET,
-            fileName = "det.onnx",
-            expectedBytes = DETECTION_MODEL_BYTES,
-        )
-        val recognitionModel = materializeModel(
-            assetPath = RECOGNITION_MODEL_ASSET,
-            fileName = "rec.onnx",
-            expectedBytes = RECOGNITION_MODEL_BYTES,
-        )
-        characters = appContext.assets
-            .open(CHARACTERS_ASSET, AssetManager.ACCESS_BUFFER)
-            .bufferedReader(Charsets.UTF_8)
-            .useLines { lines -> lines.toList() }
-            .also { check(it.size == CHARACTER_COUNT) }
-        detectionSession = environment.createSession(
-            detectionModel.absolutePath,
-            sessionOptions,
-        )
-        recognitionSession = environment.createSession(
-            recognitionModel.absolutePath,
-            sessionOptions,
-        )
-    }
+    @Volatile
+    private var runtime: RuntimeState? = null
 
     override fun recognize(
         bitmap: Bitmap,
@@ -81,19 +55,30 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
                 val result = if (closed.get()) {
                     Result.failure(IllegalStateException("OCR engine is closed"))
                 } else {
-                    runCatching { recognizeSynchronously(bitmap) }
+                    runCatching {
+                        val activeRuntime = runtime
+                            ?: createRuntime().also { runtime = it }
+                        recognizeSynchronously(bitmap, activeRuntime)
+                    }
                 }
-                onResult(result)
+                try {
+                    onResult(result)
+                } finally {
+                    if (closed.get()) closeRuntime()
+                }
             }
         } catch (error: RejectedExecutionException) {
             onResult(Result.failure(error))
         }
     }
 
-    private fun recognizeSynchronously(bitmap: Bitmap): OcrEngine.Recognition {
+    private fun recognizeSynchronously(
+        bitmap: Bitmap,
+        runtime: RuntimeState,
+    ): OcrEngine.Recognition {
         val detectionInput = prepareDetectionInput(bitmap)
         val boxes = OnnxTensor.createTensor(
-            environment,
+            runtime.environment,
             FloatBuffer.wrap(detectionInput.values),
             longArrayOf(
                 1,
@@ -102,7 +87,7 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
                 detectionInput.width.toLong(),
             ),
         ).use { input ->
-            detectionSession.run(mapOf(INPUT_NAME to input)).use { result ->
+            runtime.detectionSession.run(mapOf(INPUT_NAME to input)).use { result ->
                 val output = result[0] as OnnxTensor
                 val shape = (output.info as TensorInfo).shape
                 check(shape.size == 4 && shape[0] == 1L && shape[1] == 1L)
@@ -132,7 +117,7 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
             )
         }
         val lines = try {
-            recognizeCrops(crops)
+            recognizeCrops(crops, runtime)
                 .filter { it.confidence >= RECOGNITION_SCORE_THRESHOLD }
                 .map { it.text.trim() }
                 .filter { it.isNotEmpty() }
@@ -148,11 +133,15 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
 
     private fun recognizeCrops(
         crops: List<Bitmap>,
+        runtime: RuntimeState,
     ): List<PpOcrv6CtcDecoder.Decoded> =
-        crops.chunked(RECOGNITION_BATCH_SIZE).flatMap(::recognizeCropBatch)
+        crops.chunked(RECOGNITION_BATCH_SIZE).flatMap { batch ->
+            recognizeCropBatch(batch, runtime)
+        }
 
     private fun recognizeCropBatch(
         crops: List<Bitmap>,
+        runtime: RuntimeState,
     ): List<PpOcrv6CtcDecoder.Decoded> {
         val widths = crops.map { crop ->
             ceil(RECOGNITION_HEIGHT * crop.width.toDouble() / crop.height)
@@ -201,7 +190,7 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
         }
 
         return OnnxTensor.createTensor(
-            environment,
+            runtime.environment,
             FloatBuffer.wrap(values),
             longArrayOf(
                 crops.size.toLong(),
@@ -210,13 +199,13 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
                 inputWidth.toLong(),
             ),
         ).use { input ->
-            recognitionSession.run(mapOf(INPUT_NAME to input)).use { result ->
+            runtime.recognitionSession.run(mapOf(INPUT_NAME to input)).use { result ->
                 val output = result[0] as OnnxTensor
                 val shape = (output.info as TensorInfo).shape
                 check(shape.size == 3 && shape[0] == crops.size.toLong())
                 val timeSteps = shape[1].toInt()
                 val classCount = shape[2].toInt()
-                check(classCount == characters.size + 2)
+                check(classCount == runtime.characters.size + 2)
                 val buffer = output.floatBuffer
                 List(crops.size) { batchIndex ->
                     PpOcrv6CtcDecoder.decode(
@@ -224,7 +213,7 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
                         batchIndex = batchIndex,
                         timeSteps = timeSteps,
                         classCount = classCount,
-                        characters = characters,
+                        characters = runtime.characters,
                     )
                 }
             }
@@ -306,6 +295,51 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
         target
     }
 
+    private fun createRuntime(): RuntimeState {
+        val environment = OrtEnvironment.getEnvironment()
+        val sessionOptions = createSessionOptions()
+        var detectionSession: OrtSession? = null
+        var recognitionSession: OrtSession? = null
+
+        try {
+            val detectionModel = materializeModel(
+                assetPath = DETECTION_MODEL_ASSET,
+                fileName = "det.onnx",
+                expectedBytes = DETECTION_MODEL_BYTES,
+            )
+            val recognitionModel = materializeModel(
+                assetPath = RECOGNITION_MODEL_ASSET,
+                fileName = "rec.onnx",
+                expectedBytes = RECOGNITION_MODEL_BYTES,
+            )
+            val characters = appContext.assets
+                .open(CHARACTERS_ASSET, AssetManager.ACCESS_BUFFER)
+                .bufferedReader(Charsets.UTF_8)
+                .useLines { lines -> lines.toList() }
+                .also { check(it.size == CHARACTER_COUNT) }
+            detectionSession = environment.createSession(
+                detectionModel.absolutePath,
+                sessionOptions,
+            )
+            recognitionSession = environment.createSession(
+                recognitionModel.absolutePath,
+                sessionOptions,
+            )
+            return RuntimeState(
+                environment = environment,
+                sessionOptions = sessionOptions,
+                detectionSession = detectionSession,
+                recognitionSession = recognitionSession,
+                characters = characters,
+            )
+        } catch (error: Throwable) {
+            runCatching { recognitionSession?.close() }
+            runCatching { detectionSession?.close() }
+            runCatching { sessionOptions.close() }
+            throw error
+        }
+    }
+
     private fun createSessionOptions(): OrtSession.SessionOptions =
         OrtSession.SessionOptions().apply {
             setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
@@ -320,12 +354,22 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         executor.shutdown()
-        if (!executor.awaitTermination(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        val stoppedNormally =
+            executor.awaitTermination(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        val stoppedAfterInterrupt = if (stoppedNormally) {
+            true
+        } else {
             executor.shutdownNow()
+            executor.awaitTermination(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         }
-        recognitionSession.close()
-        detectionSession.close()
-        sessionOptions.close()
+        if (stoppedAfterInterrupt) closeRuntime()
+    }
+
+    private fun closeRuntime() {
+        synchronized(runtimeCloseLock) {
+            runtime?.close()
+            runtime = null
+        }
     }
 
     private fun normalizeDetection(
@@ -347,9 +391,29 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
         val height: Int,
     )
 
+    private class RuntimeState(
+        val environment: OrtEnvironment,
+        val sessionOptions: OrtSession.SessionOptions,
+        val detectionSession: OrtSession,
+        val recognitionSession: OrtSession,
+        val characters: List<String>,
+    ) : AutoCloseable {
+        override fun close() {
+            try {
+                recognitionSession.close()
+            } finally {
+                try {
+                    detectionSession.close()
+                } finally {
+                    sessionOptions.close()
+                }
+            }
+        }
+    }
+
     companion object {
         const val ENGINE_LABEL =
-            "PP-OCRv6 small ONNX + ORT 1.26 CPU/4 batch/1 det640 arena-off"
+            "PP-OCRv6 small ONNX + ORT 1.26 CPU4 batch1 det640 arena-off"
 
         private const val INPUT_NAME = "x"
         private const val DETECTION_MODEL_ASSET = "ppocrv6_small/det.onnx"

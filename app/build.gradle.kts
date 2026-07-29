@@ -123,15 +123,15 @@ abstract class PreparePpOcrv6AssetsTask : DefaultTask() {
     }
 }
 
-val preparePpOcrv6BenchmarkAssets =
+val preparePpOcrv6Assets =
     tasks.register<PreparePpOcrv6AssetsTask>(
-        "preparePpOcrv6BenchmarkAssets",
+        "preparePpOcrv6Assets",
     ) {
         group = "build setup"
         description =
-            "Downloads pinned official PP-OCRv6 small ONNX benchmark assets."
+            "Downloads pinned and hash-verified PP-OCRv6 small ONNX assets."
         outputDirectory.set(
-            layout.buildDirectory.dir("generated/ppocrv6BenchmarkAssets"),
+            layout.buildDirectory.dir("generated/ppocrv6Assets"),
         )
     }
 
@@ -253,9 +253,9 @@ androidComponents {
             com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE
         ]?.enable = true
     }
-    onVariants(selector().withBuildType("benchmark")) { variant ->
+    onVariants(selector().all()) { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(
-            preparePpOcrv6BenchmarkAssets,
+            preparePpOcrv6Assets,
             PreparePpOcrv6AssetsTask::outputDirectory,
         )
     }
@@ -267,19 +267,17 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.14.0")
 
-    // Bundled OCR models: available immediately without Google Play model delivery.
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
-    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    // Production OCR: pinned PP-OCRv6 ONNX assets with an on-device ARM64 runtime.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.26.0")
 
     // Translation models are downloaded on demand, then run on device.
     implementation("com.google.mlkit:translate:17.0.3")
 
-    add(
-        "benchmarkImplementation",
-        "com.microsoft.onnxruntime:onnxruntime-android:1.26.0",
-    )
+    // ML Kit OCR remains benchmark-only as the v0.1.0 comparison baseline.
+    add("benchmarkImplementation", "com.google.mlkit:text-recognition:16.0.1")
+    add("benchmarkImplementation", "com.google.mlkit:text-recognition-chinese:16.0.1")
+    add("benchmarkImplementation", "com.google.mlkit:text-recognition-japanese:16.0.1")
+    add("benchmarkImplementation", "com.google.mlkit:text-recognition-korean:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
 }

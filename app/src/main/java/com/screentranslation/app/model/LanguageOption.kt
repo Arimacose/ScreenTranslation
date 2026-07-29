@@ -7,8 +7,9 @@ import com.screentranslation.app.R
 /**
  * Languages exposed by the first Android 16 build.
  *
- * [languageTag] is deliberately a BCP-47/ML Kit compatible tag so the same
- * persisted value can be passed to both OCR routing and the translation model.
+ * [languageTag] is deliberately a BCP-47/ML Kit compatible tag so the persisted
+ * value can configure the translation model. PP-OCRv6 recognizes all supported
+ * scripts through one multilingual recognition model.
  */
 enum class LanguageOption(
     val languageTag: String,
