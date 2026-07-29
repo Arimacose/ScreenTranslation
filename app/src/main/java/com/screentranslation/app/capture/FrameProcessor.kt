@@ -37,7 +37,7 @@ class FrameProcessor(
     /**
      * Most of a UI is unchanged between frames, so the same block text is
      * retranslated over and over without this. Access is synchronized because
-     * ML Kit completes on its own threads.
+     * OCR and translation engines complete on their own worker threads.
      */
     private val translationCache = object : LinkedHashMap<String, String>(
         TRANSLATION_CACHE_ENTRIES,
@@ -128,9 +128,9 @@ class FrameProcessor(
     /**
      * Translates each OCR block separately, then rejoins them.
      *
-     * ML Kit hands back the region as one newline-joined string. Translating
-     * that as a unit lets unrelated UI lines contaminate each other's context,
-     * and on-device translation quality degrades noticeably on long inputs.
+     * OCR hands back the region as one newline-joined string. Translating that
+     * as a unit lets unrelated UI lines contaminate each other's context, and
+     * on-device translation quality degrades noticeably on long inputs.
      */
     private fun translate(
         originalText: String,

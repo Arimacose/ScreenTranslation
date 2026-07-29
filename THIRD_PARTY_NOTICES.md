@@ -7,12 +7,22 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 
 | 组件 | 当前版本 | 上游条款 |
 |---|---:|---|
-| AndroidX Core KTX | 1.18.0 | Apache License 2.0 |
+| AndroidX Core KTX | 1.19.0 | Apache License 2.0 |
 | AndroidX Activity KTX | 1.13.0 | Apache License 2.0 |
 | AndroidX AppCompat | 1.7.1 | Apache License 2.0 |
 | Material Components for Android | 1.14.0 | Apache License 2.0 |
-| ML Kit Text Recognition（Latin/Chinese/Japanese/Korean） | 16.0.1 | ML Kit Terms of Service |
+| ONNX Runtime for Android | 1.26.0 | MIT License |
+| PP-OCRv6 small detection ONNX | `28fe5895c24fd108c19eb3e8479f4ab385fbfc62` | Apache License 2.0 |
+| PP-OCRv6 small recognition ONNX | `b8f84f0b80c529de40b4fbb3544b84fa7233a513` | Apache License 2.0 |
 | ML Kit Translate | 17.0.3 | ML Kit Terms of Service |
+
+## 模型基准依赖
+
+以下组件只进入 `benchmark` 变体，用于候选模型真机比较：
+
+| 组件 | 当前版本/固定提交 | 上游条款 |
+|---|---:|---|
+| ML Kit Text Recognition（Latin/Chinese/Japanese/Korean） | 16.0.1 | ML Kit Terms of Service |
 
 ## 测试依赖
 
@@ -28,10 +38,13 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 - [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms)
 - [ML Kit usage guidelines and attribution](https://developers.google.com/ml-kit/terms)
 - [JUnit 4](https://github.com/junit-team/junit4)
+- [ONNX Runtime](https://github.com/microsoft/onnxruntime)
+- [PP-OCRv6 small detection ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx)
+- [PP-OCRv6 small recognition ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx)
 
-ML Kit Maven POM 将 OCR 与翻译组件的许可证字段标记为 “ML Kit Terms of Service”，
-因此它们不因本仓库采用 Apache-2.0 而转为 Apache-2.0。应用界面保留 Google Translate
-归属说明。
+ML Kit Maven POM 将翻译组件及 benchmark-only OCR 组件的许可证字段标记为
+“ML Kit Terms of Service”，因此它们不因本仓库采用 Apache-2.0 而转为
+Apache-2.0。应用界面保留 Google Translate 归属说明。
 
 Gradle 还会解析传递依赖。发布维护者应在依赖更新和正式发布前检查：
 

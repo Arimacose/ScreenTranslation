@@ -21,7 +21,8 @@ ScreenTranslation 采用公开、可追踪和低门槛的维护方式：
 持续负责审查、发布、安全响应和社区维护的参与者。新增维护者应满足：
 
 - 有多次高质量贡献；
-- 理解 MediaProjection、前台服务、ML Kit 与发布签名边界；
+- 理解 MediaProjection、前台服务、PP-OCRv6/ONNX Runtime、ML Kit Translate
+  与发布签名边界；
 - 能执行发布和安全响应流程；
 - 获得现有维护者公开认可。
 

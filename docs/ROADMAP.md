@@ -6,7 +6,7 @@
 
 - [x] MediaProjection 用户授权与前台服务生命周期
 - [x] 可框选识别区域
-- [x] Latin、中文、日文、韩文 bundled OCR
+- [x] v0.1 Latin、中文、日文、韩文 ML Kit OCR 基线
 - [x] ML Kit 端侧翻译与模型预下载
 - [x] OCR 稳定门、单飞处理和悬浮层自反馈遮蔽
 - [x] 小米 15 Pro / HyperOS 真机验收
@@ -14,8 +14,13 @@
 
 ## v0.2 — 翻译质量与长文本体验
 
-- [ ] 让原文与译文面板可展开、滚动和复制
-- [ ] 在不保存历史的前提下改进长句展示
+- [x] 建立 ML Kit、PP-OCRv6、OPUS-MT 与 Firefox Translations 的固定夹具基准
+- [x] 将 PP-OCRv6 small + ONNX Runtime 提升为 arm64 Debug/Release 默认 OCR
+- [ ] 继续降低 PP-OCRv6 生产路径延迟与内存，并完成 15 分钟温升验收
+- [ ] 构建 Firefox Translations / Bergamot Android arm64 运行时并完成真机比较
+- [ ] 在翻译前遮蔽、翻译后恢复版本号、标识符、金额、日期和状态字
+- [ ] 让原文与译文面板可复制
+- [x] 在不保存历史的前提下增加长结果展开与限高滚动
 - [ ] 恢复 OCR 丢失的关键标点并按语义分句
 - [ ] 抽象 `TranslationProvider`，分离端侧快速模式和高质量模式
 - [ ] 为固定公开文本建立质量回归夹具与人工评分规范
@@ -31,6 +36,7 @@
 - [ ] 增加 Android instrumentation 与 UI 自动化测试
 - [ ] 覆盖旋转、锁屏、投影撤销、任务移除和内存压力
 - [ ] 建立可重复的性能、温升和持续运行基准
+- [ ] 增加分块差分、块级稳定门和全屏持续识别模式
 - [ ] 生成可发布的依赖清单或 SBOM
 
 ## v1.0 前置条件

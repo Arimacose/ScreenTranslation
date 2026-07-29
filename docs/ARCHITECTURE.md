@@ -22,7 +22,7 @@ ScreenTranslation 是单 Activity、单前台服务的 Android 16 原生应用�
 | `RegionSelectionView` | 手势框选并将屏幕坐标区域提交给控制器 | 输出规范化、非空且位于可用显示区域内的矩形 |
 | `FrameProcessor` | 限速、单飞处理、丢弃过期帧和串联 OCR/翻译 | 不允许并发处理两帧；结果带代次校验 |
 | `BitmapExtractor` | 从 ImageReader 图像读取 stride，构造 Bitmap 并裁剪 | 每个 `Image` 均在 `finally` 中关闭 |
-| `OcrEngine` | 根据文字体系复用相应 ML Kit TextRecognizer | Latin/Chinese/Japanese/Korean 客户端按需创建并最终关闭 |
+| `OcrEngine` | 为帧处理层提供统一 OCR 接口；生产实现为 `PpOcrv6Engine` | 单工作线程串行推理；关闭时释放 ORT session 与线程 |
 | `StableTextGate` | 文本规范化、去空白抖动、稳定次数门限、重复抑制 | 纯 Kotlin，可单元测试 |
 | `TranslationEngine` | 建立指定语言对 Translator、下载模型、提交翻译、关闭旧客户端 | 切换语言对时使旧回调失效 |
 | `AppPreferences` | 保存源/目标语言和采样间隔 | 不保存选择区域、截图、OCR 文本或翻译历史 |
@@ -64,7 +64,20 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 ### 3.2 OCR 与稳定门
 
 - 区域选择使用屏幕坐标，裁剪前按当前捕获帧尺寸映射并夹紧边界。
-- OCR 识别器由用户指定的源语言决定：`zh` / `ja` / `ko` 使用各自模型，英语、法语、德语和西班牙语使用 Latin 模型。俄语当前只作为翻译目标语言。四个 OCR 模型随 APK/AAB 打包，首次识别不等待 Play 服务下载。
+- Debug/Release 使用 PP-OCRv6 small 检测与识别 ONNX 模型。模型和字符表固定
+  到明确上游提交，构建时校验 SHA-256，随 APK/AAB 打包；运行时不下载 OCR 权重。
+- `PpOcrv6Engine` 使用 ONNX Runtime Android 1.26.0、CPU execution provider、
+  4 个 intra-op 线程、batch 1、检测最长边 640，并关闭 memory pattern 与 CPU arena。
+  XNNPACK 在目标 HyperOS 上连续触发原生崩溃，因此生产配置保留已验收的 CPU 路径。
+- 权重复制、字符表读取和 ORT session 创建在 OCR 工作线程首次使用时完成，
+  前台服务主线程只装配管线，不执行模型文件 I/O。
+- Release 的 R8 配置完整保留 `ai.onnxruntime.**`，CI 再从压缩后 APK 检查
+  `OnnxTensor.createTensor` 与 `OrtSession.run` JNI 入口，避免仅凭构建成功放行。
+- 一个多语言识别模型处理当前开放的中、英、日、韩、法、德、西班牙语画面；
+  源语言选择用于后续翻译配置，不再切换 OCR 权重。
+- `benchmark` 变体保留 ML Kit Latin/Chinese/Japanese/Korean 基线适配器，迁移
+  前后的真机参数、内存与质量数据见
+  [`MODEL_BENCHMARK_2026-07-28.md`](MODEL_BENCHMARK_2026-07-28.md)。
 - OCR 结果先做首尾空白清理和连续空白归一化。
 - `StableTextGate` 只放行达到稳定条件且不同于上次已提交内容的文本；
   即使整体相似度很高，持续两帧的单词或数字变化也会作为新内容提交。
@@ -131,7 +144,7 @@ stateDiagram-v2
 停止操作必须幂等，建议逆序释放：
 
 1. 停止帧调度并使当前回调代次失效；
-2. 关闭 ML Kit 客户端；
+2. 关闭 PP-OCRv6 的工作线程与 ORT sessions，再关闭翻译客户端；
 3. 移除悬浮窗；
 4. 释放 `VirtualDisplay` 和 `ImageReader`；
 5. 注销回调并停止 `MediaProjection`；
@@ -143,7 +156,7 @@ stateDiagram-v2
 - 只保留最新帧，OCR 和翻译各自保持单飞。
 - 区域裁剪发生在 OCR 之前，避免整屏推理。
 - 相同稳定文本不重复翻译。
-- 语言对与识别器复用，避免每帧创建 ML Kit 客户端。
+- PP-OCRv6 sessions 与翻译语言对客户端在整个会话内复用，避免逐帧初始化。
 - 长时间运行时以温度、功耗和 UI 流畅度优先；HyperOS 触发热限制时允许降低采样频率。
 
 ## 7. 隐私与故障语义
@@ -154,20 +167,23 @@ stateDiagram-v2
   [`PRIVACY.md`](../PRIVACY.md) 和 Google 的
   [ML Kit Android 数据披露](https://developers.google.com/ml-kit/android-data-disclosure)。
 - `FLAG_SECURE`、DRM、工作资料策略保护的窗口可能是黑屏或空白，视为系统拒绝捕获，而不是 OCR 故障。
-- 投影回调、权限撤销、显示尺寸变化、ML Kit 失败都应转为可见状态并停止当前会话，避免“通知仍在但实际不工作”。
+- 投影回调、权限撤销、显示尺寸变化、OCR/翻译失败都应转为可见状态并停止当前会话，避免“通知仍在但实际不工作”。
 - 进程被 HyperOS 回收后不自动重建捕获；用户重新打开应用并再次确认系统授权。
 
 ## 8. 构建依赖
 
 ```text
 AGP                                      9.3.0
-Gradle Wrapper                           9.6.0
-Android API / Build Tools                36 / 36.0.0
+Gradle Wrapper                           9.6.1
+compile / min / target SDK               37 / 36 / 36
+Android Build Tools                      37.0.0
 APK ABI                                  arm64-v8a
-androidx.core:core-ktx                   1.18.0
+androidx.core:core-ktx                   1.19.0
 androidx.activity:activity-ktx           1.13.0
 androidx.appcompat:appcompat             1.7.1
 com.google.android.material:material     1.14.0
-com.google.mlkit:text-recognition*       16.0.1
+com.microsoft.onnxruntime:android        1.26.0
+PP-OCRv6 small det/rec ONNX              pinned + SHA-256 verified
 com.google.mlkit:translate               17.0.3
+benchmark: com.google.mlkit:text-*       16.0.1
 ```
