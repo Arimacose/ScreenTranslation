@@ -2,6 +2,44 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
+## 2026-07-28 Issue #7 锁屏生命周期验收
+
+### 构建与设备
+
+| 项目 | 实测值 |
+|---|---|
+| 设备 | Xiaomi 15 Pro，型号 `2410DPN6CC`，设备代号 `haotian` |
+| 系统 | Android 16 / API 36 |
+| ROM | HyperOS `OS3.0.304.0.WOBCNXM` |
+| 变体 | Release，R8 开启，QA debug 证书签名 |
+| APK SHA-256 | `098E855E66ED941CBD7BE006BE458EF7C63283B467102284C17F1BBCE23694C1` |
+| 签名证书 SHA-256 | `D5EE8BD74DEDF58DFCE208E27A5FB2A38B08176F748C9BA669ACBB4FA971393D` |
+| 自动检查 | 48 项 JVM 测试、`lintDebug`、`assembleRelease` 与 R8 均成功 |
+
+### 量化结果
+
+- 英文 OCR 与中文翻译持续运行时，30.172 秒亮屏基线消耗
+  `5,351,292,224 ns` CPU 时间，相当于单核 `17.7358%`。
+- 发送休眠键后设备保持 `Dozing` 且 Keyguard 可见；15.150 秒窗口内应用
+  CPU 时间增量为 `0 ns`，相当于单核 `0.0000%`。
+- 锁屏触发 `MediaProjection.Callback.onStop()`；随后服务、
+  MediaProjection、VirtualDisplay 与采集悬浮层全部清理。
+- 非持续通知 `id=1104` 正常出现，包含标题、说明、操作按钮和指向
+  `MainActivity` 的 PendingIntent。
+- 解锁后点按通知，通知自动清除；主界面显示
+  “屏幕共享会话已结束；Android 16 需要重新授权后继续”。
+- 再次点击开始会出现新的系统屏幕共享确认页；确认、重新框选后，英文 OCR
+  与中文翻译恢复。
+- 最终从悬浮层显式停止后，服务、MediaProjection 和 `id=1104` 通知均为
+  0；崩溃/ANR 扫描匹配为 0。
+
+### 平台结论
+
+Android 15 QPR1+ 锁屏会结束投影；Android 14+ 的新投影会话需要新的用户
+授权结果。因此本项目的恢复语义是“锁屏立即归零并明确提示，解锁后由用户
+点按通知重新授权”，而不是复用已失效的令牌。HyperOS 的“无限制”省电策略
+只用于排查亮屏长会话被厂商回收的情况。
+
 ## 2026-07-26 本轮真机结果
 
 ### 设备与构建

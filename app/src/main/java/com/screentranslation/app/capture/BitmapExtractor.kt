@@ -14,39 +14,52 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * Copies an [ImageReader][android.media.ImageReader] RGBA frame into a tightly
- * packed bitmap and optionally crops it to the selected screen region.
+ * Copies the selected region of an [ImageReader][android.media.ImageReader]
+ * RGBA frame into a tightly packed bitmap.
+ *
+ * Only the rows and columns covered by the crop rectangle are read out of the
+ * hardware buffer. A full-screen intermediate is never materialized: at
+ * 3200x1440 that intermediate alone is ~17.6 MB per frame, which at a 250 ms
+ * interval is roughly 70 MB/s of allocation churn for a region that is usually
+ * a small fraction of the display.
  *
  * The returned bitmap belongs to the caller. The caller still owns [image] and
  * must close it.
  */
 object BitmapExtractor {
 
-    fun extract(image: Image): Bitmap = extractFullFrame(image)
+    fun extract(image: Image): Bitmap = extract(image, FULL_FRAME)
 
     fun extract(
         image: Image,
         normalizedRegion: RectF,
         normalizedExclusion: RectF? = null,
     ): Bitmap {
-        val fullFrame = extractFullFrame(image)
-        val crop = normalizedRegion.toPixelRect(fullFrame.width, fullFrame.height)
+        val crop = normalizedRegion.toPixelRect(image.width, image.height)
+        val bitmap = copyRegion(image, crop)
+
         normalizedExclusion?.let { exclusion ->
-            val mask = exclusion.toPixelRect(fullFrame.width, fullFrame.height)
-            if (Rect.intersects(crop, mask)) {
-                Canvas(fullFrame).drawRect(mask, EXCLUSION_PAINT)
-            }
+            val mask = exclusion.toPixelRect(image.width, image.height)
+            maskOut(bitmap, crop, mask)
         }
-        return cropAndRecycleSource(fullFrame, crop)
+        return bitmap
     }
 
-    fun extract(image: Image, pixelRegion: Rect): Bitmap {
-        val fullFrame = extractFullFrame(image)
-        val crop = pixelRegion.clampedTo(fullFrame.width, fullFrame.height)
-        return cropAndRecycleSource(fullFrame, crop)
+    fun extract(image: Image, pixelRegion: Rect): Bitmap =
+        copyRegion(image, pixelRegion.clampedTo(image.width, image.height))
+
+    /**
+     * Paints [mask] white so the translation overlay cannot be recognized by the
+     * next OCR pass. [mask] is in full-frame coordinates and is translated into
+     * the cropped bitmap's coordinate space; Canvas clips whatever falls outside.
+     */
+    private fun maskOut(bitmap: Bitmap, crop: Rect, mask: Rect) {
+        if (!Rect.intersects(crop, mask)) return
+        val local = Rect(mask).apply { offset(-crop.left, -crop.top) }
+        Canvas(bitmap).drawRect(local, EXCLUSION_PAINT)
     }
 
-    private fun extractFullFrame(image: Image): Bitmap {
+    private fun copyRegion(image: Image, crop: Rect): Bitmap {
         require(image.format == PixelFormat.RGBA_8888) {
             "Expected RGBA_8888, received image format ${image.format}"
         }
@@ -63,48 +76,35 @@ object BitmapExtractor {
             "Invalid row stride $rowStride for width ${image.width}"
         }
 
-        val paddedWidth = rowStride / pixelStride
-        val paddedBitmap = createBitmap(paddedWidth, image.height)
-        val pixels = plane.buffer.duplicate().apply { rewind() }
-        val bitmapBuffer = pixels.padTo(paddedBitmap.byteCount)
+        val width = crop.width()
+        val height = crop.height()
+        val rowBytes = width * pixelStride
 
-        try {
-            paddedBitmap.copyPixelsFromBuffer(bitmapBuffer)
+        val source = plane.buffer.duplicate()
+        val lastByte = (crop.bottom - 1) * rowStride + crop.right * pixelStride
+        require(lastByte <= source.limit()) {
+            "Crop $crop exceeds the ${source.limit()} byte pixel plane " +
+                "(rowStride=$rowStride, image=${image.width}x${image.height})"
+        }
+
+        // Row-by-row so the padding gralloc leaves at the end of each row, and
+        // every column outside the crop, is skipped rather than copied twice.
+        val destination = ByteBuffer.allocateDirect(rowBytes * height)
+        val row = ByteArray(rowBytes)
+        for (y in 0 until height) {
+            source.position((crop.top + y) * rowStride + crop.left * pixelStride)
+            source.get(row, 0, rowBytes)
+            destination.put(row)
+        }
+        destination.rewind()
+
+        val bitmap = createBitmap(width, height)
+        return try {
+            bitmap.copyPixelsFromBuffer(destination)
+            bitmap
         } catch (error: Throwable) {
-            paddedBitmap.recycle()
+            bitmap.recycle()
             throw error
-        }
-
-        if (paddedWidth == image.width) {
-            return paddedBitmap
-        }
-
-        return try {
-            Bitmap.createBitmap(paddedBitmap, 0, 0, image.width, image.height)
-        } finally {
-            paddedBitmap.recycle()
-        }
-    }
-
-    private fun cropAndRecycleSource(source: Bitmap, crop: Rect): Bitmap {
-        if (crop.left == 0 &&
-            crop.top == 0 &&
-            crop.right == source.width &&
-            crop.bottom == source.height
-        ) {
-            return source
-        }
-
-        return try {
-            Bitmap.createBitmap(
-                source,
-                crop.left,
-                crop.top,
-                crop.width(),
-                crop.height(),
-            )
-        } finally {
-            source.recycle()
         }
     }
 
@@ -129,19 +129,8 @@ object BitmapExtractor {
         return Rect(leftPx, topPx, rightPx, bottomPx)
     }
 
-    /**
-     * Some gralloc implementations omit the unused padding bytes after the
-     * final row from Buffer.limit(). Bitmap expects a full padded rectangle.
-     */
-    private fun ByteBuffer.padTo(requiredBytes: Int): ByteBuffer {
-        if (remaining() >= requiredBytes) return this
-        return ByteBuffer.allocateDirect(requiredBytes).apply {
-            put(this@padTo)
-            rewind()
-        }
-    }
-
     private const val RGBA_BYTES_PER_PIXEL = 4
+    private val FULL_FRAME = RectF(0f, 0f, 1f, 1f)
     private val EXCLUSION_PAINT = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.FILL

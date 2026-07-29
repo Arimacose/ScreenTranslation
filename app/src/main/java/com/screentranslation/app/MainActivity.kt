@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.view.WindowInsets
@@ -39,6 +40,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notificationPermissionStatusView: TextView
     private lateinit var overlayPermissionButton: Button
     private lateinit var overlayPermissionStatusView: TextView
+    private lateinit var batteryPolicyButton: Button
+    private lateinit var batteryPolicyStatusView: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
     private lateinit var serviceStatusView: TextView
@@ -50,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingStartAfterNotificationPermission = false
     private var pendingStartAfterOverlayPermission = false
     private var projectionRequestInFlight = false
+    private var projectionStoppedNotice = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -117,7 +121,15 @@ class MainActivity : AppCompatActivity() {
         configureFrameInterval()
         configureActions()
         refreshPermissionState()
+        handleLaunchIntent(intent)
         setServiceRunningUi(false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunchIntent(intent)
+        refreshServiceStatus()
     }
 
     override fun onResume() {
@@ -125,17 +137,7 @@ class MainActivity : AppCompatActivity() {
         if (::overlayPermissionStatusView.isInitialized) {
             refreshPermissionState()
             maybeContinueAfterOverlayPermission()
-            val serviceRunning = ScreenTranslationService.isRunning
-            setServiceRunningUi(serviceRunning)
-            if (!projectionRequestInFlight) {
-                serviceStatusView.setText(
-                    if (serviceRunning) {
-                        R.string.service_running
-                    } else {
-                        R.string.service_idle
-                    },
-                )
-            }
+            refreshServiceStatus()
         }
     }
 
@@ -158,6 +160,8 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.text_notification_permission_status)
         overlayPermissionButton = findViewById(R.id.button_overlay_permission)
         overlayPermissionStatusView = findViewById(R.id.text_overlay_permission_status)
+        batteryPolicyButton = findViewById(R.id.button_battery_policy)
+        batteryPolicyStatusView = findViewById(R.id.text_battery_policy_status)
         startButton = findViewById(R.id.button_start)
         stopButton = findViewById(R.id.button_stop)
         serviceStatusView = findViewById(R.id.text_service_status)
@@ -269,6 +273,9 @@ class MainActivity : AppCompatActivity() {
         }
         overlayPermissionButton.setOnClickListener {
             openOverlayPermissionSettings()
+        }
+        batteryPolicyButton.setOnClickListener {
+            openBatteryPolicySettings()
         }
         startButton.setOnClickListener {
             beginStartFlow()
@@ -385,13 +392,26 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestProjectionPermission() {
         if (projectionRequestInFlight) return
+        projectionStoppedNotice = false
         projectionRequestInFlight = true
         serviceStatusView.setText(R.string.service_requesting_capture)
 
-        val captureIntent = projectionManager.createScreenCaptureIntent(
-            MediaProjectionConfig.createConfigForDefaultDisplay(),
-        )
-        projectionLauncher.launch(captureIntent)
+        // The flag is otherwise only cleared by the launcher callback. If the
+        // launch throws, that callback never arrives and both the in-flight
+        // guard above and the onResume status refresh stay stuck permanently.
+        try {
+            val captureIntent = projectionManager.createScreenCaptureIntent(
+                MediaProjectionConfig.createConfigForDefaultDisplay(),
+            )
+            projectionLauncher.launch(captureIntent)
+        } catch (error: Exception) {
+            projectionRequestInFlight = false
+            serviceStatusView.text = getString(
+                R.string.start_failed,
+                error.localizedMessage ?: error.javaClass.simpleName,
+            )
+            setServiceRunningUi(false)
+        }
     }
 
     private fun requestNotificationPermission() {
@@ -431,6 +451,57 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * HyperOS / MIUI enforce their own power policy on top of the AOSP battery
+     * optimization whitelist, and an aggressive policy kills the capture
+     * foreground service during long sessions. The vendor screen is tried first
+     * and the AOSP surfaces are the fallback, mirroring the overlay-permission
+     * chain above.
+     *
+     * The system dialog behind REQUEST_IGNORE_BATTERY_OPTIMIZATIONS is
+     * deliberately not used: Play Console only allows that permission for a
+     * narrow set of app categories. Sending the user to the settings page is
+     * the portable, policy-safe option.
+     */
+    private fun openBatteryPolicySettings() {
+        val packageUri = "package:$packageName".toUri()
+        val candidates = listOf(
+            // Verified on HyperOS V816 / Android 16: the per-app power policy
+            // lives inside the vendor app-info screen as its 省电策略 entry.
+            // miui.intent.action.POWER_HIDE_MODE_APP_LIST does not resolve on
+            // this release, and com.miui.securitycenter.action.POWER_SETTINGS
+            // opens the *global* optimization page with no per-app control.
+            Intent().apply {
+                setClassName(
+                    HYPER_OS_SECURITY_CENTER_PACKAGE,
+                    HYPER_OS_APP_DETAILS_ACTIVITY,
+                )
+                putExtra(HYPER_OS_APP_DETAILS_PACKAGE_EXTRA, packageName)
+            },
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+        )
+
+        for (intent in candidates) {
+            if (intent.resolveActivity(packageManager) == null) continue
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // Try the next ROM/system settings surface.
+            }
+        }
+    }
+
+    /**
+     * Reports only the AOSP battery optimization whitelist. A vendor power
+     * policy is not readable from here, so the wording stays advisory rather
+     * than claiming the service is safe from being killed.
+     */
+    private fun isIgnoringBatteryOptimizations(): Boolean =
+        getSystemService(PowerManager::class.java)
+            ?.isIgnoringBatteryOptimizations(packageName) == true
+
     private fun maybeContinueAfterOverlayPermission() {
         if (!pendingStartAfterOverlayPermission) return
         if (Settings.canDrawOverlays(this)) {
@@ -468,6 +539,16 @@ class MainActivity : AppCompatActivity() {
             if (overlayGranted) R.string.overlay_granted else R.string.overlay_denied,
         )
         overlayPermissionButton.isEnabled = !overlayGranted
+
+        // The button stays enabled either way: the vendor power policy is a
+        // separate setting that this check cannot see.
+        batteryPolicyStatusView.setText(
+            if (isIgnoringBatteryOptimizations()) {
+                R.string.battery_policy_unrestricted
+            } else {
+                R.string.battery_policy_restricted
+            },
+        )
     }
 
     private fun invalidatePreparedModel() {
@@ -541,7 +622,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleLaunchIntent(launchIntent: Intent?) {
+        if (launchIntent?.getBooleanExtra(EXTRA_PROJECTION_STOPPED, false) == true) {
+            projectionStoppedNotice = true
+            launchIntent.removeExtra(EXTRA_PROJECTION_STOPPED)
+        }
+    }
+
+    private fun refreshServiceStatus() {
+        if (!::serviceStatusView.isInitialized) return
+        val serviceRunning = ScreenTranslationService.isRunning
+        setServiceRunningUi(serviceRunning)
+        if (projectionRequestInFlight) return
+        serviceStatusView.setText(
+            when {
+                serviceRunning -> R.string.service_running
+                projectionStoppedNotice ||
+                    ScreenTranslationService.needsProjectionRestart ->
+                    R.string.service_projection_stopped
+
+                else -> R.string.service_idle
+            },
+        )
+    }
+
     companion object {
+        const val EXTRA_PROJECTION_STOPPED =
+            "com.screentranslation.app.extra.PROJECTION_STOPPED"
+
         private val FRAME_INTERVAL_OPTIONS_MS = longArrayOf(
             250L,
             500L,
@@ -559,5 +667,8 @@ class MainActivity : AppCompatActivity() {
         private const val HYPER_OS_PERMISSION_EDITOR_ACTIVITY =
             "com.miui.permcenter.permissions.PermissionsEditorActivity"
         private const val HYPER_OS_PACKAGE_EXTRA = "extra_pkgname"
+        private const val HYPER_OS_APP_DETAILS_ACTIVITY =
+            "com.miui.appmanager.ApplicationsDetailsActivity"
+        private const val HYPER_OS_APP_DETAILS_PACKAGE_EXTRA = "package_name"
     }
 }

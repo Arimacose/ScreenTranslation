@@ -7,3 +7,9 @@
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
 }
+
+# Firebase ComponentDiscovery instantiates registrars by their manifest class
+# names. R8 full mode otherwise removes their no-argument constructors.
+-keep class * implements com.google.firebase.components.ComponentRegistrar {
+    public <init>();
+}

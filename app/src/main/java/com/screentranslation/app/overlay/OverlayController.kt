@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.screentranslation.app.R
 
@@ -31,6 +32,19 @@ class OverlayController(
     private val onRegionChanged: (Rect) -> Unit,
     private val onOverlayBoundsChanged: (Rect?) -> Unit,
     private val onStop: () -> Unit,
+    /**
+     * Signals that the previously selected region is no longer valid. Without
+     * it the capture pipeline keeps recognizing the old rectangle while the
+     * overlay is asking for a new one.
+     */
+    private val onRegionCleared: () -> Unit = {},
+    /**
+     * Signals that the result panel was expanded or collapsed. An expanded panel
+     * is tall enough to cover the selected region, and the capture pipeline masks
+     * the panel rectangle before OCR, so leaving recognition running would replace
+     * the very text the user expanded in order to read.
+     */
+    private val onExpandedChanged: (Boolean) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val windowManager =
@@ -43,6 +57,12 @@ class OverlayController(
     private var statusView: TextView? = null
     private var originalView: TextView? = null
     private var translationView: TextView? = null
+    private var attributionView: TextView? = null
+    private var textScrollView: ScrollView? = null
+    private var reselectButton: Button? = null
+    private var minimizeButton: Button? = null
+    private var expandButton: Button? = null
+    private var textExpanded = false
     private var layoutParams: WindowManager.LayoutParams? = null
     private var selectedRegion: Rect? = null
     private var currentOriginal = ""
@@ -80,6 +100,9 @@ class OverlayController(
                 selectedRegion = Rect(region)
                 onRegionChanged(Rect(region))
                 switchToCompactMode()
+            }
+            onSelectionRejected = {
+                updateStatus(appContext.getString(R.string.overlay_selection_too_small))
             }
         }
         val panel = createControlPanel()
@@ -125,11 +148,32 @@ class OverlayController(
             val panel = controlPanel ?: return@runOnMain
             val params = layoutParams ?: return@runOnMain
 
+            // Expansion is a "hold still so I can read this" state. Asking for a
+            // new region ends it -- otherwise recognition stays paused and the
+            // freshly selected region never produces anything.
+            clearExpanded()
+
             selector.visibility = View.VISIBLE
             selector.startSelection()
-            panel.visibility = View.GONE
+
+            // The selector fills the display and consumes every touch, so the
+            // panel must stay on screen during selection: without it the only
+            // way out is to guess that a >=64dp drag is required, and taps,
+            // the back gesture and the notification shade are all swallowed.
+            // Only the controls are kept; results belong to compact mode.
+            panel.visibility = View.VISIBLE
+            setPanelGravity(panel, Gravity.BOTTOM)
+            textScrollView?.visibility = View.GONE
+            attributionView?.visibility = View.GONE
+            reselectButton?.visibility = View.GONE
+            expandButton?.visibility = View.GONE
+            minimizeButton?.visibility = View.VISIBLE
+
             currentStatus = appContext.getString(R.string.overlay_status_selecting)
+            statusView?.text = currentStatus
+            selectedRegion = null
             onOverlayBoundsChanged(null)
+            onRegionCleared()
 
             params.width = WindowManager.LayoutParams.MATCH_PARENT
             params.height = WindowManager.LayoutParams.MATCH_PARENT
@@ -185,14 +229,39 @@ class OverlayController(
         }
     }
 
-    private fun switchToCompactMode() {
+    private fun switchToCompactMode() = collapseToPanel(showResults = true)
+
+    /**
+     * Dismisses the full-screen selector and shrinks the window back to the
+     * floating panel, leaving the capture session running.
+     *
+     * [showResults] is false when collapsing without a region: there is nothing
+     * to display yet, and the panel exists only so the user can navigate to
+     * another app and start selection from there.
+     */
+    private fun collapseToPanel(showResults: Boolean) {
         val root = rootView ?: return
         val selector = selectionView ?: return
         val panel = controlPanel ?: return
         val params = layoutParams ?: return
 
+        // Nothing to keep expanded when there are no results on screen.
+        if (!showResults) clearExpanded()
+
         selector.visibility = View.GONE
         panel.visibility = View.VISIBLE
+        setPanelGravity(panel, Gravity.TOP)
+        applyTextExpansion()
+        textScrollView?.visibility = if (showResults) View.VISIBLE else View.GONE
+        attributionView?.visibility = if (showResults) View.VISIBLE else View.GONE
+        expandButton?.visibility = if (showResults) View.VISIBLE else View.GONE
+        reselectButton?.visibility = View.VISIBLE
+        minimizeButton?.visibility = View.GONE
+
+        if (!showResults) {
+            selectedRegion = null
+            currentStatus = appContext.getString(R.string.overlay_status_idle)
+        }
         statusView?.text = currentStatus.ifBlank {
             appContext.getString(R.string.overlay_status_running)
         }
@@ -205,8 +274,14 @@ class OverlayController(
 
         val margin = dp(12)
         val bounds = windowManager.maximumWindowMetrics.bounds
-        val estimatedPanelHeight = dp(240)
-        val region = selectedRegion
+        // An expanded panel is far taller than the compact estimate, so keeping
+        // the region-relative placement would push it off the bottom edge.
+        val estimatedPanelHeight = if (textExpanded) {
+            (bounds.height() * EXPANDED_HEIGHT_FRACTION).toInt() + dp(160)
+        } else {
+            dp(240)
+        }
+        val region = if (textExpanded) null else selectedRegion
         val maxY = (bounds.height() - estimatedPanelHeight - margin).coerceAtLeast(margin)
         val panelY = when {
             region == null -> dp(28)
@@ -234,26 +309,37 @@ class OverlayController(
     private fun dispatchOverlayBounds() {
         val root = rootView
         val panel = controlPanel
+        // Measured from the panel, not the root: in selection mode the root
+        // fills the display, and reporting that would mask the entire frame.
         if (root == null ||
-            panel?.visibility != View.VISIBLE ||
+            panel == null ||
+            panel.visibility != View.VISIBLE ||
             !root.isAttachedToWindow ||
-            root.width <= 0 ||
-            root.height <= 0
+            panel.width <= 0 ||
+            panel.height <= 0
         ) {
             onOverlayBoundsChanged(null)
             return
         }
 
         val location = IntArray(2)
-        root.getLocationOnScreen(location)
+        panel.getLocationOnScreen(location)
         onOverlayBoundsChanged(
             Rect(
                 location[0],
                 location[1],
-                location[0] + root.width,
-                location[1] + root.height,
+                location[0] + panel.width,
+                location[1] + panel.height,
             ),
         )
+    }
+
+    private fun setPanelGravity(panel: View, verticalGravity: Int) {
+        val params = panel.layoutParams as? FrameLayout.LayoutParams ?: return
+        val target = verticalGravity or Gravity.START
+        if (params.gravity == target) return
+        params.gravity = target
+        panel.layoutParams = params
     }
 
     private fun createControlPanel(): LinearLayout {
@@ -270,6 +356,9 @@ class OverlayController(
             background = panelBackground
             elevation = dp(12).toFloat()
             setPadding(dp(16), dp(12), dp(16), dp(12))
+            // Absorb touches that land on the panel but miss a button, so they
+            // do not fall through and start a selection drag underneath.
+            isClickable = true
         }
 
         statusView = TextView(appContext).apply {
@@ -283,19 +372,35 @@ class OverlayController(
             text = appContext.getString(R.string.overlay_waiting_for_text)
             setTextColor(Color.rgb(212, 212, 216))
             textSize = 14f
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(6), 0, 0)
         }
         translationView = TextView(appContext).apply {
             text = appContext.getString(R.string.overlay_waiting_for_translation)
             setTextColor(Color.rgb(167, 243, 208))
             textSize = 17f
-            maxLines = 3
-            ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(4), 0, dp(8))
         }
-        val attributionView = TextView(appContext).apply {
+
+        // Long passages have to stay readable. Collapsed keeps the panel out of
+        // the way; expanded caps the height and scrolls instead of growing until
+        // the panel covers the very screen it is translating.
+        val textColumn = LinearLayout(appContext).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(originalView)
+            addView(translationView)
+        }
+        textScrollView = ScrollView(appContext).apply {
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                textColumn,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        attributionView = TextView(appContext).apply {
             text = appContext.getString(R.string.translation_attribution)
             setTextColor(Color.rgb(161, 161, 170))
             textSize = 10f
@@ -307,10 +412,30 @@ class OverlayController(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        val reselectButton = Button(appContext).apply {
+        expandButton = Button(appContext).apply {
+            isAllCaps = false
+            setOnClickListener {
+                textExpanded = !textExpanded
+                // Pause first so the status text is settled before the relayout
+                // below reads it, then rerun the full compact-mode layout: the
+                // window has to be repositioned, not just grown in place.
+                onExpandedChanged(textExpanded)
+                collapseToPanel(showResults = true)
+            }
+        }
+        reselectButton = Button(appContext).apply {
             text = appContext.getString(R.string.overlay_reselect)
             isAllCaps = false
             setOnClickListener { requestRegionSelection() }
+        }
+        // Leaving selection mode without tearing down the session is what makes
+        // the app usable at all: the selector covers the display, so until it is
+        // dismissed the user cannot reach the app they actually want to
+        // translate, and there is no way to start selection from outside.
+        minimizeButton = Button(appContext).apply {
+            text = appContext.getString(R.string.overlay_minimize)
+            isAllCaps = false
+            setOnClickListener { collapseToPanel(showResults = false) }
         }
         val stopButton = Button(appContext).apply {
             text = appContext.getString(R.string.overlay_stop)
@@ -321,11 +446,25 @@ class OverlayController(
             }
         }
         actionRow.addView(
-            reselectButton,
+            expandButton,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
+        )
+        actionRow.addView(
+            minimizeButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(8) },
+        )
+        actionRow.addView(
+            reselectButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(8) },
         )
         actionRow.addView(
             stopButton,
@@ -336,11 +475,58 @@ class OverlayController(
         )
 
         panel.addView(statusView)
-        panel.addView(originalView)
-        panel.addView(translationView)
+        panel.addView(textScrollView)
         panel.addView(attributionView)
         panel.addView(actionRow)
+        applyTextExpansion()
         return panel
+    }
+
+    /**
+     * Applies the collapsed/expanded presentation of the result text.
+     *
+     * Collapsed clips to a couple of lines so the panel stays small. Expanded
+     * removes the line cap but bounds the scroll view, otherwise a long passage
+     * would grow the panel until it covers the content being translated.
+     */
+    /**
+     * Leaves the expanded state and lets the capture pipeline resume. Safe to
+     * call when already collapsed.
+     */
+    private fun clearExpanded() {
+        if (!textExpanded) return
+        textExpanded = false
+        applyTextExpansion()
+        onExpandedChanged(false)
+    }
+
+    private fun applyTextExpansion() {
+        val scroll = textScrollView ?: return
+
+        if (textExpanded) {
+            originalView?.maxLines = Int.MAX_VALUE
+            originalView?.ellipsize = null
+            translationView?.maxLines = Int.MAX_VALUE
+            translationView?.ellipsize = null
+        } else {
+            originalView?.maxLines = COLLAPSED_ORIGINAL_LINES
+            originalView?.ellipsize = TextUtils.TruncateAt.END
+            translationView?.maxLines = COLLAPSED_TRANSLATION_LINES
+            translationView?.ellipsize = TextUtils.TruncateAt.END
+        }
+
+        val height = if (textExpanded) {
+            (windowManager.maximumWindowMetrics.bounds.height() * EXPANDED_HEIGHT_FRACTION).toInt()
+        } else {
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+        scroll.layoutParams = (scroll.layoutParams as? LinearLayout.LayoutParams)
+            ?.apply { this.height = height }
+            ?: LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
+
+        expandButton?.text = appContext.getString(
+            if (textExpanded) R.string.overlay_collapse else R.string.overlay_expand,
+        )
     }
 
     private fun createLayoutParams(): WindowManager.LayoutParams {
@@ -393,9 +579,23 @@ class OverlayController(
         statusView = null
         originalView = null
         translationView = null
+        attributionView = null
+        textScrollView = null
+        reselectButton = null
+        minimizeButton = null
+        expandButton = null
+        textExpanded = false
         layoutParams = null
         selectedRegion = null
     }
 
     private fun dp(value: Int): Int = (value * appContext.resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val COLLAPSED_ORIGINAL_LINES = 2
+        const val COLLAPSED_TRANSLATION_LINES = 3
+
+        /** Bounds the expanded panel so it cannot cover the screen it translates. */
+        const val EXPANDED_HEIGHT_FRACTION = 0.45f
+    }
 }
