@@ -1,6 +1,6 @@
 # 隐私说明
 
-最近更新：2026-07-29
+最近更新：2026-07-30
 
 ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。本文件描述当前开源代码的
 数据流；发行者若修改代码、接入服务或增加分析 SDK，应发布相应版本的隐私说明。
@@ -14,7 +14,7 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 - OCR 识别出的文本；
 - 翻译结果；
 - 用户选择的源语言、目标语言和采样间隔；
-- ML Kit 所需的翻译模型与运行诊断信息。
+- Lite 或 Full edition 所需的本地翻译模型。
 
 ## 屏幕内容
 
@@ -30,45 +30,41 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 ## 本地保存
 
 应用只保存源语言、目标语言和采样间隔等设置。PP-OCRv6 权重随安装包提供，
-首次启动 OCR 时复制到应用 `codeCacheDir` 供 ONNX Runtime 读取；翻译语言模型
-由 ML Kit 下载到应用专属存储。两类文件均位于应用专属空间，卸载应用时随应用
-数据删除。选择区域、截图和识别历史不持久化。
+首次启动 OCR 时复制到应用 `codeCacheDir` 供 ONNX Runtime 读取。Lite edition
+按需下载 Firefox Translations 的 Bergamot 模型；Full edition 按需下载固定版本
+的 Hy-MT2 Q4 GGUF。模型在校验固定大小与 SHA-256 后写入应用专属
+`no_backup` 目录，卸载对应 edition 时随应用数据删除。选择区域、截图和识别
+历史不持久化。
 
-## 本地 OCR、网络与 ML Kit
+## 本地 OCR 与翻译模型网络请求
 
 OCR 使用随 APK/AAB 打包的 PP-OCRv6 small ONNX 模型，通过 ONNX Runtime 在设备端
 处理屏幕帧。运行中的 OCR 路径不上传画面，也不下载权重。构建系统从 PaddlePaddle
 官方模型仓库获取固定版本资产并校验 SHA-256；这是构建时供应链步骤，并非应用运行时
 网络请求。
 
-翻译语言模型在首次使用相应语言对时由 ML Kit 按需下载，之后翻译推理在设备端执行。
+Lite edition 的英语→中文模型，以及日语→英语→中文级联模型，来自 Mozilla
+Firefox Translations 固定 HTTPS 地址。Full edition 的 Hy-MT2 Q4 模型来自固定
+Hugging Face revision。应用逐文件校验发布清单中的长度和 SHA-256；校验通过后，
+翻译推理全部在设备端执行。
 
-Google 的 ML Kit Translate 数据披露说明指出，相关 Android SDK 还可能为诊断和使用
-分析收集：
-
-- 设备制造商、型号、OS 版本、构建和可用 ML 加速器；
-- 应用包名与版本；
-- 每次安装的标识符；
-- 翻译功能配置的源语言和目标语言；
-- 性能与错误诊断信息。
-
-Google 表示这些数据通过 HTTPS 传输，且其披露页面列出的数据不转移给第三方。项目维护者仍需
-根据实际发行包、地区和商店要求独立完成数据安全披露。
+v0.2.0 的 Lite 与 Full APK 不使用 ML Kit Translate。仓库中的 `benchmark`
+build type 仍保留 ML Kit Translate 作为可复现实验对照，但该对照不属于两份
+GitHub Release APK。
 
 参考：
 
-- [ML Kit Android 数据披露](https://developers.google.com/ml-kit/android-data-disclosure)
-- [ML Kit 端侧翻译](https://developers.google.com/ml-kit/language/translation/android)
-- [ML Kit 模型安装路径](https://developers.google.com/ml-kit/tips/installation-paths)
 - [PP-OCRv6 small detection ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx)
 - [PP-OCRv6 small recognition ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx)
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime)
+- [Firefox Translations models](https://mozilla.github.io/translations/firefox-models/)
+- [Tencent Hy-MT2](https://github.com/Tencent-Hunyuan/Hy-MT2)
 
 ## Android 权限
 
 | 权限/能力 | 用途 |
 |---|---|
-| `INTERNET` | 下载翻译模型及 ML Kit Translate SDK 网络行为 |
+| `INTERNET` | 下载用户选择语言所需的固定翻译模型 |
 | `ACCESS_NETWORK_STATE` | 展示连接状态和模型准备反馈 |
 | `SYSTEM_ALERT_WINDOW` | 框选区域并在其他应用上方显示结果 |
 | `POST_NOTIFICATIONS` | 显示前台捕获任务通知 |
@@ -92,3 +88,8 @@ Google 表示这些数据通过 HTTPS 传输，且其披露页面列出的数据
 2. 明确用户开关、保留周期、传输目的与处理方；
 3. 增加对应测试和迁移说明；
 4. 在版本变更记录中标明。
+
+计划中的 Online edition 会把 OCR 文本发送到用户自行配置的翻译服务；它的
+API 契约、Android Keystore 密钥存储、数据流确认和验收门槛见
+[`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。
+该设计不属于 v0.2.0 Lite / Full APK 的运行路径。

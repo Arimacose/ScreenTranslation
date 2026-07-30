@@ -14,15 +14,32 @@ concurrency:
   group: android-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  ANDROID_BUILD_TOOLS: "37.0.0"
+  BERGAMOT_NDK: "23.1.7779620"
+  HYMT2_NDK: "29.0.14206865"
+  ANDROID_CMAKE: "3.31.6"
+
 jobs:
   build:
-    name: Unit tests, lint, debug APK, and R8 release
+    name: Verify Lite (Bergamot) and Full (Hy-MT2 Q4 Experimental)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
 
     steps:
-      - name: Check out source
+      - name: Check out source and native submodules
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Verify versioned third-party license bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd third_party/licenses
+            sha256sum -c SHA256SUMS
+          )
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -36,55 +53,169 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4.0.1
 
-      - name: Install Android API 37
-        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
-
-      - name: Run verification build
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease
-
-      - name: Verify JNI and reflected classes after R8
+      - name: Install Android 16 and native toolchains
         shell: bash
         run: |
           set -euo pipefail
-          apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          sdkmanager \
+            "platforms;android-36" \
+            "platforms;android-37" \
+            "build-tools;$ANDROID_BUILD_TOOLS" \
+            "ndk;$BERGAMOT_NDK" \
+            "ndk;$HYMT2_NDK" \
+            "cmake;$ANDROID_CMAKE"
+
+      - name: Run edition verification builds
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            testLiteDebugUnitTest \
+            testFullDebugUnitTest \
+            lintLiteRelease \
+            lintFullRelease \
+            assembleLiteRelease \
+            assembleFullRelease \
+            bundleLiteRelease \
+            bundleFullRelease
+
+      - name: Verify R8, edition metadata, OCR assets, and backend isolation
+        shell: bash
+        run: |
+          set -euo pipefail
           apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
-          test -s "$apk"
+          aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
           test -x "$apkanalyzer"
+          test -x "$aapt"
 
-          mapfile -t registrars < <(
-            "$apkanalyzer" manifest print "$apk" |
-              sed -n 's/.*android:name="com.google.firebase.components:\([^"]*\)".*/\1/p'
-          )
-          ((${#registrars[@]} > 0))
-
-          for registrar in "${registrars[@]}"; do
-            registrar_code="$("$apkanalyzer" dex code --class "$registrar" "$apk")"
-            if ! grep -Fq '.method public constructor <init>()V' <<<"$registrar_code"; then
-              echo "::error::R8 removed ComponentRegistrar constructor: $registrar"
+          find_apk() {
+            local edition="$1"
+            local output_dir="app/build/outputs/apk/$edition/release"
+            mapfile -t candidates < <(
+              find "$output_dir" -maxdepth 1 -type f -name '*.apk' -print
+            )
+            if [[ "${#candidates[@]}" -ne 1 ]]; then
+              echo "::error::Expected one $edition release APK, found ${#candidates[@]}"
               exit 1
             fi
-          done
-
-          tensor_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OnnxTensor "$apk")"
-          session_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OrtSession "$apk")"
-          grep -Fq '.class public Lai/onnxruntime/OnnxTensor;' <<<"$tensor_code" || {
-            echo "::error::R8 removed or renamed ai.onnxruntime.OnnxTensor"
-            exit 1
-          }
-          grep -Fq '.method public static createTensor(' <<<"$tensor_code" || {
-            echo "::error::R8 removed or renamed OnnxTensor.createTensor"
-            exit 1
-          }
-          grep -Fq '.method private native run(' <<<"$session_code" || {
-            echo "::error::R8 removed or renamed OrtSession.run JNI binding"
-            exit 1
+            printf '%s\n' "${candidates[0]}"
           }
 
-      - name: Upload debug APK
+          assert_entry() {
+            local listing="$1"
+            local entry="$2"
+            if ! grep -Fxq "$entry" <<<"$listing"; then
+              echo "::error::Missing APK entry: $entry"
+              exit 1
+            fi
+          }
+
+          reject_entry() {
+            local listing="$1"
+            local entry="$2"
+            if grep -Fxq "$entry" <<<"$listing"; then
+              echo "::error::Unexpected APK entry: $entry"
+              exit 1
+            fi
+          }
+
+          verify_common() {
+            local apk="$1"
+            local expected_id="$2"
+            local expected_name="$3"
+            local expected_label_token="$4"
+            local listing="$5"
+            local badging
+
+            [[ "$("$apkanalyzer" manifest application-id "$apk")" == "$expected_id" ]]
+            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "2" ]]
+            [[ "$("$apkanalyzer" manifest version-name "$apk")" == "$expected_name" ]]
+            [[ "$("$apkanalyzer" manifest target-sdk "$apk")" == "36" ]]
+            badging="$("$aapt" dump badging "$apk")"
+            grep -F 'application-label:' <<<"$badging" |
+              grep -Fq "$expected_label_token"
+
+            assert_entry "$listing" "assets/ppocrv6_small/det.onnx"
+            assert_entry "$listing" "assets/ppocrv6_small/rec.onnx"
+            assert_entry "$listing" "assets/ppocrv6_small/characters.txt"
+            assert_entry "$listing" "assets/licenses/COMMON.md"
+            assert_entry "$listing" "assets/licenses/APACHE-2.0.txt"
+            assert_entry "$listing" \
+              "assets/licenses/models/PP-OCRv6.md"
+            assert_entry "$listing" \
+              "assets/licenses/onnxruntime-1.26.0/LICENSE.txt"
+            assert_entry "$listing" \
+              "assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+
+            if grep -Eiq \
+              '^assets/.+\.(gguf|bin|marian|model|npz|safetensors|spm)$' \
+              <<<"$listing"
+            then
+              echo "::error::Translation model weights must be downloaded at runtime"
+              exit 1
+            fi
+
+            tensor_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OnnxTensor "$apk")"
+            session_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OrtSession "$apk")"
+            grep -Fq '.class public Lai/onnxruntime/OnnxTensor;' <<<"$tensor_code"
+            grep -Fq '.method public static createTensor(' <<<"$tensor_code"
+            grep -Fq '.method private native run(' <<<"$session_code"
+          }
+
+          lite_apk="$(find_apk lite)"
+          full_apk="$(find_apk full)"
+          lite_listing="$(unzip -Z1 "$lite_apk")"
+          full_listing="$(unzip -Z1 "$full_apk")"
+
+          verify_common \
+            "$lite_apk" \
+            "com.screentranslation.app" \
+            "0.2.0-lite" \
+            "ScreenTranslation Lite" \
+            "$lite_listing"
+          assert_entry "$lite_listing" "lib/arm64-v8a/libbergamot_runner.so"
+          assert_entry "$lite_listing" "assets/licenses/LITE.md"
+          assert_entry "$lite_listing" \
+            "assets/licenses/FIREFOX-TRANSLATIONS-MODELS.md"
+          assert_entry "$lite_listing" \
+            "assets/licenses/FIREFOX-TRANSLATIONS-MPL-2.0.txt"
+          assert_entry "$lite_listing" \
+            "assets/licenses/bergamot-9271618/MPL-2.0.txt"
+          assert_entry "$lite_listing" \
+            "assets/licenses/bergamot-9271618/SOURCE-CODE.md"
+          assert_entry "$lite_listing" \
+            "assets/licenses/bergamot-9271618/STATIC_DEPENDENCIES.md"
+          reject_entry "$lite_listing" "lib/arm64-v8a/libhymt2_jni.so"
+          reject_entry "$lite_listing" "lib/arm64-v8a/libtranslate_jni.so"
+
+          verify_common \
+            "$full_apk" \
+            "com.screentranslation.app.full" \
+            "0.2.0-full" \
+            "HY-MT2 Q4 Experimental" \
+            "$full_listing"
+          assert_entry "$full_listing" "lib/arm64-v8a/libhymt2_jni.so"
+          assert_entry "$full_listing" "assets/licenses/FULL.md"
+          assert_entry "$full_listing" \
+            "assets/licenses/ANDROID-NDK-r29-NOTICE.txt"
+          assert_entry "$full_listing" \
+            "assets/licenses/llama.cpp-caa596ab3/LICENSE.txt"
+          assert_entry "$full_listing" \
+            "assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
+          assert_entry "$full_listing" \
+            "assets/licenses/models/HY-MT2-1.8B-GGUF.md"
+          assert_entry "$full_listing" \
+            "assets/licenses/models/HY-MT2-1.8B-GGUF-LICENSE.txt"
+          reject_entry "$full_listing" "lib/arm64-v8a/libbergamot_runner.so"
+          reject_entry "$full_listing" "lib/arm64-v8a/libtranslate_jni.so"
+
+      - name: Upload edition build outputs
         uses: actions/upload-artifact@v7
         with:
-          name: ScreenTranslation-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ScreenTranslation-editions-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/lite/release/*.apk
+            app/build/outputs/apk/full/release/*.apk
+            app/build/outputs/bundle/liteRelease/app-lite-release.aab
+            app/build/outputs/bundle/fullRelease/app-full-release.aab
           if-no-files-found: error
           retention-days: 14
 
@@ -94,11 +225,11 @@ jobs:
         with:
           name: verification-reports-${{ github.sha }}
           path: |
-            app/build/reports/lint-results-debug.html
-            app/build/reports/tests/testDebugUnitTest/
-            app/build/outputs/mapping/release/configuration.txt
-            app/build/outputs/mapping/release/mapping.txt
-            app/build/outputs/mapping/release/seeds.txt
-            app/build/outputs/mapping/release/usage.txt
+            app/build/reports/lint-results-liteRelease.html
+            app/build/reports/lint-results-fullRelease.html
+            app/build/reports/tests/testLiteDebugUnitTest/
+            app/build/reports/tests/testFullDebugUnitTest/
+            app/build/outputs/mapping/liteRelease/
+            app/build/outputs/mapping/fullRelease/
           if-no-files-found: warn
           retention-days: 14

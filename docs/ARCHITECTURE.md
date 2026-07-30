@@ -12,6 +12,24 @@ ScreenTranslation 是单 Activity、单前台服务的 Android 16 原生应用�
 
 工程固定使用 API 36，因此不包含旧系统兼容分支。
 
+### 1.1 v0.2.0 edition 边界
+
+v0.2.0 发布两个相互隔离的本地 edition，两者共用 MediaProjection、悬浮层、
+`FrameProcessor`、`StableTextGate` 和 PP-OCRv6-small：
+
+| Edition | applicationId | versionName | 翻译后端 | v0.2.0 语言范围 |
+|---|---|---|---|---|
+| Lite | `com.screentranslation.app` | `0.2.0-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
+| Full | `com.screentranslation.app.full` | `0.2.0-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
+
+Lite 保留基础包名以承接 v0.1.0 升级，Full 使用 `.full` 后缀，因此两者可在同一
+设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：Lite 只携带
+Bergamot runner，Full 只携带 HY-MT2 的 llama.cpp JNI；翻译权重均在用户准备
+模型时按需下载。
+
+ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历史基线
+对比，不进入 Lite/Full Release APK。
+
 ## 2. 模块职责
 
 | 组件 | 职责 | 生命周期/线程约束 |
@@ -24,7 +42,9 @@ ScreenTranslation 是单 Activity、单前台服务的 Android 16 原生应用�
 | `BitmapExtractor` | 从 ImageReader 图像读取 stride，构造 Bitmap 并裁剪 | 每个 `Image` 均在 `finally` 中关闭 |
 | `OcrEngine` | 为帧处理层提供统一 OCR 接口；生产实现为 `PpOcrv6Engine` | 单工作线程串行推理；关闭时释放 ORT session 与线程 |
 | `StableTextGate` | 文本规范化、去空白抖动、稳定次数门限、重复抑制 | 纯 Kotlin，可单元测试 |
-| `TranslationEngine` | 建立指定语言对 Translator、下载模型、提交翻译、关闭旧客户端 | 切换语言对时使旧回调失效 |
+| `TranslationBackend` | 为公共流水线定义模型准备、翻译、取消与关闭接口 | edition 实现使用单工作线程；切换语言对时使旧回调失效 |
+| `BergamotTranslationEngine` | Lite 的 en→zh 与 ja→en→zh 路由、模型下载/校验和 Bergamot runner 生命周期 | 仅编入 Lite；模型位于应用私有 no-backup 目录 |
+| `HyMt2Q4TranslationEngine` | Full Experimental 的多语言→简体中文提示、GGUF 下载/校验和 llama.cpp 推理 | 仅编入 Full；模型位于应用私有 no-backup 目录 |
 | `AppPreferences` | 保存源/目标语言和采样间隔 | 不保存选择区域、截图、OCR 文本或翻译历史 |
 
 ## 3. 数据流
@@ -39,7 +59,7 @@ flowchart LR
     F --> G["BitmapExtractor：遮蔽悬浮层并裁剪区域"]
     G --> H["OcrEngine：文字识别"]
     H --> I["StableTextGate：稳定/去重"]
-    I --> J["TranslationEngine：本地翻译"]
+    I --> J["Edition TranslationBackend：Bergamot 或 HY-MT2 Q4"]
     J --> K["OverlayController：显示译文"]
     D --> L["持续通知：停止入口"]
 ```
@@ -85,10 +105,23 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 
 ### 3.3 翻译
 
-- `Translator` 的键是 `(sourceLanguage, targetLanguage)`。
-- 新语言对先检查/下载对应模型，再接受翻译请求。
-- 模型下载需要 `INTERNET`；模型可用后翻译在本地运行。
-- 配置改变或服务结束时关闭旧 `Translator`，并通过会话代次丢弃迟到回调。
+- 公共服务只依赖 `TranslationBackend` 接口，具体实现由 edition source set 提供。
+- Lite 的固定路由是 `en→zh` 和 `ja→en→zh`。后者依次加载日英、英中两组
+  Bergamot 模型并级联推理；其他语对在准备阶段给出明确状态。
+- Full 使用 HY-MT2 1.8B Q4_K_M，通过 llama.cpp 把所选源语言直接翻译为简体
+  中文。该后端及 Full 应用标签均为 **HY-MT2 Q4 Experimental**。
+- 两个后端都把模型 URL 固定到明确 revision，并校验预期大小与 SHA-256。
+  模型按需下载到 `noBackupFilesDir/models/...`，APK/AAB 只包含对应 native
+  runtime，不包含 Bergamot 翻译权重或 HY-MT2 GGUF。
+- 模型下载需要 `INTERNET`；校验通过后，OCR 文本和翻译推理均留在设备端。
+- 配置改变或服务结束时关闭旧后端，并通过会话代次丢弃迟到回调。
+- ML Kit Translate 的适配器和依赖只供 `benchmark` 基线，不参与 v0.2.0 的
+  Lite/Full 运行时。
+
+后续 Online edition 的候选链路、密钥存储与请求调度见
+[`ONLINE_TRANSLATION_DESIGN.md`](ONLINE_TRANSLATION_DESIGN.md)。该文档是后续
+版本设计输入，Online source set、HTTP 客户端和远程 LLM 请求均不属于 v0.2.0
+运行时或发布产物。
 
 ### 3.4 悬浮层
 
@@ -163,9 +196,9 @@ stateDiagram-v2
 
 - 不写入截图，不记录 OCR/译文历史，不上传屏幕内容。
 - 翻译模型按需下载；项目代码不把屏幕图像、OCR 原文或译文发送到项目服务器。
-- ML Kit SDK 仍可能传输设备/应用信息、每次安装标识、配置语言对与诊断指标，详见
-  [`PRIVACY.md`](../PRIVACY.md) 和 Google 的
-  [ML Kit Android 数据披露](https://developers.google.com/ml-kit/android-data-disclosure)。
+- v0.2.0 Lite/Full Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
+  `benchmark` 变体中用于基线测量。各 edition 的数据边界见
+  [`PRIVACY.md`](../PRIVACY.md)。
 - `FLAG_SECURE`、DRM、工作资料策略保护的窗口可能是黑屏或空白，视为系统拒绝捕获，而不是 OCR 故障。
 - 投影回调、权限撤销、显示尺寸变化、OCR/翻译失败都应转为可见状态并停止当前会话，避免“通知仍在但实际不工作”。
 - 进程被 HyperOS 回收后不自动重建捕获；用户重新打开应用并再次确认系统授权。
@@ -184,6 +217,10 @@ androidx.appcompat:appcompat             1.7.1
 com.google.android.material:material     1.14.0
 com.microsoft.onnxruntime:android        1.26.0
 PP-OCRv6 small det/rec ONNX              pinned + SHA-256 verified
-com.google.mlkit:translate               17.0.3
-benchmark: com.google.mlkit:text-*       16.0.1
+Lite: Bergamot native runner             pinned + SHA-256 verified
+Lite: Bergamot en-zh / ja-en / en-zh     runtime download + SHA-256 verified
+Full: llama-android / llama.cpp           HY-MT2 Q4 Experimental runtime
+Full: HY-MT2-1.8B-Q4_K_M.gguf            runtime download + SHA-256 verified
+benchmark: com.google.mlkit:translate     17.0.3
+benchmark: com.google.mlkit:text-*        16.0.1
 ```
