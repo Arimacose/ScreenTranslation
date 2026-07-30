@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           sdkmanager \
             "platforms;android-36" \
-            "platforms;android-37" \
+            "platforms;android-37.0" \
             "build-tools;$ANDROID_BUILD_TOOLS" \
             "ndk;$BERGAMOT_NDK" \
             "ndk;$HYMT2_NDK" \
