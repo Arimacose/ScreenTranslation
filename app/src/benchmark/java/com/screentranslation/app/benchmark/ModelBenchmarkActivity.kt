@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.Debug
 import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
@@ -56,21 +57,59 @@ class ModelBenchmarkActivity : Activity() {
                 val outputDirectory = checkNotNull(getExternalFilesDir(null))
                     .resolve(OUTPUT_DIRECTORY)
                     .apply { mkdirs() }
-                outputDirectory.resolve(DONE_FILE).delete()
-                outputDirectory.resolve(ERROR_FILE).delete()
+                val translationOnly = intent.getBooleanExtra(
+                    EXTRA_TRANSLATION_ONLY,
+                    false,
+                )
+                val translationSource = intent.getStringExtra(
+                    EXTRA_SOURCE_LANGUAGE,
+                )?.trim()?.lowercase() ?: SOURCE_LANGUAGE
+                val translationTarget = intent.getStringExtra(
+                    EXTRA_TARGET_LANGUAGE,
+                )?.trim()?.lowercase() ?: TARGET_LANGUAGE
+                val doneFile = if (translationOnly) {
+                    translationDoneFile(translationSource, translationTarget)
+                } else {
+                    DONE_FILE
+                }
+                val errorFile = if (translationOnly) {
+                    translationErrorFile(translationSource, translationTarget)
+                } else {
+                    ERROR_FILE
+                }
+                outputDirectory.resolve(doneFile).delete()
+                outputDirectory.resolve(errorFile).delete()
 
                 runCatching {
-                    runBenchmark(outputDirectory)
+                    if (translationOnly) {
+                        runTranslationOnlyBenchmark(
+                            outputDirectory,
+                            translationSource,
+                            translationTarget,
+                        )
+                    } else {
+                        runBenchmark(outputDirectory)
+                    }
                 }.onSuccess {
-                    outputDirectory.resolve(DONE_FILE).writeText("ok\n")
+                    outputDirectory.resolve(doneFile).writeText("ok\n")
                     Log.i(
                         TAG,
-                        "Benchmark complete: " +
-                            "${outputDirectory.resolve(BASELINE_RESULT_FILE)}, " +
-                            outputDirectory.resolve(PP_OCR_RESULT_FILE),
+                        if (translationOnly) {
+                            "Translation benchmark complete: " +
+                                outputDirectory.resolve(
+                                    translationResultFile(
+                                        translationSource,
+                                        translationTarget,
+                                    ),
+                                )
+                        } else {
+                            "Benchmark complete: " +
+                                "${outputDirectory.resolve(BASELINE_RESULT_FILE)}, " +
+                                outputDirectory.resolve(PP_OCR_RESULT_FILE)
+                        },
                     )
                 }.onFailure { error ->
-                    outputDirectory.resolve(ERROR_FILE).writeText(
+                    outputDirectory.resolve(errorFile).writeText(
                         error.stackTraceToString(),
                     )
                     Log.e(TAG, "Benchmark failed", error)
@@ -114,6 +153,335 @@ class ModelBenchmarkActivity : Activity() {
         } finally {
             translationEngine?.close()
         }
+    }
+
+    private fun runTranslationOnlyBenchmark(
+        outputDirectory: File,
+        sourceLanguage: String,
+        targetLanguage: String,
+    ) {
+        val repetitions = intent.getIntExtra(
+            EXTRA_TRANSLATION_REPETITIONS,
+            REPETITIONS,
+        )
+        require(repetitions in 1..MAX_TRANSLATION_REPETITIONS) {
+            "$EXTRA_TRANSLATION_REPETITIONS must be between 1 and " +
+                MAX_TRANSLATION_REPETITIONS
+        }
+        val fixtureSuite = loadTranslationFixtureSuite(
+            sourceLanguage,
+            targetLanguage,
+        )
+        val memoryBeforeEngine = processMemory()
+        val translationEngine = TranslationEngine(sourceLanguage, targetLanguage)
+        try {
+            val memoryAfterClient = processMemory()
+            val preparationStarted = SystemClock.elapsedRealtimeNanos()
+            awaitPreparation(translationEngine)
+            val preparationLatencyMs = elapsedMilliseconds(preparationStarted)
+            val memoryAfterPreparation = processMemory()
+
+            val warmup = awaitTranslation(
+                translationEngine,
+                if (sourceLanguage == "ja") {
+                    "これはウォームアップ用の文です。"
+                } else {
+                    "Warm-up sentence."
+                },
+            )
+            val memoryAfterWarmup = processMemory()
+
+            val cases = JSONArray()
+            fixtureSuite.cases.forEach { fixture ->
+                val rawLatencies = mutableListOf<Double>()
+                val rawOutputs = mutableListOf<String>()
+                repeat(repetitions) {
+                    val measurement = awaitTranslation(
+                        translationEngine,
+                        fixture.source,
+                    )
+                    rawOutputs += measurement.value
+                    rawLatencies += measurement.latencyMs
+                }
+                check(rawOutputs.distinct().size == 1) {
+                    "ML Kit raw output changed between repetitions: ${fixture.id}"
+                }
+
+                val plan = ClauseSplitter.plan(listOf(fixture.source))
+                val pipelineLatencies = mutableListOf<Double>()
+                val pipelines = mutableListOf<PlanMeasurement>()
+                repeat(repetitions) {
+                    val pipeline = awaitPlan(translationEngine, plan)
+                    pipelines += pipeline
+                    pipelineLatencies += pipeline.latencyMs
+                }
+                check(
+                    pipelines
+                        .map { measurement ->
+                            measurement.output to measurement.partOutputs
+                        }
+                        .distinct()
+                        .size == 1,
+                ) {
+                    "ML Kit pipeline output changed between repetitions: ${fixture.id}"
+                }
+                val pipeline = pipelines.first()
+
+                cases.put(
+                    JSONObject()
+                        .put("id", fixture.id)
+                        .put("source_text", fixture.source)
+                        .put(
+                            "reference_translation",
+                            fixture.referenceTranslations.first(),
+                        )
+                        .put(
+                            "reference_translations",
+                            JSONArray(fixture.referenceTranslations),
+                        )
+                        .put("category", fixture.category)
+                        .put("tags", JSONArray(fixture.tags))
+                        .put("risk", fixture.risk)
+                        .put("provenance", fixture.provenance)
+                        .put(
+                            "critical_checks",
+                            JSONArray(fixture.criticalChecks.toString()),
+                        )
+                        .put("translation_scored", fixture.translationScored)
+                        .put(
+                            "ocr",
+                            JSONObject()
+                                .put("output_text", fixture.source)
+                                .put("blocks", JSONArray(listOf(fixture.source)))
+                                .put("latencies_ms", JSONArray(listOf(0.0)))
+                                .put("median_latency_ms", 0.0),
+                        )
+                        .put(
+                            "translation_raw",
+                            JSONObject()
+                                .put("output_text", rawOutputs.first())
+                                .put(
+                                    "latencies_ms",
+                                    JSONArray(rawLatencies),
+                                )
+                                .put(
+                                    "median_latency_ms",
+                                    median(rawLatencies),
+                                ),
+                        )
+                        .put(
+                            "translation_pipeline",
+                            JSONObject()
+                                .put("parts", JSONArray(pipeline.parts))
+                                .put(
+                                    "part_outputs",
+                                    JSONArray(pipeline.partOutputs),
+                                )
+                                .put("output_text", pipeline.output)
+                                .put(
+                                    "latencies_ms",
+                                    JSONArray(pipelineLatencies),
+                                )
+                                .put(
+                                    "median_latency_ms",
+                                    median(pipelineLatencies),
+                                ),
+                        ),
+                )
+            }
+
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            val result = JSONObject()
+                .put("schema_version", 1)
+                .put("generated_at", Instant.now().toString())
+                .put(
+                    "device",
+                    JSONObject()
+                        .put("manufacturer", Build.MANUFACTURER)
+                        .put("model", Build.MODEL)
+                        .put("android", Build.VERSION.RELEASE)
+                        .put("sdk", Build.VERSION.SDK_INT)
+                        .put("display_build", Build.DISPLAY),
+                )
+                .put(
+                    "app",
+                    JSONObject()
+                        .put("package", packageName)
+                        .put("version_name", packageInfo.versionName)
+                        .put("version_code", packageInfo.longVersionCode),
+                )
+                .put(
+                    "engines",
+                    JSONObject()
+                        .put("ocr", "pass-through gold source (translation-only)")
+                        .put("translation", "ML Kit Translate 17.0.3")
+                        .put("source_language", sourceLanguage)
+                        .put("target_language", targetLanguage),
+                )
+                .put(
+                    "method",
+                    JSONObject()
+                        .put("translation_only", true)
+                        .put("translation_repetitions", repetitions)
+                        .put("fixture_schema_version", fixtureSuite.schemaVersion)
+                        .put("fixture_suite", fixtureSuite.id)
+                        .put(
+                            "latency_clock",
+                            "SystemClock.elapsedRealtimeNanos",
+                        )
+                        .put(
+                            "preparation_latency_ms",
+                            preparationLatencyMs,
+                        )
+                        .put("warmup_latency_ms", warmup.latencyMs)
+                        .put(
+                            "memory",
+                            JSONObject()
+                                .put("before_engine", memoryBeforeEngine)
+                                .put("after_client", memoryAfterClient)
+                                .put(
+                                    "after_preparation",
+                                    memoryAfterPreparation,
+                                )
+                                .put("after_warmup", memoryAfterWarmup)
+                                .put("after_suite", processMemory()),
+                        ),
+                )
+                .put("cases", cases)
+
+            outputDirectory.resolve(
+                translationResultFile(sourceLanguage, targetLanguage),
+            ).writeText(
+                result.toString(2),
+                Charsets.UTF_8,
+            )
+        } finally {
+            translationEngine.close()
+        }
+    }
+
+    private fun loadTranslationFixtureSuite(
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): TranslationFixtureSuite {
+        require(sourceLanguage.matches(LANGUAGE_CODE_PATTERN)) {
+            "Invalid source language code: $sourceLanguage"
+        }
+        require(targetLanguage.matches(LANGUAGE_CODE_PATTERN)) {
+            "Invalid target language code: $targetLanguage"
+        }
+        val requestedSuite = intent.getStringExtra(EXTRA_FIXTURE_SUITE)?.trim()
+        val document = assets.open(TRANSLATION_FIXTURES_ASSET)
+            .bufferedReader(Charsets.UTF_8)
+            .use { reader -> JSONObject(reader.readText()) }
+        val schemaVersion = document.getInt("schema_version")
+        require(schemaVersion == TRANSLATION_FIXTURE_SCHEMA_VERSION) {
+            "Unsupported translation fixture schema: $schemaVersion"
+        }
+        val suites = document.getJSONArray("suites")
+        for (suiteIndex in 0 until suites.length()) {
+            val suite = suites.getJSONObject(suiteIndex)
+            val suiteId = suite.getString("id")
+            val matches = if (requestedSuite.isNullOrEmpty()) {
+                suite.getString("source_language") == sourceLanguage &&
+                    suite.getString("target_language") == targetLanguage
+            } else {
+                suiteId == requestedSuite
+            }
+            if (!matches) continue
+            require(suite.getString("source_language") == sourceLanguage) {
+                "Fixture suite $suiteId source language does not match $sourceLanguage"
+            }
+            require(suite.getString("target_language") == targetLanguage) {
+                "Fixture suite $suiteId target language does not match $targetLanguage"
+            }
+            val fixtureArray = suite.getJSONArray("cases")
+            val fixtures = buildList {
+                for (caseIndex in 0 until fixtureArray.length()) {
+                    val fixture = fixtureArray.getJSONObject(caseIndex)
+                    val referencesJson = fixture.getJSONArray(
+                        "reference_translations",
+                    )
+                    val references = buildList {
+                        for (referenceIndex in 0 until referencesJson.length()) {
+                            add(referencesJson.getString(referenceIndex))
+                        }
+                    }
+                    require(references.isNotEmpty()) {
+                        "Fixture ${fixture.getString("id")} has no references"
+                    }
+                    val tagsJson = fixture.optJSONArray("tags") ?: JSONArray()
+                    val tags = buildList {
+                        for (tagIndex in 0 until tagsJson.length()) {
+                            add(tagsJson.getString(tagIndex))
+                        }
+                    }
+                    add(
+                        TranslationFixture(
+                            id = fixture.getString("id"),
+                            category = fixture.getString("category"),
+                            tags = tags,
+                            risk = fixture.optString("risk", "general"),
+                            provenance = fixture.optString(
+                                "provenance",
+                                "synthetic",
+                            ),
+                            source = fixture.getString("source_text"),
+                            referenceTranslations = references,
+                            criticalChecks = fixture.optJSONArray(
+                                "critical_checks",
+                            ) ?: JSONArray(),
+                            translationScored = fixture.optBoolean(
+                                "translation_scored",
+                                true,
+                            ),
+                        ),
+                    )
+                }
+            }
+            require(fixtures.isNotEmpty()) {
+                "Fixture suite $suiteId is empty"
+            }
+            require(fixtures.map { it.id }.distinct().size == fixtures.size) {
+                "Fixture suite $suiteId contains duplicate IDs"
+            }
+            return TranslationFixtureSuite(
+                id = suiteId,
+                schemaVersion = schemaVersion,
+                cases = fixtures,
+            )
+        }
+        throw IllegalArgumentException(
+            "No translation fixture suite for $sourceLanguage-$targetLanguage" +
+                requestedSuite?.let { " with id $it" }.orEmpty(),
+        )
+    }
+
+    private fun processMemory(): JSONObject {
+        val memoryInfo = Debug.MemoryInfo()
+        Debug.getMemoryInfo(memoryInfo)
+        val runtime = Runtime.getRuntime()
+        val procStatus = File("/proc/self/status")
+            .takeIf(File::isFile)
+            ?.readLines()
+            .orEmpty()
+        fun statusKiB(name: String): Long = procStatus
+            .firstOrNull { line -> line.startsWith("$name:") }
+            ?.trim()
+            ?.split(Regex("\\s+"))
+            ?.getOrNull(1)
+            ?.toLongOrNull()
+            ?: 0L
+
+        return JSONObject()
+            .put("total_pss_kib", memoryInfo.totalPss)
+            .put("total_private_dirty_kib", memoryInfo.totalPrivateDirty)
+            .put("total_shared_dirty_kib", memoryInfo.totalSharedDirty)
+            .put("rss_kib", statusKiB("VmRSS"))
+            .put("hwm_kib", statusKiB("VmHWM"))
+            .put("java_heap_used_bytes", runtime.totalMemory() - runtime.freeMemory())
+            .put("java_heap_total_bytes", runtime.totalMemory())
+            .put("java_heap_max_bytes", runtime.maxMemory())
     }
 
     private fun runSuite(
@@ -464,6 +832,24 @@ class ModelBenchmarkActivity : Activity() {
         val monospace: Boolean = false,
     )
 
+    private data class TranslationFixtureSuite(
+        val id: String,
+        val schemaVersion: Int,
+        val cases: List<TranslationFixture>,
+    )
+
+    private data class TranslationFixture(
+        val id: String,
+        val category: String,
+        val tags: List<String>,
+        val risk: String,
+        val provenance: String,
+        val source: String,
+        val referenceTranslations: List<String>,
+        val criticalChecks: JSONArray,
+        val translationScored: Boolean,
+    )
+
     private companion object {
         const val TAG = "ModelBenchmark"
         const val OUTPUT_DIRECTORY = "model-benchmark"
@@ -472,15 +858,44 @@ class ModelBenchmarkActivity : Activity() {
         const val DONE_FILE = "baseline-mlkit.done"
         const val ERROR_FILE = "baseline-mlkit-error.txt"
         const val EXTRA_INCLUDE_TRANSLATION = "include_translation"
+        const val EXTRA_TRANSLATION_ONLY = "translation_only"
+        const val EXTRA_TRANSLATION_REPETITIONS = "translation_repetitions"
+        const val EXTRA_SOURCE_LANGUAGE = "source_language"
+        const val EXTRA_TARGET_LANGUAGE = "target_language"
+        const val EXTRA_FIXTURE_SUITE = "fixture_suite"
         const val SOURCE_LANGUAGE = "en"
         const val TARGET_LANGUAGE = "zh"
         const val REPETITIONS = 3
+        const val MAX_TRANSLATION_REPETITIONS = 100
+        const val TRANSLATION_FIXTURES_ASSET = "translation-fixtures.json"
+        const val TRANSLATION_FIXTURE_SCHEMA_VERSION = 2
         const val MODEL_TIMEOUT_SECONDS = 300L
         const val INFERENCE_TIMEOUT_SECONDS = 60L
         const val PADDING_PX = 64
         const val MINIMUM_HEIGHT_PX = 420
         const val LINE_SPACING_EXTRA_PX = 10f
         const val LINE_SPACING_MULTIPLIER = 1.08f
+
+        val LANGUAGE_CODE_PATTERN = Regex("[a-z]{2,3}(?:-[a-z0-9]+)*")
+
+        fun translationResultFile(source: String, target: String): String =
+            "translation-mlkit-${translationPairSlug(source, target)}-android.json"
+
+        fun translationDoneFile(source: String, target: String): String =
+            "translation-mlkit-${translationPairSlug(source, target)}.done"
+
+        fun translationErrorFile(source: String, target: String): String =
+            "translation-mlkit-${translationPairSlug(source, target)}-error.txt"
+
+        private fun translationPairSlug(source: String, target: String): String {
+            require(source.matches(LANGUAGE_CODE_PATTERN)) {
+                "Invalid source language code: $source"
+            }
+            require(target.matches(LANGUAGE_CODE_PATTERN)) {
+                "Invalid target language code: $target"
+            }
+            return "$source-$target"
+        }
 
         val FIXTURES = listOf(
             Fixture(
@@ -538,6 +953,38 @@ class ModelBenchmarkActivity : Activity() {
                 referenceTranslation = "版本 v0.1.0——构建号 37；金额：¥12,345.67；日期：2026-07-31。",
                 textSizePx = 32f,
                 monospace = true,
+            ),
+            Fixture(
+                id = "dynamic_alpha",
+                source = "The translation service is processing sample alpha while the " +
+                    "target application remains visible.",
+                referenceTranslation = "翻译服务正在处理 alpha 样本，同时目标应用仍保持可见。",
+                textSizePx = 36f,
+            ),
+            Fixture(
+                id = "dynamic_beta",
+                source = "The translation service is processing sample beta and remains " +
+                    "alive during this measurement.",
+                referenceTranslation = "翻译服务正在处理 beta 样本，并在本次测量期间保持运行。",
+                textSizePx = 36f,
+            ),
+            Fixture(
+                id = "dickens_611",
+                source = "It was the best of times, it was the worst of times, it was the " +
+                    "age of wisdom, it was the age of foolishness, it was the epoch of " +
+                    "belief, it was the epoch of incredulity, it was the season of Light, " +
+                    "it was the season of Darkness, it was the spring of hope, it was the " +
+                    "winter of despair, we had everything before us, we had nothing before " +
+                    "us, we were all going direct to Heaven, we were all going direct the " +
+                    "other way—in short, the period was so far like the present period, " +
+                    "that some of its noisiest authorities insisted on its being received, " +
+                    "for good or for evil, in the superlative degree of comparison only.",
+                referenceTranslation = "这是最好的时代，也是最坏的时代；这是智慧的时代，也是愚蠢的时代；" +
+                    "这是信仰的时期，也是怀疑的时期；这是光明的季节，也是黑暗的季节；" +
+                    "这是希望之春，也是绝望之冬；我们面前应有尽有，我们面前一无所有；" +
+                    "我们都将直上天堂，我们都将直下地狱——简而言之，那个时代与现在如此相似，" +
+                    "以至于当时最喧嚣的权威坚持认为，无论好坏，都只能用最高级来形容它。",
+                textSizePx = 27f,
             ),
         )
     }

@@ -66,6 +66,19 @@ object ClauseSplitter {
             pieces += rest.substring(0, cut.first).trim()
             rest = rest.substring(cut.second).trim()
         }
+
+        // Once a long CJK paragraph has needed splitting, keep the remaining
+        // complete sentences separate even when their combined tail is shorter
+        // than MAX_UNSPLIT_LENGTH. This avoids feeding two independent Japanese
+        // sentences back to the translator as one unit, while the early return
+        // above still leaves genuinely short input untouched.
+        if (pieces.isNotEmpty()) {
+            while (true) {
+                val cut = findCjkSentenceCut(rest) ?: break
+                pieces += rest.substring(0, cut.first).trim()
+                rest = rest.substring(cut.second).trim()
+            }
+        }
         if (rest.isNotEmpty()) pieces += rest
 
         // Nothing usable was found; hand back the original rather than a
@@ -78,7 +91,7 @@ object ClauseSplitter {
      * connector leaves both sides substantial enough to translate.
      */
     private fun findCut(text: String): Pair<Int, Int>? {
-        var best: Pair<Int, Int>? = null
+        var best = findCjkSentenceCut(text)
 
         for (marker in MARKERS) {
             val at = text.indexOf(marker, startIndex = MIN_CLAUSE_LENGTH, ignoreCase = true)
@@ -92,6 +105,23 @@ object ClauseSplitter {
             if (text.length - rightStart < MIN_CLAUSE_LENGTH) continue
 
             if (best == null || at < best.first) best = at to rightStart
+        }
+        return best
+    }
+
+    private fun findCjkSentenceCut(text: String): Pair<Int, Int>? {
+        var best: Pair<Int, Int>? = null
+        for (terminator in CJK_SENTENCE_TERMINATORS) {
+            val at = text.indexOf(
+                terminator,
+                startIndex = MIN_CLAUSE_LENGTH,
+            )
+            if (at < 0) continue
+            val boundary = at + terminator.length
+            if (text.length - boundary < MIN_CLAUSE_LENGTH) continue
+            if (best == null || boundary < best.first) {
+                best = boundary to boundary
+            }
         }
         return best
     }
@@ -112,6 +142,9 @@ object ClauseSplitter {
         ", and ", ", but ", ", so ", ", or ", ", yet ",
         " and ", " but ", " so ", " yet ",
     )
+
+    /** Preserve Japanese/CJK sentence punctuation on the left-hand unit. */
+    private val CJK_SENTENCE_TERMINATORS = listOf("。", "！", "？")
 
     /** Below this the model was never in trouble, so leave the text intact. */
     private const val MAX_UNSPLIT_LENGTH = 90

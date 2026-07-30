@@ -2,6 +2,83 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
+## 2026-07-31 v0.2.0 Lite / Full 签名 Release 验收
+
+### 构建与发布候选
+
+| 项目 | Lite · Bergamot | Full · HY-MT2 Q4 Experimental |
+|---|---|---|
+| 包名 / 版本 | `com.screentranslation.app` / `0.2.0-lite` | `com.screentranslation.app.full` / `0.2.0-full` |
+| APK 大小 | 46,232,307 B | 58,235,784 B |
+| APK SHA-256 | `AA1DA5694D86239A79BE91563E4E30D84898EEA8DF8F4A45DEC0907DE893DB6E` | `5325347B5A2A4B637F4159930A0B57FE93EF20136BB62D36F0F994EE6A6E8DC8` |
+| JVM 测试 | 67/67 | 68/68 |
+| Release Lint | 0 error / 7 warning | 0 error / 7 warning |
+| 运行中 PSS | 206,235 KiB（英中）；185,367 KiB（日中） | 2,314,830 KiB |
+
+两份 Release APK 均由 v0.1.0 的发布证书签名，证书 SHA-256 为
+`B58712578045532158D45B847AB7ED1BE041236B5A7A0BD1A1DB5480FBE0439F`，
+并通过 APK Signature Scheme v2、16 KiB page-aware zipalign、ABI、OCR
+资产和翻译后端隔离检查。两份 AAB 也通过 JAR 签名验证。干净构建共执行
+135 项测试，failure、error、skip 均为 0。
+
+目标机仍为 Xiaomi 15 Pro `2410DPN6CC` / `haotian`，Android 16 / API 36，
+HyperOS `OS3.0.304.0.WOBCNXM`，显示为 `1440 × 3200 @ 600 dpi`。
+
+### Lite：签名升级、HyperOS Issue #26 与 Bergamot
+
+- 先安装已发布且证书匹配的 v0.1.0 Release，再用 `adb install -r` 原位升级；
+  `versionCode` 从 1 变为 2，`firstInstallTime=2026-07-31 00:35:26`
+  保持不变。
+- 真正在 HyperOS 应用详情中把省电策略从“智能限制后台运行”切换到
+  “无限制”，返回应用后的状态为：
+  `系统后台限制：未检测到；HyperOS「无限制」状态请以设置页为准`。
+  旧的“未放行”误报未再出现，Issue #26 的 ROM 路径验收通过。
+- 英语→简体中文直模和日语→英语→简体中文级联均完成首次下载、长度/SHA-256
+  校验，并显示“模型已就绪”。
+- 两条路线都完成了真实
+  `MediaProjection → PP-OCRv6-small → Bergamot → 悬浮窗` 闭环；
+  停止后服务、投影和 VirtualDisplay 均归零。
+- 日中使用禁止浏览器自动翻译的纯日文长句复测。OCR 原文保持日语，但级联
+  译文仍出现明显语义与语序退化；因此该路线通过的是部署和链路验收，翻译
+  质量作为 Lite 的已知限制保留，不与 Full 的质量结论混用。
+
+HyperOS 在本次通过 ADB 注入的权限基线上进行包替换时重置了通知和悬浮窗
+状态；重新按应用内入口授权后两项均显示“已授予”。这次现象不用于推断真实
+用户手工授权的升级保留行为，后续发布回归应继续单独检查。
+
+### Full：HY-MT2 Q4 Experimental
+
+- 最终安装包为非 debuggable Release；应用标题、副标题、橙色 Banner、
+  通知和结果 attribution 均明确标注 `Full · HY-MT2 Q4 Experimental`。
+- 固定模型为 `Hy-MT2-1.8B-Q4_K_M.gguf`，大小
+  1,133,080,448 B，SHA-256
+  `dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699`。
+  模型先写入同证书 debuggable 包的私有目录并复核，再由正式 Release 原位
+  覆盖；Release 自检再次执行应用内校验和实际 llama.cpp 推理。
+- 固定英文长句自检两次通过，耗时分别为 `22,579 ms` 和 `20,724 ms`；
+  第二次在五轮快速启停之后执行，译文仍完整：
+
+```text
+虽然委员会承认该提议能在短期内降低成本，但还是推迟了投票，
+因为没有人能解释该系统如何保护那些被误标记的用户。
+```
+
+- 服务运行时自检按钮为 disabled；五轮快速启停中每轮前台服务和
+  MediaProjection 均建立，每轮停止后两者均归零。
+- 在不含标题或浏览器翻译干扰的英文长句页上，完整识屏链路的展开译文为：
+
+```text
+尽管委员会承认该提案能在短期内降低成本，但还是推迟了投票。
+因为没有人能解释，这个系统如何保护那些被误标记的账户的用户。
+```
+
+- 运行中 PSS 为 2,314,830 KiB，低于本轮 2.7 GiB 门槛；该内存成本与约
+  20 秒长句耗时也是 Full 保持 Experimental 标识的原因。
+
+本轮保存的全部 logcat 中，`FATAL EXCEPTION`、应用 ANR、
+`OutOfMemoryError` 和 native fatal signal 命中均为 0。验收完成后本地
+HTTP 夹具服务与 ADB reverse 已清理。
+
 ## 2026-07-29 PP-OCRv6 生产包验收
 
 ### 本机构建与包检查

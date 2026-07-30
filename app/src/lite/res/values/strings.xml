@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ScreenTranslation Lite · 识屏翻译</string>
+    <string name="screen_title">ScreenTranslation Lite</string>
+    <string name="screen_subtitle">Android 16 · PP-OCRv6-small + Bergamot 本地翻译</string>
+
+    <string name="section_model">Bergamot 离线模型</string>
+    <string name="model_explanation">Lite 版使用 Firefox Translations / Bergamot。当前提供英语直译中文、日语经英语级联译中文；其他语对会显示明确提示。</string>
+    <string name="prepare_models">准备 Bergamot 模型</string>
+    <string name="model_not_prepared">尚未准备 Bergamot 模型</string>
+    <string name="model_progress_preparing">正在准备 Bergamot 模型…</string>
+    <string name="model_progress_downloading">正在下载 Bergamot：%1$s / %2$s（%3$d%%）</string>
+    <string name="model_progress_verifying">正在校验 Bergamot 模型 SHA-256…</string>
+    <string name="model_progress_loading_runtime">正在启动 Bergamot 本地运行时…</string>
+
+    <string name="capture_notification_title">ScreenTranslation Lite 正在运行</string>
+    <string name="capture_notification_text">PP-OCRv6-small + Bergamot 正在本机识别并翻译</string>
+    <string name="translation_attribution">Bergamot · On-device · Lite</string>
+</resources>

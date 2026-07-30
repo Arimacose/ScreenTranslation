@@ -30,6 +30,18 @@
             android:textColor="?android:attr/textColorSecondary" />
 
         <TextView
+            android:id="@+id/text_experimental_banner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="#FFFFE0B2"
+            android:padding="12dp"
+            android:text="@string/experimental_banner"
+            android:textColor="#FF7A2E00"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
@@ -136,6 +148,26 @@
             android:text="@string/model_not_prepared"
             android:textAppearance="?android:attr/textAppearanceSmall"
             android:textColor="?android:attr/textColorSecondary" />
+
+        <Button
+            android:id="@+id/button_experimental_smoke_test"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/experimental_smoke_test"
+            android:textAllCaps="false"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/text_experimental_smoke_test_result"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:accessibilityLiveRegion="polite"
+            android:text="@string/experimental_smoke_test_not_run"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="?android:attr/textColorSecondary"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="match_parent"

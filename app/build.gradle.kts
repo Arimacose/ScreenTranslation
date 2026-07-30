@@ -135,6 +135,38 @@ val preparePpOcrv6Assets =
         )
     }
 
+val bergamotRunnerFile =
+    layout.projectDirectory.file(
+        "src/lite/jniLibs/arm64-v8a/libbergamot_runner.so",
+    )
+val verifyBergamotRunner = tasks.register("verifyBergamotRunner") {
+    group = "verification"
+    description = "Verifies the pinned Bergamot Lite ARM64 runner."
+    inputs.file(bergamotRunnerFile)
+    doLast {
+        val runner = bergamotRunnerFile.asFile
+        check(runner.isFile && runner.length() == 8_416_304L) {
+            "Missing or invalid Bergamot Lite runner: $runner"
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        runner.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val hash = digest.digest().joinToString("") { byte -> "%02X".format(byte) }
+        check(
+            hash ==
+                "40A764D5FBCD8B18C6C0BEF6BCC6EF38F25BEB6F2E6DEFCFA5C00D7E54407F75",
+        ) {
+            "Bergamot Lite runner SHA-256 mismatch: $hash"
+        }
+    }
+}
+
 val releaseSigningPropertiesFile = rootProject.file("keystore.properties")
 val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
 val releaseSigningEnvironment = mapOf(
@@ -173,8 +205,10 @@ android {
         applicationId = "com.screentranslation.app"
         minSdk = 36
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+        buildConfigField("boolean", "BERGAMOT_LITE", "false")
+        buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -195,6 +229,33 @@ android {
                 keyPassword = releaseSigningValues.getValue("keyPassword")
             }
         }
+    }
+
+    flavorDimensions += "edition"
+    productFlavors {
+        create("lite") {
+            dimension = "edition"
+            versionNameSuffix = "-lite"
+            buildConfigField("boolean", "BERGAMOT_LITE", "true")
+        }
+        create("full") {
+            dimension = "edition"
+            applicationIdSuffix = ".full"
+            versionNameSuffix = "-full"
+            buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "true")
+        }
+    }
+
+    sourceSets {
+        getByName("main").assets.srcDir(
+            rootProject.file("third_party/licenses/common"),
+        )
+        getByName("lite").assets.srcDir(
+            rootProject.file("third_party/licenses/lite"),
+        )
+        getByName("full").assets.srcDir(
+            rootProject.file("third_party/licenses/full"),
+        )
     }
 
     buildTypes {
@@ -227,6 +288,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     androidResources {
@@ -234,6 +296,12 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // The Bergamot runner is an executable PIE stored in nativeLibraryDir.
+            // Legacy packaging makes PackageManager extract it with execute bits.
+            useLegacyPackaging = true
+            keepDebugSymbols += "**/libbergamot_runner.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -261,6 +329,12 @@ androidComponents {
     }
 }
 
+tasks.configureEach {
+    if (name.startsWith("mergeLite") && name.endsWith("NativeLibs")) {
+        dependsOn(verifyBergamotRunner)
+    }
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.activity:activity-ktx:1.13.0")
@@ -270,8 +344,11 @@ dependencies {
     // Production OCR: pinned PP-OCRv6 ONNX assets with an on-device ARM64 runtime.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.26.0")
 
-    // Translation models are downloaded on demand, then run on device.
-    implementation("com.google.mlkit:translate:17.0.3")
+    // ML Kit Translate remains isolated to the benchmark build type.
+    add("benchmarkImplementation", "com.google.mlkit:translate:17.0.3")
+
+    // The Full edition contains the Hy-MT2 Q4 llama.cpp runtime.
+    add("fullImplementation", project(":llama-android"))
 
     // ML Kit OCR remains benchmark-only as the v0.1.0 comparison baseline.
     add("benchmarkImplementation", "com.google.mlkit:text-recognition:16.0.1")

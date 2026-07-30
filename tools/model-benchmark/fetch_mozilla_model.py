@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Fetch the pinned Firefox Translations English-to-Chinese model.
+"""Fetch and verify pinned Firefox Translations models used by the benchmark.
 
-The model stays under an ignored build directory. Downloads and decompressed
+Models stay under ignored build directories. Downloads and decompressed
 artifacts are checked before publication so a partial or changed upstream file
 never becomes benchmark input.
 """
@@ -23,14 +23,10 @@ REGISTRY_URL = (
     "https://storage.googleapis.com/"
     "moz-fx-translations-data--303e-prod-translations-data/db/models.json"
 )
-MODEL_BASE_URL = (
+DATA_BASE_URL = (
     "https://storage.googleapis.com/"
     "moz-fx-translations-data--303e-prod-translations-data/"
-    "models/en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/"
-    "exported/"
 )
-MODEL_SNAPSHOT = "2026-07-28T00:37:27Z"
-MODEL_DIRECTORY = "mozilla-en-zh-base-memory-2026-07-28"
 CHUNK_SIZE = 1024 * 1024
 
 
@@ -44,7 +40,25 @@ class CompressedAsset:
     output_sha256: str
 
 
-ASSETS = (
+@dataclass(frozen=True)
+class ModelProfile:
+    pair: str
+    source_language: str
+    target_language: str
+    architecture: str
+    release_status: str
+    model_snapshot: str
+    model_directory: str
+    model_base_url: str
+    assets: tuple[CompressedAsset, ...]
+    metadata_size: int
+    metadata_sha256: str
+    model_name: str
+    vocab_names: tuple[str, str]
+    shortlist_name: str
+
+
+EN_ZH_ASSETS = (
     CompressedAsset(
         compressed_name="model.enzh.intgemm.alphas.bin.gz",
         compressed_size=33_375_922,
@@ -94,11 +108,92 @@ ASSETS = (
         ),
     ),
 )
-METADATA_NAME = "metadata.json"
-METADATA_SIZE = 2_176
-METADATA_SHA256 = (
-    "c39fc5948d0905bbc825ea8bd85c2ee7d43df3e1206d91c2f2c094c6741c096c"
+
+JA_EN_ASSETS = (
+    CompressedAsset(
+        compressed_name="model.jaen.intgemm.alphas.bin.gz",
+        compressed_size=32_577_435,
+        compressed_sha256=(
+            "ae56ffbb5556d8e4240b2f208a7c7a2449a4b627ac9d673981ed29eaadaab79d"
+        ),
+        output_name="model.jaen.intgemm.alphas.bin",
+        output_size=43_977_787,
+        output_sha256=(
+            "3a603e20bfe1be86071913f9e23ab5129075bc0a8490151020ac4821e4f17302"
+        ),
+    ),
+    CompressedAsset(
+        compressed_name="vocab.jaen.spm.gz",
+        compressed_size=746_616,
+        compressed_sha256=(
+            "12d693f5055525d5cc1e133c8c1b8ed787c77b9bb797400d9a14382ac69c1236"
+        ),
+        output_name="vocab.jaen.spm",
+        output_size=1_443_222,
+        output_sha256=(
+            "5cb217758bae05877bb3f0c2f612e4e7c1e4cb03c10db11f4a47098d7ae62919"
+        ),
+    ),
+    CompressedAsset(
+        compressed_name="lex.50.50.jaen.s2t.bin.gz",
+        compressed_size=4_819_610,
+        compressed_sha256=(
+            "438152f5ccd982edb43e88ef51305e3ae7c7b66ee5c20a8fa425e9f1822f9b9b"
+        ),
+        output_name="lex.50.50.jaen.s2t.bin",
+        output_size=9_348_172,
+        output_sha256=(
+            "525f412f0d210536c2933c78ae395fa0bf2b5ee6cc5dda61ebc2e79410ebaee4"
+        ),
+    ),
 )
+
+PROFILES = {
+    "en-zh": ModelProfile(
+        pair="en-zh",
+        source_language="en",
+        target_language="zh",
+        architecture="base-memory",
+        release_status="Release Android",
+        model_snapshot="2026-07-28T00:37:27Z",
+        model_directory="mozilla-en-zh-base-memory-2026-07-28",
+        model_base_url=(
+            DATA_BASE_URL
+            + "models/en-zh/"
+            + "llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g/exported/"
+        ),
+        assets=EN_ZH_ASSETS,
+        metadata_size=2_176,
+        metadata_sha256=(
+            "c39fc5948d0905bbc825ea8bd85c2ee7d43df3e1206d91c2f2c094c6741c096c"
+        ),
+        model_name="model.enzh.intgemm.alphas.bin",
+        vocab_names=("srcvocab.enzh.spm", "trgvocab.enzh.spm"),
+        shortlist_name="lex.50.50.enzh.s2t.bin",
+    ),
+    "ja-en": ModelProfile(
+        pair="ja-en",
+        source_language="ja",
+        target_language="en",
+        architecture="base-memory",
+        release_status="Release Android",
+        model_snapshot="2026-07-29T00:51:22Z",
+        model_directory="mozilla-ja-en-base-memory-2026-07-29",
+        model_base_url=(
+            DATA_BASE_URL
+            + "models/ja-en/"
+            + "cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA/exported/"
+        ),
+        assets=JA_EN_ASSETS,
+        metadata_size=2_181,
+        metadata_sha256=(
+            "67dca5aa19ebc57de9cc588648a1e6948a8772d8fbd1ac21712e8cd2c2332358"
+        ),
+        model_name="model.jaen.intgemm.alphas.bin",
+        vocab_names=("vocab.jaen.spm", "vocab.jaen.spm"),
+        shortlist_name="lex.50.50.jaen.s2t.bin",
+    ),
+}
 
 
 def sha256(path: Path) -> str:
@@ -157,19 +252,22 @@ def decompress_verified(asset: CompressedAsset, directory: Path) -> None:
     os.replace(partial, target)
 
 
-def write_config(directory: Path, beam_size: int) -> Path:
+def write_config(
+    directory: Path,
+    profile: ModelProfile,
+    beam_size: int,
+) -> Path:
     config = directory / f"decoder.bergamot-beam{beam_size}.yml"
     config.write_text(
         "\n".join(
             (
                 "relative-paths: true",
                 "models:",
-                "  - model.enzh.intgemm.alphas.bin",
+                f"  - {profile.model_name}",
                 "vocabs:",
-                "  - srcvocab.enzh.spm",
-                "  - trgvocab.enzh.spm",
+                *(f"  - {name}" for name in profile.vocab_names),
                 "shortlist:",
-                "  - lex.50.50.enzh.s2t.bin",
+                f"  - {profile.shortlist_name}",
                 "  - 50",
                 "  - 50",
                 f"beam-size: {beam_size}",
@@ -189,19 +287,19 @@ def write_config(directory: Path, beam_size: int) -> Path:
             )
         ),
         encoding="utf-8",
+        newline="\n",
     )
     return config
 
 
-def validate_metadata(path: Path) -> None:
+def validate_metadata(path: Path, profile: ModelProfile) -> None:
     metadata = json.loads(path.read_text(encoding="utf-8"))
-    expected_model_hash = ASSETS[0].output_sha256
     checks = {
-        "sourceLanguage": "en",
-        "targetLanguage": "zh",
-        "architecture": "base-memory",
-        "byteSize": ASSETS[0].output_size,
-        "hash": expected_model_hash,
+        "sourceLanguage": profile.source_language,
+        "targetLanguage": profile.target_language,
+        "architecture": profile.architecture,
+        "byteSize": profile.assets[0].output_size,
+        "hash": profile.assets[0].output_sha256,
     }
     for key, expected in checks.items():
         if metadata.get(key) != expected:
@@ -213,54 +311,65 @@ def validate_metadata(path: Path) -> None:
 def main() -> None:
     repository = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=(
-            repository
-            / "app"
-            / "build"
-            / "model-benchmark"
-            / MODEL_DIRECTORY
-        ),
-    )
+    parser.add_argument("--pair", choices=tuple(PROFILES), default="en-zh")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--beam-size", type=int, choices=(1, 4), default=4)
     args = parser.parse_args()
+    profile = PROFILES[args.pair]
 
-    output = args.output.resolve()
+    output = (
+        args.output
+        or repository
+        / "app"
+        / "build"
+        / "model-benchmark"
+        / profile.model_directory
+    ).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for asset in ASSETS:
+    for asset in profile.assets:
         download_verified(
-            url=MODEL_BASE_URL + asset.compressed_name,
+            url=profile.model_base_url + asset.compressed_name,
             target=output / asset.compressed_name,
             size=asset.compressed_size,
             expected_sha256=asset.compressed_sha256,
         )
         decompress_verified(asset, output)
 
-    metadata = output / METADATA_NAME
+    metadata = output / "metadata.json"
     download_verified(
-        url=MODEL_BASE_URL + METADATA_NAME,
+        url=profile.model_base_url + metadata.name,
         target=metadata,
-        size=METADATA_SIZE,
-        expected_sha256=METADATA_SHA256,
+        size=profile.metadata_size,
+        expected_sha256=profile.metadata_sha256,
     )
-    validate_metadata(metadata)
-    config = write_config(output, args.beam_size)
+    validate_metadata(metadata, profile)
+    config = write_config(output, profile, args.beam_size)
 
     files = sorted(
         (
-            *(output / asset.output_name for asset in ASSETS),
+            *(output / asset.output_name for asset in profile.assets),
             metadata,
             config,
         ),
         key=lambda path: path.name,
     )
     manifest = {
-        "model_snapshot": MODEL_SNAPSHOT,
+        "schema_version": 2,
+        "pair": profile.pair,
+        "source_language": profile.source_language,
+        "target_language": profile.target_language,
+        "architecture": profile.architecture,
+        "release_status": profile.release_status,
+        "model_snapshot": profile.model_snapshot,
         "registry_url": REGISTRY_URL,
-        "model_base_url": MODEL_BASE_URL,
+        "model_base_url": profile.model_base_url,
         "beam_size": args.beam_size,
+        "runtime": {
+            "model": profile.model_name,
+            "vocabs": list(profile.vocab_names),
+            "shortlist": profile.shortlist_name,
+            "config": config.name,
+        },
         "files": [
             {
                 "name": path.name,
@@ -269,21 +378,23 @@ def main() -> None:
             }
             for path in files
         ],
-        "pinned_assets": [asdict(asset) for asset in ASSETS],
+        "pinned_assets": [asdict(asset) for asset in profile.assets],
     }
     manifest_path = output / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
+        newline="\n",
     )
     print(
         json.dumps(
             {
+                "pair": profile.pair,
                 "output": str(output),
                 "config": str(config),
                 "manifest": str(manifest_path),
                 "model_assets_bytes": sum(
-                    asset.output_size for asset in ASSETS
+                    asset.output_size for asset in profile.assets
                 ),
             },
             indent=2,

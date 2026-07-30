@@ -5,18 +5,55 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-31
+
 ### Added
 
 - 增加隔离的 `benchmark` 变体、固定识屏夹具和 OCR/翻译质量评分工具。
 - 增加 PP-OCRv6 small + ONNX Runtime Android 候选实现及小米 15 Pro 真机基准。
 - 增加固定版本、校验哈希的 Firefox Translations 英中模型获取与 Bergamot 基准流程。
+- 增加 Lite edition：保留 `com.screentranslation.app`，使用 Bergamot
+  英→中直译和日→英→中级联。
+- 增加可并存安装的 Full edition：使用独立 `.full` 包名和
+  Hy-MT2 1.8B Q4_K_M，所有界面及发布资产均标记为 Experimental。
+- 增加 Hy-MT2 Q4 / 1.25-bit、ML Kit、Bergamot 多语言真机基准。
+- 增加 Online edition 的 Base URL、API Key、固定翻译提示、可取消请求、
+  Android Keystore 与隐私边界设计。
 
 ### Changed
 
 - 将 PP-OCRv6 small + ONNX Runtime Android 从隔离基准提升为 Debug/Release
   默认 OCR；官方检测/识别权重固定提交并在构建时校验 SHA-256。
 - ML Kit Text Recognition 仅保留在 `benchmark` 变体中作为 v0.1.0 对照，
-  生产包继续使用 ML Kit Translate。
+  Lite / Full 均使用 PP-OCRv6-small。
+- ML Kit Translate 退到 `benchmark` build type；Lite / Full APK 只携带各自
+  的 Bergamot 或 llama.cpp runtime。
+- 应用版本提高为 `versionCode 2` / `0.2.0-lite` / `0.2.0-full`。
+- GitHub Actions 改为分别测试、Lint、R8、签名和发布两个 edition，并验证
+  v0.1.0 证书连续性、16 KiB 对齐、包内容和 SHA-256。
+
+### Fixed
+
+- 修复 HyperOS 已在系统设置选择「无限制」，应用却因 AOSP Doze 白名单状态
+  显示“未放行”的误判。界面现在分别处理 Android 后台限制、AOSP 电源白名单
+  与 HyperOS 厂商策略。
+- 修复 Lite / Full 模型下载在完整 `.part` 文件处发送 EOF Range 并持续收到
+  HTTP 416 的恢复阻断；完整文件改为先校验后接管，损坏文件从零重下。
+- 修复 Full 中多个 Engine 竞争同一进程级 llama.cpp 状态的问题；运行时改为
+  引用计数租约，并由 JNI owner token 阻止旧实例释放新实例。
+- 为 Bergamot 子进程 READY 与翻译响应增加期限，停止时先终止进程再异步回收
+  管道，避免阻塞前台服务的清理路径。
+
+### Security
+
+- Bergamot 模型同时校验压缩文件与解压文件的长度和 SHA-256；Full 固定
+  Hy-MT2 revision、长度和 SHA-256。
+- 两个 edition 都把翻译模型保存到应用专属 `no_backup` 目录，模型权重不进入
+  APK/AAB。
+- 完整的 common/Lite/Full 第三方许可证、版权 notices、固定模型坐标与
+  Bergamot MPL 对应源码说明进入 edition-specific `assets/licenses/`，并随
+  Release 提供统一 `THIRD-PARTY.zip`。
+- 发布 workflow 对 Lite / Full 的签名证书、后端隔离和模型权重缺失做硬断言。
 
 ## [0.1.0] - 2026-07-26
 
@@ -43,5 +80,6 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Arimacose/ScreenTranslation/releases/tag/v0.1.0

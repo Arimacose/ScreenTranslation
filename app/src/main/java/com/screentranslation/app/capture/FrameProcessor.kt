@@ -1,11 +1,11 @@
-package com.screentranslation.app.capture
+﻿package com.screentranslation.app.capture
 
 import android.graphics.Bitmap
 import android.graphics.RectF
 import android.media.ImageReader
 import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
-import com.screentranslation.app.ml.TranslationEngine
+import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.util.ClauseSplitter
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class FrameProcessor(
     private val ocrEngine: OcrEngine,
-    private val translationEngine: TranslationEngine,
+    private val translationEngine: TranslationBackend,
     private val stableTextGate: StableTextGate = StableTextGate(),
     frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
     private val onTranslation: (FrameTranslation) -> Unit,

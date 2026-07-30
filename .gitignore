@@ -1,6 +1,8 @@
 ﻿# Android / Gradle
 .gradle/
+.kotlin/
 **/build/
+**/.cxx/
 local.properties
 *.iml
 .idea/

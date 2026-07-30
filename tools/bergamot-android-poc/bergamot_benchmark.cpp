@@ -1,0 +1,504 @@
+#include <chrono>
+#include <cstdlib>
+#include <cstdint>
+#include <fstream>
+#include <future>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include <unistd.h>
+
+#include "common/logging.h"
+#include "translator/parser.h"
+#include "translator/project_version.h"
+#include "translator/response.h"
+#include "translator/response_options.h"
+#include "translator/service.h"
+
+#ifndef SCREENTRANSLATION_BERGAMOT_COMMIT
+#define SCREENTRANSLATION_BERGAMOT_COMMIT "unknown"
+#endif
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+using marian::bergamot::AsyncService;
+using marian::bergamot::BlockingService;
+using marian::bergamot::ConcatStrategy;
+using marian::bergamot::Response;
+using marian::bergamot::ResponseOptions;
+using marian::bergamot::TranslationModel;
+
+struct Arguments {
+  std::vector<std::string> configPaths;
+  std::string inputPath;
+  size_t repetitions{3};
+  size_t workers{1};
+  std::string service{"blocking"};
+  std::string warmupText{"Warm-up sentence."};
+};
+
+struct Group {
+  std::string id;
+  std::vector<std::string> texts;
+};
+
+struct TranslationResult {
+  std::vector<Response> responses;
+  std::vector<std::vector<std::string>> intermediateOutputs;
+};
+
+struct MemoryStats {
+  uint64_t rssKiB{0};
+  uint64_t highWaterKiB{0};
+};
+
+double elapsedMilliseconds(Clock::time_point started) {
+  return std::chrono::duration<double, std::milli>(Clock::now() - started)
+      .count();
+}
+
+std::string jsonEscape(const std::string& value) {
+  static constexpr char kHex[] = "0123456789ABCDEF";
+  std::string escaped;
+  escaped.reserve(value.size() + 16);
+  for (unsigned char character : value) {
+    switch (character) {
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '\b':
+        escaped += "\\b";
+        break;
+      case '\f':
+        escaped += "\\f";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\r':
+        escaped += "\\r";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      default:
+        if (character < 0x20) {
+          escaped += "\\u00";
+          escaped += kHex[(character >> 4) & 0x0F];
+          escaped += kHex[character & 0x0F];
+        } else {
+          escaped += static_cast<char>(character);
+        }
+    }
+  }
+  return escaped;
+}
+
+MemoryStats readMemoryStats() {
+  std::ifstream status("/proc/self/status");
+  MemoryStats stats;
+  std::string line;
+  while (std::getline(status, line)) {
+    if (line.rfind("VmRSS:", 0) == 0 || line.rfind("VmHWM:", 0) == 0) {
+      std::istringstream fields(line);
+      std::string key;
+      uint64_t value = 0;
+      std::string unit;
+      fields >> key >> value >> unit;
+      if (key == "VmRSS:") {
+        stats.rssKiB = value;
+      } else if (key == "VmHWM:") {
+        stats.highWaterKiB = value;
+      }
+    }
+  }
+  return stats;
+}
+
+size_t parsePositiveSize(const std::string& value, const std::string& option) {
+  size_t consumed = 0;
+  const unsigned long long parsed = std::stoull(value, &consumed);
+  if (consumed != value.size() || parsed == 0) {
+    throw std::invalid_argument(option + " must be a positive integer");
+  }
+  return static_cast<size_t>(parsed);
+}
+
+Arguments parseArguments(int argc, char** argv) {
+  Arguments arguments;
+  for (int index = 1; index < argc; ++index) {
+    const std::string option(argv[index]);
+    auto nextValue = [&]() -> std::string {
+      if (++index >= argc) {
+        throw std::invalid_argument("Missing value for " + option);
+      }
+      return argv[index];
+    };
+
+    if (option == "--config") {
+      arguments.configPaths.push_back(nextValue());
+    } else if (option == "--input") {
+      arguments.inputPath = nextValue();
+    } else if (option == "--repetitions") {
+      arguments.repetitions = parsePositiveSize(nextValue(), option);
+    } else if (option == "--workers") {
+      arguments.workers = parsePositiveSize(nextValue(), option);
+    } else if (option == "--service") {
+      arguments.service = nextValue();
+      if (arguments.service != "blocking" &&
+          arguments.service != "async") {
+        throw std::invalid_argument(
+            "--service must be blocking or async");
+      }
+    } else if (option == "--warmup-text") {
+      arguments.warmupText = nextValue();
+    } else if (option == "--help" || option == "-h") {
+      std::cout
+          << "Usage: bergamot-android-benchmark --config FILE "
+             "[--config FILE ...] --input FILE "
+             "[--repetitions N] [--workers N] "
+             "[--service blocking|async] [--warmup-text TEXT]\n";
+      std::exit(0);
+    } else {
+      throw std::invalid_argument("Unknown option: " + option);
+    }
+  }
+
+  if (arguments.configPaths.empty()) {
+    throw std::invalid_argument("At least one --config is required");
+  }
+  if (arguments.inputPath.empty()) {
+    throw std::invalid_argument("--input is required");
+  }
+  return arguments;
+}
+
+std::vector<Group> readGroups(const std::string& path) {
+  std::ifstream input(path);
+  if (!input) {
+    throw std::runtime_error("Failed to open input: " + path);
+  }
+
+  std::vector<Group> groups;
+  std::string line;
+  size_t lineNumber = 0;
+  while (std::getline(input, line)) {
+    ++lineNumber;
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    if (line.empty()) {
+      continue;
+    }
+    const size_t separator = line.find('\t');
+    if (separator == std::string::npos || separator == 0 ||
+        separator + 1 >= line.size()) {
+      throw std::runtime_error(
+          "Expected group_id<TAB>text at line " + std::to_string(lineNumber));
+    }
+
+    const std::string id = line.substr(0, separator);
+    const std::string text = line.substr(separator + 1);
+    if (groups.empty() || groups.back().id != id) {
+      for (const Group& existing : groups) {
+        if (existing.id == id) {
+          throw std::runtime_error(
+              "Group rows must be contiguous: " + id);
+        }
+      }
+      groups.push_back(Group{id, {}});
+    }
+    groups.back().texts.push_back(text);
+  }
+  if (groups.empty()) {
+    throw std::runtime_error("Input contains no translation groups");
+  }
+  return groups;
+}
+
+ResponseOptions responseOptions() {
+  ResponseOptions options;
+  options.qualityScores = false;
+  options.alignment = false;
+  options.HTML = false;
+  options.sentenceMappings = false;
+  options.concatStrategy = ConcatStrategy::SPACE;
+  return options;
+}
+
+std::vector<Response> translateAsync(
+    AsyncService& service,
+    const std::shared_ptr<TranslationModel>& model,
+    const std::vector<std::string>& texts) {
+  std::vector<std::promise<Response>> promises(texts.size());
+  std::vector<std::future<Response>> futures;
+  futures.reserve(texts.size());
+
+  const ResponseOptions options = responseOptions();
+
+  for (size_t index = 0; index < texts.size(); ++index) {
+    futures.push_back(promises[index].get_future());
+    service.translate(
+        model,
+        std::string(texts[index]),
+        [&promise = promises[index]](Response&& response) {
+          promise.set_value(std::move(response));
+        },
+        options);
+  }
+
+  std::vector<Response> responses;
+  responses.reserve(texts.size());
+  for (std::future<Response>& future : futures) {
+    responses.push_back(future.get());
+  }
+  return responses;
+}
+
+std::vector<Response> translateBlocking(
+    BlockingService& service,
+    const std::shared_ptr<TranslationModel>& model,
+    const std::vector<std::string>& texts) {
+  std::vector<std::string> sources(texts);
+  std::vector<ResponseOptions> options(
+      texts.size(),
+      responseOptions());
+  return service.translateMultiple(
+      model,
+      std::move(sources),
+      options);
+}
+
+template <class TranslateStageFunction>
+TranslationResult translateCascade(
+    const std::vector<std::shared_ptr<TranslationModel>>& models,
+    const std::vector<std::string>& texts,
+    TranslateStageFunction translateStage) {
+  std::vector<std::string> current(texts);
+  TranslationResult result;
+
+  for (size_t stage = 0; stage < models.size(); ++stage) {
+    std::vector<Response> responses =
+        translateStage(models[stage], current);
+    if (stage + 1 == models.size()) {
+      result.responses = std::move(responses);
+      break;
+    }
+
+    std::vector<std::string> outputs;
+    outputs.reserve(responses.size());
+    for (const Response& response : responses) {
+      outputs.push_back(response.target.text);
+    }
+    result.intermediateOutputs.push_back(outputs);
+    current = std::move(outputs);
+  }
+  return result;
+}
+
+void writeMeta(
+    const Arguments& arguments,
+    double serviceMs,
+    const std::vector<double>& modelStageMs,
+    double warmupMs) {
+  const MemoryStats memory = readMemoryStats();
+  double modelMs = 0.0;
+  for (const double stageMs : modelStageMs) {
+    modelMs += stageMs;
+  }
+  std::cout << "{\"kind\":\"meta\""
+            << ",\"bergamot_version\":\""
+            << jsonEscape(marian::bergamot::bergamotBuildVersion()) << "\""
+            << ",\"bergamot_commit\":\""
+            << SCREENTRANSLATION_BERGAMOT_COMMIT << "\""
+            << ",\"pid\":" << getpid()
+            << ",\"service\":\"" << arguments.service << "\""
+            << ",\"workers\":" << arguments.workers
+            << ",\"repetitions\":" << arguments.repetitions
+            << ",\"stages\":" << arguments.configPaths.size()
+            << ",\"service_ms\":" << std::fixed << std::setprecision(3)
+            << serviceMs
+            << ",\"model_ms\":" << modelMs
+            << ",\"model_stage_ms\":[";
+  for (size_t index = 0; index < modelStageMs.size(); ++index) {
+    if (index > 0) {
+      std::cout << ',';
+    }
+    std::cout << modelStageMs[index];
+  }
+  std::cout << "]"
+            << ",\"warmup_ms\":" << warmupMs
+            << ",\"rss_kib\":" << memory.rssKiB
+            << ",\"hwm_kib\":" << memory.highWaterKiB
+            << "}\n";
+}
+
+void writeMeasurement(
+    const Group& group,
+    size_t repetition,
+    double latencyMs,
+    const TranslationResult& result) {
+  const MemoryStats memory = readMemoryStats();
+  std::cout << "{\"kind\":\"measurement\""
+            << ",\"group_id\":\"" << jsonEscape(group.id) << "\""
+            << ",\"repetition\":" << repetition
+            << ",\"latency_ms\":" << std::fixed << std::setprecision(3)
+            << latencyMs
+            << ",\"outputs\":[";
+  for (size_t index = 0; index < result.responses.size(); ++index) {
+    if (index > 0) {
+      std::cout << ',';
+    }
+    std::cout << '"' << jsonEscape(result.responses[index].target.text) << '"';
+  }
+  std::cout << "]"
+            << ",\"intermediate_outputs\":[";
+  for (size_t stage = 0; stage < result.intermediateOutputs.size(); ++stage) {
+    if (stage > 0) {
+      std::cout << ',';
+    }
+    std::cout << '[';
+    const std::vector<std::string>& stageOutputs =
+        result.intermediateOutputs[stage];
+    for (size_t index = 0; index < stageOutputs.size(); ++index) {
+      if (index > 0) {
+        std::cout << ',';
+      }
+      std::cout << '"' << jsonEscape(stageOutputs[index]) << '"';
+    }
+    std::cout << ']';
+  }
+  std::cout << "]"
+            << ",\"rss_kib\":" << memory.rssKiB
+            << ",\"hwm_kib\":" << memory.highWaterKiB
+            << "}\n";
+}
+
+template <class TranslateFunction>
+void runSuite(
+    const Arguments& arguments,
+    const std::vector<Group>& groups,
+    double serviceMs,
+    const std::vector<double>& modelStageMs,
+    TranslateFunction translateFunction) {
+  const Clock::time_point warmupStarted = Clock::now();
+  translateFunction(std::vector<std::string>{arguments.warmupText});
+  const double warmupMs = elapsedMilliseconds(warmupStarted);
+  writeMeta(arguments, serviceMs, modelStageMs, warmupMs);
+
+  const Clock::time_point benchmarkStarted = Clock::now();
+  for (const Group& group : groups) {
+    for (size_t repetition = 0; repetition < arguments.repetitions;
+         ++repetition) {
+      const Clock::time_point started = Clock::now();
+      const TranslationResult result =
+          translateFunction(group.texts);
+      writeMeasurement(
+          group,
+          repetition,
+          elapsedMilliseconds(started),
+          result);
+    }
+  }
+
+  const MemoryStats memory = readMemoryStats();
+  std::cout << "{\"kind\":\"summary\""
+            << ",\"groups\":" << groups.size()
+            << ",\"elapsed_ms\":" << std::fixed << std::setprecision(3)
+            << elapsedMilliseconds(benchmarkStarted)
+            << ",\"rss_kib\":" << memory.rssKiB
+            << ",\"hwm_kib\":" << memory.highWaterKiB
+            << "}\n";
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  try {
+    const Arguments arguments = parseArguments(argc, argv);
+    const std::vector<Group> groups = readGroups(arguments.inputPath);
+    marian::setThrowExceptionOnAbort(true);
+
+    if (arguments.service == "blocking") {
+      BlockingService::Config serviceConfig;
+      serviceConfig.cacheSize = 0;
+      serviceConfig.logger.level = "off";
+      const Clock::time_point serviceStarted = Clock::now();
+      BlockingService service(serviceConfig);
+      const double serviceMs = elapsedMilliseconds(serviceStarted);
+
+      std::vector<std::shared_ptr<TranslationModel>> models;
+      std::vector<double> modelStageMs;
+      for (const std::string& configPath : arguments.configPaths) {
+        const auto modelConfig =
+            marian::bergamot::parseOptionsFromFilePath(configPath);
+        const Clock::time_point modelStarted = Clock::now();
+        models.push_back(
+            std::make_shared<TranslationModel>(modelConfig));
+        modelStageMs.push_back(elapsedMilliseconds(modelStarted));
+      }
+      runSuite(
+          arguments,
+          groups,
+          serviceMs,
+          modelStageMs,
+          [&](const std::vector<std::string>& texts) {
+            return translateCascade(
+                models,
+                texts,
+                [&](const std::shared_ptr<TranslationModel>& model,
+                    const std::vector<std::string>& stageTexts) {
+                  return translateBlocking(service, model, stageTexts);
+                });
+          });
+    } else {
+      AsyncService::Config serviceConfig;
+      serviceConfig.numWorkers = arguments.workers;
+      serviceConfig.cacheSize = 0;
+      serviceConfig.logger.level = "off";
+      const Clock::time_point serviceStarted = Clock::now();
+      AsyncService service(serviceConfig);
+      const double serviceMs = elapsedMilliseconds(serviceStarted);
+
+      std::vector<std::shared_ptr<TranslationModel>> models;
+      std::vector<double> modelStageMs;
+      for (const std::string& configPath : arguments.configPaths) {
+        const auto modelConfig =
+            marian::bergamot::parseOptionsFromFilePath(configPath);
+        const Clock::time_point modelStarted = Clock::now();
+        models.push_back(service.createCompatibleModel(modelConfig));
+        modelStageMs.push_back(elapsedMilliseconds(modelStarted));
+      }
+      runSuite(
+          arguments,
+          groups,
+          serviceMs,
+          modelStageMs,
+          [&](const std::vector<std::string>& texts) {
+            return translateCascade(
+                models,
+                texts,
+                [&](const std::shared_ptr<TranslationModel>& model,
+                    const std::vector<std::string>& stageTexts) {
+                  return translateAsync(service, model, stageTexts);
+                });
+          });
+    }
+    return 0;
+  } catch (const std::exception& error) {
+    std::cerr << "{\"kind\":\"error\",\"message\":\""
+              << jsonEscape(error.what()) << "\"}\n";
+    return 1;
+  }
+}

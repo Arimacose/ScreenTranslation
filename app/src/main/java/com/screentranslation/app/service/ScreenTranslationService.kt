@@ -1,4 +1,4 @@
-package com.screentranslation.app.service
+﻿package com.screentranslation.app.service
 
 import android.app.Activity
 import android.app.Notification
@@ -27,6 +27,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.text.format.Formatter
 import android.util.Log
 import android.view.WindowManager
 import com.screentranslation.app.MainActivity
@@ -34,7 +35,10 @@ import com.screentranslation.app.R
 import com.screentranslation.app.capture.FrameProcessor
 import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.PpOcrv6Engine
-import com.screentranslation.app.ml.TranslationEngine
+import com.screentranslation.app.ml.ModelPreparationProgress
+import com.screentranslation.app.ml.ModelPreparationStage
+import com.screentranslation.app.ml.TranslationBackend
+import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.overlay.OverlayController
 import com.screentranslation.app.util.StableTextGate
 
@@ -55,7 +59,7 @@ class ScreenTranslationService : Service() {
 
     private var overlayController: OverlayController? = null
     private var ocrEngine: OcrEngine? = null
-    private var translationEngine: TranslationEngine? = null
+    private var translationEngine: TranslationBackend? = null
     private var frameProcessor: FrameProcessor? = null
 
     @Volatile
@@ -212,7 +216,11 @@ class ScreenTranslationService : Service() {
         captureHandler = handler
 
         val ocr = PpOcrv6Engine(this)
-        val translator = TranslationEngine(sourceLanguage, targetLanguage)
+        val translator = TranslationBackendFactory.create(
+            context = this,
+            sourceLanguage = sourceLanguage,
+            targetLanguage = targetLanguage,
+        )
         val processor = FrameProcessor(
             ocrEngine = ocr,
             translationEngine = translator,
@@ -312,7 +320,17 @@ class ScreenTranslationService : Service() {
             .cancel(PROJECTION_STOPPED_NOTIFICATION_ID)
 
         overlay.updateStatus(STATUS_PREPARING_MODEL)
-        translator.prepare(requireWifi = false) { result ->
+        translator.prepare(
+            requireWifi = false,
+            warmRuntime = true,
+            onProgress = { progress ->
+                mainHandler.post {
+                    if (!closing) {
+                        overlayController?.updateStatus(modelPreparationStatus(progress))
+                    }
+                }
+            },
+        ) { result ->
             mainHandler.post {
                 if (closing) return@post
                 result.fold(
@@ -359,6 +377,28 @@ class ScreenTranslationService : Service() {
         )
         screenReceiver = receiver
     }
+
+    private fun modelPreparationStatus(progress: ModelPreparationProgress): String =
+        when (progress.stage) {
+            ModelPreparationStage.PREPARING -> getString(R.string.model_progress_preparing)
+            ModelPreparationStage.VERIFYING -> getString(R.string.model_progress_verifying)
+            ModelPreparationStage.LOADING_RUNTIME -> getString(R.string.model_progress_loading_runtime)
+            ModelPreparationStage.DOWNLOADING -> {
+                val completed = progress.completedBytes ?: 0L
+                val total = progress.totalBytes ?: 0L
+                val percent = if (total > 0L) {
+                    ((completed * 100L) / total).coerceIn(0L, 100L)
+                } else {
+                    0L
+                }
+                getString(
+                    R.string.model_progress_downloading,
+                    Formatter.formatFileSize(this, completed),
+                    Formatter.formatFileSize(this, total),
+                    percent,
+                )
+            }
+        }
 
     private fun newImageReader(spec: CaptureSpec): ImageReader =
         ImageReader.newInstance(
@@ -634,8 +674,8 @@ class ScreenTranslationService : Service() {
         )
         return Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("识屏翻译正在运行")
-            .setContentText("点按悬浮窗可重新框选，或在此停止")
+            .setContentTitle(getString(R.string.capture_notification_title))
+            .setContentText(getString(R.string.capture_notification_text))
             .setCategory(Notification.CATEGORY_SERVICE)
             .setContentIntent(contentPendingIntent)
             .setOngoing(true)
@@ -644,7 +684,7 @@ class ScreenTranslationService : Service() {
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(this, R.drawable.ic_notification),
-                    "停止",
+                    getString(R.string.capture_notification_stop),
                     stopPendingIntent,
                 ).build(),
             )

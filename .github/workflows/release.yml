@@ -12,11 +12,18 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  ANDROID_BUILD_TOOLS: "37.0.0"
+  BERGAMOT_NDK: "23.1.7779620"
+  HYMT2_NDK: "29.0.14206865"
+  ANDROID_CMAKE: "3.31.6"
+  EXPECTED_SIGNER_SHA256: "b58712578045532158d45b847ab7ed1be041236b5a7a0bd1a1db5480fbe0439f"
+
 jobs:
   release:
-    name: Build, verify, and publish
+    name: Build, verify, and publish v0.2 editions
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
       RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
@@ -24,10 +31,20 @@ jobs:
       RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
 
     steps:
-      - name: Check out tagged source
+      - name: Check out tagged source and native submodules
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          submodules: recursive
+
+      - name: Verify versioned third-party license bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd third_party/licenses
+            sha256sum -c SHA256SUMS
+          )
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -41,12 +58,22 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4.0.1
 
-      - name: Install Android API 37
-        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+      - name: Install Android 16 and native toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            "platforms;android-36" \
+            "platforms;android-37.0" \
+            "build-tools;$ANDROID_BUILD_TOOLS" \
+            "ndk;$BERGAMOT_NDK" \
+            "ndk;$HYMT2_NDK" \
+            "cmake;$ANDROID_CMAKE"
 
       - name: Validate signing secrets
         shell: bash
         run: |
+          set -euo pipefail
           missing=0
           for name in \
             RELEASE_KEYSTORE_BASE64 \
@@ -64,108 +91,254 @@ jobs:
       - name: Materialize release keystore
         shell: bash
         run: |
+          set +x
           key_store="$RUNNER_TEMP/screen-translation-release.jks"
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$key_store"
           test -s "$key_store"
-          echo "ANDROID_RELEASE_STORE_FILE=$key_store" >> "$GITHUB_ENV"
-          echo "ANDROID_RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "ANDROID_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+          chmod 600 "$key_store"
 
-      - name: Verify tag and app version
+      - name: Verify tag and base app version
         id: version
         shell: bash
         run: |
+          set -euo pipefail
           version_info="$(./gradlew -q :app:printVersionInfo)"
           version_name="$(printf '%s\n' "$version_info" | sed -n 's/^versionName=//p')"
           version_code="$(printf '%s\n' "$version_info" | sed -n 's/^versionCode=//p')"
-          test -n "$version_name"
-          test -n "$version_code"
+          [[ "$version_name" == "0.2.0" ]]
+          [[ "$version_code" == "2" ]]
           if [[ "$GITHUB_REF_NAME" != "v$version_name" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $version_name"
+            echo "::error::Tag $GITHUB_REF_NAME does not match base version $version_name"
             exit 1
           fi
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
 
-      - name: Run release verification build
-        run: ./gradlew --no-daemon --stacktrace clean testDebugUnitTest lintRelease assembleRelease bundleRelease
+      - name: Run signed edition verification builds
+        env:
+          ANDROID_RELEASE_STORE_FILE: ${{ runner.temp }}/screen-translation-release.jks
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon --stacktrace clean \
+            testLiteDebugUnitTest \
+            testFullDebugUnitTest \
+            lintLiteRelease \
+            lintFullRelease \
+            assembleLiteRelease \
+            assembleFullRelease \
+            bundleLiteRelease \
+            bundleFullRelease
 
-      - name: Verify JNI and reflected classes after R8
+      - name: Verify and stage signed editions
         shell: bash
         run: |
           set -euo pipefail
-          apk="app/build/outputs/apk/release/app-release.apk"
+          version="${{ steps.version.outputs.version_name }}"
           apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
-          test -s "$apk"
-          test -x "$apkanalyzer"
+          aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
+          zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
+          apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner"
+          lite_apk="app/build/outputs/apk/lite/release/app-lite-release.apk"
+          full_apk="app/build/outputs/apk/full/release/app-full-release.apk"
+          lite_aab="app/build/outputs/bundle/liteRelease/app-lite-release.aab"
+          full_aab="app/build/outputs/bundle/fullRelease/app-full-release.aab"
 
-          mapfile -t registrars < <(
-            "$apkanalyzer" manifest print "$apk" |
-              sed -n 's/.*android:name="com.google.firebase.components:\([^"]*\)".*/\1/p'
-          )
-          ((${#registrars[@]} > 0))
-
-          for registrar in "${registrars[@]}"; do
-            registrar_code="$("$apkanalyzer" dex code --class "$registrar" "$apk")"
-            if ! grep -Fq '.method public constructor <init>()V' <<<"$registrar_code"; then
-              echo "::error::R8 removed ComponentRegistrar constructor: $registrar"
-              exit 1
-            fi
+          for tool in "$apkanalyzer" "$aapt" "$zipalign" "$apksigner"; do
+            test -x "$tool"
+          done
+          for artifact in "$lite_apk" "$full_apk" "$lite_aab" "$full_aab"; do
+            test -s "$artifact"
           done
 
-          tensor_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OnnxTensor "$apk")"
-          session_code="$("$apkanalyzer" dex code --class ai.onnxruntime.OrtSession "$apk")"
-          grep -Fq '.class public Lai/onnxruntime/OnnxTensor;' <<<"$tensor_code" || {
-            echo "::error::R8 removed or renamed ai.onnxruntime.OnnxTensor"
-            exit 1
-          }
-          grep -Fq '.method public static createTensor(' <<<"$tensor_code" || {
-            echo "::error::R8 removed or renamed OnnxTensor.createTensor"
-            exit 1
-          }
-          grep -Fq '.method private native run(' <<<"$session_code" || {
-            echo "::error::R8 removed or renamed OrtSession.run JNI binding"
-            exit 1
+          assert_entry() {
+            local listing="$1"
+            local entry="$2"
+            if ! grep -Fxq "$entry" <<<"$listing"; then
+              echo "::error::Missing APK entry: $entry"
+              exit 1
+            fi
           }
 
-      - name: Verify and stage artifacts
-        id: artifacts
-        shell: bash
-        run: |
-          apk="app/build/outputs/apk/release/app-release.apk"
-          aab="app/build/outputs/bundle/release/app-release.aab"
-          test -s "$apk"
-          test -s "$aab"
+          reject_entry() {
+            local listing="$1"
+            local entry="$2"
+            if grep -Fxq "$entry" <<<"$listing"; then
+              echo "::error::Unexpected APK entry: $entry"
+              exit 1
+            fi
+          }
 
-          "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 -v 4 "$apk"
-          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
+          verify_apk() {
+            local apk="$1"
+            local expected_id="$2"
+            local expected_name="$3"
+            local expected_label_token="$4"
+            local required_backend="$5"
+            local forbidden_backend="$6"
+            local badging
+            local listing
+            local signer_output
+            local signer_sha
 
-          version="${{ steps.version.outputs.version_name }}"
+            "$zipalign" -c -P 16 -v 4 "$apk"
+            signer_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+            grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' \
+              <<<"$signer_output"
+            signer_sha="$(
+              sed -nE \
+                's/^(Signer #1|V[234] Signer): certificate SHA-256 digest: //p' \
+                <<<"$signer_output" |
+                tr '[:upper:]' '[:lower:]' |
+                sort -u
+            )"
+            if [[ "$signer_sha" != "$EXPECTED_SIGNER_SHA256" ]]; then
+              echo "::error::Release signer certificate does not match v0.1.0"
+              exit 1
+            fi
+
+            [[ "$("$apkanalyzer" manifest application-id "$apk")" == "$expected_id" ]]
+            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "2" ]]
+            [[ "$("$apkanalyzer" manifest version-name "$apk")" == "$expected_name" ]]
+            [[ "$("$apkanalyzer" manifest target-sdk "$apk")" == "36" ]]
+            badging="$("$aapt" dump badging "$apk")"
+            grep -F 'application-label:' <<<"$badging" |
+              grep -Fq "$expected_label_token"
+
+            listing="$(unzip -Z1 "$apk")"
+            assert_entry "$listing" "assets/ppocrv6_small/det.onnx"
+            assert_entry "$listing" "assets/ppocrv6_small/rec.onnx"
+            assert_entry "$listing" "assets/ppocrv6_small/characters.txt"
+            assert_entry "$listing" "assets/licenses/COMMON.md"
+            assert_entry "$listing" "assets/licenses/APACHE-2.0.txt"
+            assert_entry "$listing" \
+              "assets/licenses/models/PP-OCRv6.md"
+            assert_entry "$listing" \
+              "assets/licenses/onnxruntime-1.26.0/LICENSE.txt"
+            assert_entry "$listing" \
+              "assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+            assert_entry "$listing" "$required_backend"
+            reject_entry "$listing" "$forbidden_backend"
+            reject_entry "$listing" "lib/arm64-v8a/libtranslate_jni.so"
+
+            if grep -Eiq \
+              '^assets/.+\.(gguf|bin|marian|model|npz|safetensors|spm)$' \
+              <<<"$listing"
+            then
+              echo "::error::Translation model weights must be downloaded at runtime"
+              exit 1
+            fi
+          }
+
+          verify_apk \
+            "$lite_apk" \
+            "com.screentranslation.app" \
+            "0.2.0-lite" \
+            "ScreenTranslation Lite" \
+            "lib/arm64-v8a/libbergamot_runner.so" \
+            "lib/arm64-v8a/libhymt2_jni.so"
+          verify_apk \
+            "$full_apk" \
+            "com.screentranslation.app.full" \
+            "0.2.0-full" \
+            "HY-MT2 Q4 Experimental" \
+            "lib/arm64-v8a/libhymt2_jni.so" \
+            "lib/arm64-v8a/libbergamot_runner.so"
+
+          lite_apk_listing="$(unzip -Z1 "$lite_apk")"
+          full_apk_listing="$(unzip -Z1 "$full_apk")"
+          assert_entry "$lite_apk_listing" "assets/licenses/LITE.md"
+          assert_entry "$lite_apk_listing" \
+            "assets/licenses/FIREFOX-TRANSLATIONS-MODELS.md"
+          assert_entry "$lite_apk_listing" \
+            "assets/licenses/FIREFOX-TRANSLATIONS-MPL-2.0.txt"
+          assert_entry "$lite_apk_listing" \
+            "assets/licenses/bergamot-9271618/MPL-2.0.txt"
+          assert_entry "$lite_apk_listing" \
+            "assets/licenses/bergamot-9271618/SOURCE-CODE.md"
+          assert_entry "$lite_apk_listing" \
+            "assets/licenses/bergamot-9271618/STATIC_DEPENDENCIES.md"
+          assert_entry "$full_apk_listing" "assets/licenses/FULL.md"
+          assert_entry "$full_apk_listing" \
+            "assets/licenses/ANDROID-NDK-r29-NOTICE.txt"
+          assert_entry "$full_apk_listing" \
+            "assets/licenses/llama.cpp-caa596ab3/LICENSE.txt"
+          assert_entry "$full_apk_listing" \
+            "assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
+          assert_entry "$full_apk_listing" \
+            "assets/licenses/models/HY-MT2-1.8B-GGUF.md"
+          assert_entry "$full_apk_listing" \
+            "assets/licenses/models/HY-MT2-1.8B-GGUF-LICENSE.txt"
+
+          jarsigner -verify "$lite_aab" >/dev/null
+          jarsigner -verify "$full_aab" >/dev/null
+          lite_aab_listing="$(unzip -Z1 "$lite_aab")"
+          full_aab_listing="$(unzip -Z1 "$full_aab")"
+          assert_entry "$lite_aab_listing" \
+            "base/assets/licenses/bergamot-9271618/SOURCE-CODE.md"
+          assert_entry "$lite_aab_listing" \
+            "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+          assert_entry "$full_aab_listing" \
+            "base/assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
+          assert_entry "$full_aab_listing" \
+            "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+
           mkdir -p dist
-          cp "$apk" "dist/ScreenTranslation-$version.apk"
-          cp "$aab" "dist/ScreenTranslation-$version.aab"
+          cp "$lite_apk" "dist/ScreenTranslation-$version-lite-bergamot.apk"
+          cp "$lite_aab" "dist/ScreenTranslation-$version-lite-bergamot.aab"
+          cp "$full_apk" \
+            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk"
+          cp "$full_aab" \
+            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
           cp LICENSE "dist/ScreenTranslation-$version-LICENSE.txt"
-          cp THIRD_PARTY_NOTICES.md "dist/ScreenTranslation-$version-THIRD-PARTY.md"
+          third_party_stage="$RUNNER_TEMP/ScreenTranslation-$version-THIRD-PARTY"
+          mkdir -p "$third_party_stage"
+          cp THIRD_PARTY_NOTICES.md "$third_party_stage/"
+          cp -R third_party/licenses "$third_party_stage/licenses"
+          (
+            cd "$third_party_stage"
+            zip -q -r \
+              "$GITHUB_WORKSPACE/dist/ScreenTranslation-$version-THIRD-PARTY.zip" \
+              THIRD_PARTY_NOTICES.md \
+              licenses
+          )
+
           (
             cd dist
             sha256sum \
-              "ScreenTranslation-$version.apk" \
-              "ScreenTranslation-$version.aab" \
+              "ScreenTranslation-$version-lite-bergamot.apk" \
+              "ScreenTranslation-$version-lite-bergamot.aab" \
+              "ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
+              "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
               "ScreenTranslation-$version-LICENSE.txt" \
-              "ScreenTranslation-$version-THIRD-PARTY.md" \
+              "ScreenTranslation-$version-THIRD-PARTY.zip" \
               > SHA256SUMS
+            sha256sum -c SHA256SUMS
+            [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 7 ]]
           )
 
-      - name: Preserve R8 mapping
+      - name: Preserve Lite R8 mapping
         uses: actions/upload-artifact@v7
         with:
-          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-mapping
+          name: ScreenTranslation-0.2.0-lite-mapping
           path: |
-            app/build/outputs/mapping/release/configuration.txt
-            app/build/outputs/mapping/release/mapping.txt
-            app/build/outputs/mapping/release/seeds.txt
-            app/build/outputs/mapping/release/usage.txt
+            app/build/outputs/mapping/liteRelease/configuration.txt
+            app/build/outputs/mapping/liteRelease/mapping.txt
+            app/build/outputs/mapping/liteRelease/seeds.txt
+            app/build/outputs/mapping/liteRelease/usage.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Preserve Full R8 mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenTranslation-0.2.0-full-hymt2-q4-experimental-mapping
+          path: |
+            app/build/outputs/mapping/fullRelease/configuration.txt
+            app/build/outputs/mapping/fullRelease/mapping.txt
+            app/build/outputs/mapping/fullRelease/seeds.txt
+            app/build/outputs/mapping/fullRelease/usage.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -174,18 +347,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          set -euo pipefail
           version="${{ steps.version.outputs.version_name }}"
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          ## Editions
+
+          - **Lite · Bergamot**: PP-OCRv6-small OCR with the Bergamot translation backend. Translation models are downloaded at runtime.
+          - **Full · HY-MT2 Q4 Experimental**: PP-OCRv6-small OCR with the HY-MT2 Q4 backend. This edition and model integration are explicitly **Experimental**; model weights are downloaded at runtime.
+
+          The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. The Full Experimental package uses `com.screentranslation.app.full` so both editions can coexist.
+
+          Complete third-party license texts, native dependency notices, immutable model coordinates, and the MPL corresponding-source instructions are included in `ScreenTranslation-0.2.0-THIRD-PARTY.zip` and embedded in the applicable APK/AAB.
+          NOTES
+
           gh release create "$GITHUB_REF_NAME" \
-            "dist/ScreenTranslation-$version.apk" \
-            "dist/ScreenTranslation-$version.aab" \
+            "dist/ScreenTranslation-$version-lite-bergamot.apk" \
+            "dist/ScreenTranslation-$version-lite-bergamot.aab" \
+            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
+            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
             "dist/ScreenTranslation-$version-LICENSE.txt" \
-            "dist/ScreenTranslation-$version-THIRD-PARTY.md" \
+            "dist/ScreenTranslation-$version-THIRD-PARTY.zip" \
             "dist/SHA256SUMS" \
             --verify-tag \
             --generate-notes \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             --title "ScreenTranslation $GITHUB_REF_NAME"
 
       - name: Remove signing material
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/screen-translation-release.jks"
+        run: |
+          rm -f "$RUNNER_TEMP/screen-translation-release.jks"
+          rm -f "$RUNNER_TEMP/release-notes.md"
+          rm -rf "$RUNNER_TEMP/ScreenTranslation-0.2.0-THIRD-PARTY"

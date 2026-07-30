@@ -69,6 +69,19 @@ class ClauseSplitterTest {
     }
 
     @Test
+    fun `splits long Japanese text at sentence terminators without dropping them`() {
+        val text = "翻訳モデルは端末上で動作し、画面から読み取った文章は外部へ送信されません。" +
+            "ネットワークに接続できない場合でも、準備済みのモデルを使って処理を続けられます。" +
+            "停止すると使用していたリソースはすぐに解放されます。"
+
+        val parts = ClauseSplitter.split(text)
+
+        assertEquals(3, parts.size)
+        assertTrue(parts.all { it.endsWith("。") })
+        assertEquals(text, parts.joinToString(""))
+    }
+
+    @Test
     fun `prefers the longer connector over the one nested inside it`() {
         val text = "The app keeps working offline until you clear its data, in which case " +
             "the models have to be downloaded again from the network."

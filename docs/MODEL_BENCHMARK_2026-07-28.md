@@ -191,6 +191,12 @@ det640/arena-off configuration became the production default. Item 3 and the
 signed Release/R8 long-session gate remain active optimization and acceptance
 work.
 
+Translation item 4 was executed on 2026-07-29. Bergamot's pinned ARM64 core ran
+successfully on the Xiaomi 15 Pro and passed 2,000 deterministic raw/pipeline
+group executions, but its memory footprint and mixed ten-fixture quality do not
+yet justify replacing ML Kit. See
+[`BERGAMOT_ANDROID_POC_2026-07-29.md`](BERGAMOT_ANDROID_POC_2026-07-29.md).
+
 ## Reproducibility
 
 ```powershell

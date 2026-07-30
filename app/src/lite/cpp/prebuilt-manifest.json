@@ -1,0 +1,13 @@
+{
+  "runtime": "Bergamot",
+  "runtime_commit": "9271618ebbdc5d21ac4dc4df9e72beb7ce644774",
+  "android_ndk_revision": "23.1.7779620",
+  "android_abi": "arm64-v8a",
+  "android_api": 28,
+  "android_stl": "c++_static",
+  "output": {
+    "path": "../jniLibs/arm64-v8a/libbergamot_runner.so",
+    "size_bytes": 8416304,
+    "sha256": "40a764d5fbcd8b18c6c0bef6bcc6ef38f25beb6f2e6defcfa5c00d7e54407f75"
+  }
+}

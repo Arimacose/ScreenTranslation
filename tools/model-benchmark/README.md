@@ -8,8 +8,8 @@ misdiagnosed as a translation-model failure.
 
 1. **OCR**: generated screen-like PNG to recognized English; report CER, WER,
    exact cases, and inference latency.
-2. **Translation raw**: gold English directly to the translation engine.
-3. **Translation pipeline**: gold English through the app's current
+2. **Translation raw**: gold source text directly to the translation engine.
+3. **Translation pipeline**: gold source text through the app's current
    `ClauseSplitter`, then to the translation engine.
 4. **End to end**: rendered PNG through OCR, block merging, clause splitting,
    and translation.
@@ -40,6 +40,50 @@ does not block OCR comparison. It writes `baseline-mlkit.json` and
 Add `--ez include_translation true` to the `am start` command when the paired
 ML Kit translation model is already prepared and the full pipeline is needed.
 
+To isolate translation from OCR and produce the paired Android baseline for a
+candidate runtime:
+
+```powershell
+adb shell am start -W -n `
+  com.screentranslation.app.benchmark/com.screentranslation.app.benchmark.ModelBenchmarkActivity `
+  --ez translation_only true
+```
+
+This mode loads the requested suite from
+`app/src/benchmark/assets/translation-fixtures.json`, uses its gold source
+strings, and records model preparation, warm-up, translation latency, and
+process memory snapshots. The retained suites are:
+
+- `en-zh-diverse-v2`: 40 English-to-Chinese cases;
+- `ja-zh-diverse-v1`: 40 Japanese-to-Chinese cases.
+
+The default writes `translation-mlkit-en-zh-android.json`. Run Japanese to
+Chinese explicitly:
+
+```powershell
+adb shell am start -W -n `
+  com.screentranslation.app.benchmark/com.screentranslation.app.benchmark.ModelBenchmarkActivity `
+  --ez translation_only true `
+  --es source_language ja `
+  --es target_language zh `
+  --es fixture_suite ja-zh-diverse-v1 `
+  --ei translation_repetitions 3
+```
+
+The Japanese completion and error files are
+`translation-mlkit-ja-zh.done` and
+`translation-mlkit-ja-zh-error.txt`; each language pair has independent
+result markers.
+
+The default is three repetitions. A sustained run accepts up to 100:
+
+```powershell
+adb shell am start -W -n `
+  com.screentranslation.app.benchmark/com.screentranslation.app.benchmark.ModelBenchmarkActivity `
+  --ez translation_only true `
+  --ei translation_repetitions 100
+```
+
 ## Score
 
 ```powershell
@@ -53,12 +97,13 @@ The scorer emits:
 - OCR corpus and per-case CER/WER;
 - Chinese BLEU and chrF++ for raw, split-pipeline, and end-to-end output;
 - latency summaries;
-- critical meaning checks for negation, offline operation, service recovery,
-  identifiers, quantities, dates, and amounts.
+- per-category translation scores and critical meaning checks for negation,
+  conditions, identifiers, quantities, dates, safety-domain text, idioms,
+  politeness, and word sense.
 
-BLEU/chrF++ use one reference per fixture, so they are directional comparison
-signals rather than standalone acceptance criteria. Critical checks and human
-review remain release gates.
+BLEU/chrF++ use every available project-authored reference for a fixture and
+remain directional comparison signals rather than standalone acceptance
+criteria. Critical checks and human review remain release gates.
 
 ## Candidate-engine contract
 
@@ -160,17 +205,17 @@ python tools/model-benchmark/run_bergamot.py \
 ## Current Firefox Translations candidate
 
 The preferred self-hosted candidate is the current Mozilla Firefox
-Translations English-to-Chinese `base-memory` model rather than the older
-Helsinki-NLP archive. Fetch its pinned package and produce a beam-4 Bergamot
-configuration:
+Translations `base-memory` models rather than the older Helsinki-NLP archive.
+Fetch a pinned package and produce a beam-4 Bergamot configuration:
 
 ```powershell
-python .\tools\model-benchmark\fetch_mozilla_model.py --beam-size 4
+python .\tools\model-benchmark\fetch_mozilla_model.py --pair en-zh --beam-size 4
+python .\tools\model-benchmark\fetch_mozilla_model.py --pair ja-en --beam-size 4
 ```
 
 The fetcher verifies compressed downloads, decompressed runtime files, sizes,
-hashes, and upstream metadata. It writes the model only under the ignored
-`app/build/model-benchmark/mozilla-en-zh-base-memory-2026-07-28` directory.
+hashes, and upstream metadata. It writes v2 manifests with explicit runtime
+file maps under ignored `app/build/model-benchmark` directories.
 
 After building Bergamot's Python binding in WSL, run the candidate:
 
@@ -205,3 +250,118 @@ WSL host latency.
 Downloaded models, generated fixtures, JSON results, and runtime logs belong
 under ignored build directories. Commit the harness and summarized benchmark
 report only.
+
+## Hy-MT2 multilingual-to-Chinese quality reference
+
+`run_hymt2.py` starts one pinned `llama-server`, verifies the official model
+SHA-256 before loading it, and evaluates the same raw and app
+`ClauseSplitter` plans exported by the ML Kit Android benchmark. Model files
+and generated JSON stay under ignored `app/build` or the shared D-drive model
+cache; they are not committed.
+
+The first mobile-oriented quality gate uses the official Apache-2.0
+`tencent/Hy-MT2-1.8B-GGUF` Q4_K_M checkpoint:
+
+- model revision `1cd5208700acedef4ef93019b6cfc148b8522d45`;
+- model SHA-256
+  `dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699`;
+- llama.cpp tag `b10181`, commit `caa596ab3`;
+- CPU-only host and Android ARM64 quality references, 2K context,
+  deterministic greedy decoding.
+
+Example for the English-to-Chinese suite:
+
+```powershell
+python .\tools\model-benchmark\run_hymt2.py `
+  BASELINE\translation-mlkit-en-zh-android.json `
+  --server-executable D:\DevTools\llama.cpp\b10181\cpu-x64\llama-server.exe `
+  --model D:\DevCache\HuggingFace\manual\tencent\Hy-MT2-1.8B-GGUF\1cd5208700acedef4ef93019b6cfc148b8522d45\Hy-MT2-1.8B-Q4_K_M.gguf `
+  --quantization Q4_K_M `
+  --log-directory .\app\build\model-benchmark\hymt2\en-zh-logs `
+  --output .\app\build\model-benchmark\hymt2\translation-hymt2-en-zh-host.json
+
+python .\tools\model-benchmark\score.py `
+    .\app\build\model-benchmark\hymt2\translation-hymt2-en-zh-host.json
+```
+
+For a server already running on Android, forward its loopback port and replace
+`--server-executable` with:
+
+```powershell
+adb forward tcp:18086 tcp:18086
+
+python .\tools\model-benchmark\run_hymt2.py `
+  BASELINE\translation-mlkit-en-zh-android.json `
+  --external-server-url http://127.0.0.1:18086 `
+  --model D:\DevCache\HuggingFace\manual\tencent\Hy-MT2-1.8B-GGUF\1cd5208700acedef4ef93019b6cfc148b8522d45\Hy-MT2-1.8B-Q4_K_M.gguf `
+  --threads 8 `
+  --quantization Q4_K_M `
+  --log-directory .\app\build\model-benchmark\hymt2\en-zh-device-logs `
+  --output .\app\build\model-benchmark\hymt2\translation-hymt2-en-zh-android.json
+```
+
+The verified Q4 Android result and the ML Kit/Bergamot comparison are in
+[`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](../../docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md).
+The official 2-bit GGUF currently depends on draft llama.cpp PR `#19357` and
+does not load in the pinned upstream release. The 1.25-bit STQ variant depends
+on open PR `#22836`; treat its custom ARM runtime, translation quality,
+latency, thermals, and lifecycle as separate acceptance gates.
+
+### Legacy STQ GGUF compatibility
+
+The official `tencent/Hy-MT2-1.8B-1.25Bit-GGUF` revision
+`9df5c824a00a744fb0512a29c640466f4d97dfb0` was produced before the STQ pull
+request was rebased over llama.cpp's new Q2_0 type. The official file uses
+file/tensor types `41/42`; PR `#22836` head `7e74b829` expects STQ at `42/43`.
+Loading the untouched file with that head therefore interprets its tensors as
+Q2_0 and reports an offset mismatch.
+
+`retag_legacy_stq_gguf.py` creates a separate compatibility copy. It:
+
+- pins and verifies official source SHA-256
+  `cc497fe8f033b52b3b8b00a7669e9661435432f9d4cd43f7ed24400c01507a93`;
+- requires the `hunyuan-dense` architecture, legacy file type, exactly 224
+  legacy tensor tags, and no current STQ tags;
+- changes only one file-type field and the 224 tensor-type fields;
+- verifies identical file size and identical tensor-payload SHA-256;
+- writes an optional JSON manifest containing all source/output hashes.
+
+```powershell
+python .\tools\model-benchmark\retag_legacy_stq_gguf.py `
+  --input D:\MODELS\Hy-MT2-1.8B-1.25Bit.gguf `
+  --output D:\MODELS\Hy-MT2-1.8B-1.25Bit-STQ1_0-type43.gguf `
+  --manifest .\app\build\model-benchmark\hymt2-stq\retag-manifest.json
+```
+
+The pinned output used by the Android benchmark is 461,860,800 bytes with
+SHA-256 `e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7`.
+Its tensor payload SHA-256 remains
+`5ab383ce54adddcbcfbb400aacb5b457005c43f71304291889a61074f5686b2d`.
+Remove this compatibility step when the model publisher refreshes the GGUF for
+the final upstream type IDs.
+
+Run all benchmark utility tests, including the synthetic GGUF header/payload
+checks:
+
+```powershell
+python -m unittest discover -s .\tools\model-benchmark -p "test_*.py" -v
+```
+
+## Bergamot Android ARM64 proof of concept
+
+The native Android harness under `tools/bergamot-android-poc` consumes
+one of the pair-specific ML Kit JSON files, runs one or more pinned Firefox
+Translations stages on the same device and inputs, and emits a scorer-compatible
+candidate. It verifies the complete model-language chain, local and remote
+hashes, and rejects final or intermediate output that changes between
+repetitions.
+
+See:
+
+- [`tools/bergamot-android-poc/README.md`](../bergamot-android-poc/README.md)
+  for the exact build and ADB workflow;
+- [`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](../../docs/BERGAMOT_ANDROID_POC_2026-07-29.md)
+  for the Xiaomi 15 Pro quality, memory, latency, thermal, and feasibility
+  decision from the initial English PoC;
+- [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](../../docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)
+  for the expanded 40-case English and 40-case Japanese comparison.

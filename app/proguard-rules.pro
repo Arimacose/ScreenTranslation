@@ -17,3 +17,11 @@
 -keep class * implements com.google.firebase.components.ComponentRegistrar {
     public <init>();
 }
+
+# Edition-specific backends are selected through a shared reflection boundary.
+-keep class com.screentranslation.app.ml.BergamotTranslationEngine {
+    public <init>(android.content.Context, java.lang.String, java.lang.String);
+}
+-keep class com.screentranslation.app.ml.HyMt2Q4TranslationEngine {
+    public <init>(android.content.Context, java.lang.String, java.lang.String);
+}
