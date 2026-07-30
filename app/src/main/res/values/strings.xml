@@ -91,6 +91,7 @@
     <string name="experimental_smoke_test">运行实验模型集成自检</string>
     <string name="experimental_smoke_test_not_run">尚未运行实验模型集成自检</string>
     <string name="experimental_smoke_test_running">正在运行实验模型集成自检…</string>
+    <string name="experimental_smoke_test_service_running">识屏服务运行期间暂停集成自检；停止服务后再运行。</string>
     <string name="experimental_smoke_test_success">集成自检通过（%1$d ms）\n原文：%2$s\n译文：%3$s</string>
     <string name="experimental_smoke_test_failed">集成自检失败（%1$d ms）：%2$s</string>
     <string name="capture_notification_title">识屏翻译正在运行</string>

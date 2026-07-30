@@ -17,6 +17,7 @@ std::once_flag g_backend_once;
 llama_model * g_model = nullptr;
 llama_context * g_context = nullptr;
 llama_sampler * g_sampler = nullptr;
+jlong g_owner_token = 0;
 
 void log_info(const std::string & message) {
     __android_log_write(ANDROID_LOG_INFO, kLogTag, message.c_str());
@@ -55,6 +56,7 @@ void release_runtime_locked() {
         llama_model_free(g_model);
         g_model = nullptr;
     }
+    g_owner_token = 0;
 }
 
 bool decode_tokens(
@@ -153,11 +155,24 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_screentranslation_llama_LlamaRuntime_nativeLoadModel(
     JNIEnv * env,
     jobject,
+    jlong owner_token,
     jstring model_path_value,
     jint context_size,
     jint threads
 ) {
     std::lock_guard<std::mutex> lock(g_mutex);
+    if (owner_token <= 0) {
+        throw_java(env, "java/lang/IllegalArgumentException", "Runtime owner token is invalid");
+        return nullptr;
+    }
+    if (g_owner_token != 0 && g_owner_token != owner_token) {
+        throw_java(
+            env,
+            "java/lang/IllegalStateException",
+            "Hy-MT2 Q4 runtime is already owned by another active engine"
+        );
+        return nullptr;
+    }
     const std::string model_path = from_jstring(env, model_path_value);
     if (model_path.empty()) {
         throw_java(env, "java/lang/IllegalArgumentException", "Model path is empty");
@@ -198,6 +213,7 @@ Java_com_screentranslation_llama_LlamaRuntime_nativeLoadModel(
     llama_sampler_chain_add(g_sampler, llama_sampler_init_penalties(64, 1.05F, 0.0F, 0.0F));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(1));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_greedy());
+    g_owner_token = owner_token;
 
     std::ostringstream info;
     info << "llama.cpp=" << llama_print_system_info()
@@ -211,10 +227,19 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_screentranslation_llama_LlamaRuntime_nativeComplete(
     JNIEnv * env,
     jobject,
+    jlong owner_token,
     jstring prompt_value,
     jint max_tokens
 ) {
     std::lock_guard<std::mutex> lock(g_mutex);
+    if (owner_token <= 0 || g_owner_token != owner_token) {
+        throw_java(
+            env,
+            "java/lang/IllegalStateException",
+            "Hy-MT2 Q4 runtime ownership is no longer active"
+        );
+        return nullptr;
+    }
     if (g_model == nullptr || g_context == nullptr || g_sampler == nullptr) {
         throw_java(env, "java/lang/IllegalStateException", "Hy-MT2 Q4 is not loaded");
         return nullptr;
@@ -299,8 +324,11 @@ Java_com_screentranslation_llama_LlamaRuntime_nativeComplete(
 extern "C" JNIEXPORT void JNICALL
 Java_com_screentranslation_llama_LlamaRuntime_nativeClose(
     JNIEnv *,
-    jobject
+    jobject,
+    jlong owner_token
 ) {
     std::lock_guard<std::mutex> lock(g_mutex);
-    release_runtime_locked();
+    if (owner_token > 0 && g_owner_token == owner_token) {
+        release_runtime_locked();
+    }
 }

@@ -1,6 +1,9 @@
 package com.screentranslation.app
 
+import com.screentranslation.app.model.LanguageOption
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BatteryPolicyUiStateTest {
@@ -47,5 +50,32 @@ class BatteryPolicyUiStateTest {
                 isAospPowerAllowlisted = null,
             ),
         )
+    }
+
+    @Test
+    fun `Bergamot Lite exposes only measured English and Japanese routes`() {
+        assertEquals(
+            listOf(LanguageOption.ENGLISH, LanguageOption.JAPANESE),
+            sourceOptionsForEdition(
+                isBergamotLite = true,
+                targetsChineseOnly = true,
+            ),
+        )
+        assertEquals(
+            listOf(LanguageOption.CHINESE_SIMPLIFIED),
+            targetOptionsForEdition(targetsChineseOnly = true),
+        )
+    }
+
+    @Test
+    fun `Full excludes Chinese as a source when Chinese is the only target`() {
+        val options = sourceOptionsForEdition(
+            isBergamotLite = false,
+            targetsChineseOnly = true,
+        )
+
+        assertFalse(options.contains(LanguageOption.CHINESE_SIMPLIFIED))
+        assertTrue(options.contains(LanguageOption.ENGLISH))
+        assertTrue(options.contains(LanguageOption.JAPANESE))
     }
 }

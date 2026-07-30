@@ -53,6 +53,30 @@ internal fun resolveBatteryPolicyUiState(
     else -> BatteryPolicyUiState.VENDOR_POLICY_UNVERIFIED
 }
 
+internal fun sourceOptionsForEdition(
+    isBergamotLite: Boolean,
+    targetsChineseOnly: Boolean,
+): List<LanguageOption> = when {
+    isBergamotLite -> listOf(
+        LanguageOption.ENGLISH,
+        LanguageOption.JAPANESE,
+    )
+    targetsChineseOnly ->
+        LanguageOption.sourceOptions.filterNot {
+            it == LanguageOption.CHINESE_SIMPLIFIED
+        }
+    else -> LanguageOption.sourceOptions
+}
+
+internal fun targetOptionsForEdition(
+    targetsChineseOnly: Boolean,
+): List<LanguageOption> =
+    if (targetsChineseOnly) {
+        listOf(LanguageOption.CHINESE_SIMPLIFIED)
+    } else {
+        LanguageOption.targetOptions
+    }
+
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: AppPreferences
     private lateinit var projectionManager: MediaProjectionManager
@@ -76,14 +100,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
     private lateinit var serviceStatusView: TextView
 
-    private val availableSourceOptions: List<LanguageOption> = LanguageOption.sourceOptions
-    private val availableTargetOptions: List<LanguageOption> by lazy {
-        if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
-            listOf(LanguageOption.CHINESE_SIMPLIFIED)
-        } else {
-            LanguageOption.targetOptions
-        }
-    }
+    private val targetsChineseOnly =
+        BuildConfig.BERGAMOT_LITE || BuildConfig.HYMT2_Q4_EXPERIMENTAL
+    private val availableSourceOptions: List<LanguageOption> =
+        sourceOptionsForEdition(
+            isBergamotLite = BuildConfig.BERGAMOT_LITE,
+            targetsChineseOnly = targetsChineseOnly,
+        )
+    private val availableTargetOptions: List<LanguageOption> =
+        targetOptionsForEdition(targetsChineseOnly)
 
     private var modelPreparationEngine: TranslationBackend? = null
     private var modelPreparationGeneration = 0
@@ -414,8 +439,7 @@ class MainActivity : AppCompatActivity() {
                     modelPreparationEngine = null
                 }
                 engine.close()
-                prepareModelsButton.isEnabled = true
-                startButton.isEnabled = true
+                setServiceRunningUi(ScreenTranslationService.isRunning)
 
                 val currentPair = selectedSourceLanguage().languageTag to
                     selectedTargetLanguage().languageTag
@@ -470,6 +494,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun runExperimentalSmokeTest() {
         if (!BuildConfig.HYMT2_Q4_EXPERIMENTAL) return
+        if (ScreenTranslationService.isRunning) {
+            experimentalSmokeTestResultView.setText(
+                R.string.experimental_smoke_test_service_running,
+            )
+            setServiceRunningUi(true)
+            return
+        }
 
         val generation = ++experimentalSmokeTestGeneration
         experimentalSmokeTestEngine?.close()
@@ -480,6 +511,7 @@ class MainActivity : AppCompatActivity() {
         )
         experimentalSmokeTestEngine = engine
         experimentalSmokeTestButton.isEnabled = false
+        startButton.isEnabled = false
         experimentalSmokeTestResultView.setText(R.string.experimental_smoke_test_running)
         val startedAt = SystemClock.elapsedRealtime()
 
@@ -537,7 +569,7 @@ class MainActivity : AppCompatActivity() {
                 experimentalSmokeTestEngine = null
             }
             engine.close()
-            experimentalSmokeTestButton.isEnabled = true
+            setServiceRunningUi(ScreenTranslationService.isRunning)
             translation.fold(
                 onSuccess = { translatedText ->
                     Log.i(
@@ -763,8 +795,7 @@ class MainActivity : AppCompatActivity() {
         modelPreparationEngine?.close()
         modelPreparationEngine = null
         modelReadyFor = null
-        prepareModelsButton.isEnabled = true
-        startButton.isEnabled = true
+        setServiceRunningUi(ScreenTranslationService.isRunning)
         modelStatusView.setText(
             if (selectedSourceLanguage() == selectedTargetLanguage()) {
                 R.string.model_same_language
@@ -822,8 +853,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setServiceRunningUi(running: Boolean) {
-        startButton.isEnabled = !running
+        val operationIdle =
+            modelPreparationEngine == null && experimentalSmokeTestEngine == null
+        startButton.isEnabled = !running && operationIdle
         stopButton.isEnabled = running
+        prepareModelsButton.isEnabled = !running && operationIdle
+        experimentalSmokeTestButton.isEnabled =
+            !running && operationIdle && BuildConfig.HYMT2_Q4_EXPERIMENTAL
         if (running && serviceStatusView.text == getString(R.string.service_idle)) {
             serviceStatusView.setText(R.string.service_running)
         }
