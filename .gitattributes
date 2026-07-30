@@ -25,6 +25,13 @@ keystore.properties.example text eol=lf
 *.sh text eol=lf
 *.py text eol=lf
 *.txt text eol=lf
+
+# Keep third-party license snapshots byte-for-byte identical to their upstream
+# sources. Some canonical notices intentionally contain trailing spaces or
+# CRLF, so generic whitespace and line-ending normalization must not rewrite
+# the files covered by SHA256SUMS.
+third_party/licenses/** -text -whitespace
+third_party/licenses/SHA256SUMS text eol=lf
 gradlew text eol=lf
 
 # Windows launchers retain native line endings.

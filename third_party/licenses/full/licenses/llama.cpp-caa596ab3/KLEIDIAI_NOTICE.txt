@@ -1,1 +1,17 @@
-v0.2.0 third-party license bundle baseline
+Arm KleidiAI integration notice
+================================
+
+Source revision:
+https://github.com/ggml-org/llama.cpp/tree/caa596ab3f0f8768ee326d6e3d5d39782194676c/ggml/src/ggml-cpu/kleidiai
+
+The Full Android build enables GGML_CPU_KLEIDIAI. The following notices are
+preserved from the exact source files:
+
+SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates
+<open-source-office@arm.com>
+SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates
+<open-source-office@arm.com>
+SPDX-License-Identifier: MIT
+
+The complete MIT permission and warranty text is provided by LICENSE.txt in
+this directory.
