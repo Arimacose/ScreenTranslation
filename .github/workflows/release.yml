@@ -21,7 +21,7 @@ env:
 
 jobs:
   release:
-    name: Build, verify, and publish v0.2 editions
+    name: Build, verify, and publish versioned editions
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -105,8 +105,8 @@ jobs:
           version_info="$(./gradlew -q :app:printVersionInfo)"
           version_name="$(printf '%s\n' "$version_info" | sed -n 's/^versionName=//p')"
           version_code="$(printf '%s\n' "$version_info" | sed -n 's/^versionCode=//p')"
-          [[ "$version_name" == "0.2.0" ]]
-          [[ "$version_code" == "2" ]]
+          [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
           if [[ "$GITHUB_REF_NAME" != "v$version_name" ]]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match base version $version_name"
             exit 1
@@ -136,6 +136,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version_name }}"
+          version_code="${{ steps.version.outputs.version_code }}"
           apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
           zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
@@ -199,7 +200,7 @@ jobs:
             fi
 
             [[ "$("$apkanalyzer" manifest application-id "$apk")" == "$expected_id" ]]
-            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "2" ]]
+            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "$version_code" ]]
             [[ "$("$apkanalyzer" manifest version-name "$apk")" == "$expected_name" ]]
             [[ "$("$apkanalyzer" manifest target-sdk "$apk")" == "36" ]]
             badging="$("$aapt" dump badging "$apk")"
@@ -234,14 +235,14 @@ jobs:
           verify_apk \
             "$lite_apk" \
             "com.screentranslation.app" \
-            "0.2.0-lite" \
+            "${version}-lite" \
             "ScreenTranslation Lite" \
             "lib/arm64-v8a/libbergamot_runner.so" \
             "lib/arm64-v8a/libhymt2_jni.so"
           verify_apk \
             "$full_apk" \
             "com.screentranslation.app.full" \
-            "0.2.0-full" \
+            "${version}-full" \
             "HY-MT2 Q4 Experimental" \
             "lib/arm64-v8a/libhymt2_jni.so" \
             "lib/arm64-v8a/libbergamot_runner.so"
@@ -292,7 +293,7 @@ jobs:
           cp "$full_aab" \
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
           cp LICENSE "dist/ScreenTranslation-$version-LICENSE.txt"
-          third_party_stage="$RUNNER_TEMP/ScreenTranslation-$version-THIRD-PARTY"
+          third_party_stage="$RUNNER_TEMP/screen-translation-third-party"
           mkdir -p "$third_party_stage"
           cp THIRD_PARTY_NOTICES.md "$third_party_stage/"
           cp -R third_party/licenses "$third_party_stage/licenses"
@@ -321,7 +322,7 @@ jobs:
       - name: Preserve Lite R8 mapping
         uses: actions/upload-artifact@v7
         with:
-          name: ScreenTranslation-0.2.0-lite-mapping
+          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-lite-mapping
           path: |
             app/build/outputs/mapping/liteRelease/configuration.txt
             app/build/outputs/mapping/liteRelease/mapping.txt
@@ -333,7 +334,7 @@ jobs:
       - name: Preserve Full R8 mapping
         uses: actions/upload-artifact@v7
         with:
-          name: ScreenTranslation-0.2.0-full-hymt2-q4-experimental-mapping
+          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-full-hymt2-q4-experimental-mapping
           path: |
             app/build/outputs/mapping/fullRelease/configuration.txt
             app/build/outputs/mapping/fullRelease/mapping.txt
@@ -357,7 +358,7 @@ jobs:
 
           The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. The Full Experimental package uses `com.screentranslation.app.full` so both editions can coexist.
 
-          Complete third-party license texts, native dependency notices, immutable model coordinates, and the MPL corresponding-source instructions are included in `ScreenTranslation-0.2.0-THIRD-PARTY.zip` and embedded in the applicable APK/AAB.
+          Complete third-party license texts, native dependency notices, immutable model coordinates, and the MPL corresponding-source instructions are included in `ScreenTranslation-${{ steps.version.outputs.version_name }}-THIRD-PARTY.zip` and embedded in the applicable APK/AAB.
           NOTES
 
           gh release create "$GITHUB_REF_NAME" \
@@ -379,4 +380,4 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/screen-translation-release.jks"
           rm -f "$RUNNER_TEMP/release-notes.md"
-          rm -rf "$RUNNER_TEMP/ScreenTranslation-0.2.0-THIRD-PARTY"
+          rm -rf "$RUNNER_TEMP/screen-translation-third-party"
