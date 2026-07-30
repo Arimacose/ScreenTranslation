@@ -13,6 +13,8 @@
 - 内置 PP-OCRv6 small 多语言检测/识别模型，通过 ONNX Runtime 在设备端运行。
 - 源语言提供简中、英语、日语、韩语、法语、德语和西班牙语；俄语当前作为目标语言提供。
 - ML Kit 翻译模型按语言首次下载；下载完成后在设备端离线推理。
+- 提供可与默认版并存安装的 **HY-MT2 Q4 Experimental** 变体，用于端侧
+  高质量翻译集成验证；默认版仍使用 ML Kit。
 - 文本稳定后才触发翻译，避免同一画面反复识别与闪烁。
 - 前台服务常驻通知明确显示捕获状态，可从应用或系统界面停止。
 - 明暗主题、Android 16 edge-to-edge 及 HyperOS 悬浮窗权限流程。
@@ -31,6 +33,7 @@
 | OCR runtime | ONNX Runtime Android `1.26.0` |
 | ML Kit Translate | `17.0.3` |
 | Experimental translation candidate | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
+| Experimental app translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181` |
 
 PP-OCRv6 检测模型、识别模型和字符表随 APK/AAB 打包，运行时无需下载 OCR
 权重。首次构建会从 PaddlePaddle 官方仓库获取约 31 MB 的固定 ONNX 资产，
@@ -51,6 +54,12 @@ Bergamot Android ARM64 概念验证已经在目标真机完成：核心运行时
 多元英/日中报告见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
+Hy-MT2 1.8B Q4_K_M 已进入独立的 Android 应用实验变体。小米 15 Pro /
+Android 16 上的应用内固定长句自检耗时 `20.302 s`，采样峰值 PSS / RSS
+为 `2249.0 / 2377.1 MiB`。`MediaProjection → PP-OCRv6 → HY-MT2 Q4 →
+悬浮窗` 主链路也已在公开的 Example Domain 页面完成真机验收。该变体用于
+质量、内存和静止画面链路验证，不代表持续识屏默认方案。
+
 ## 工程结构
 
 ```text
@@ -69,6 +78,12 @@ app/src/main/java/com/screentranslation/app/
 ├── prefs/AppPreferences.kt          # 用户设置
 ├── service/ScreenTranslationService.kt
 └── util/StableTextGate.kt           # OCR 去抖/稳定门
+
+app/src/hymt2Experimental/
+└── java/.../HyMt2Q4TranslationEngine.kt  # 实验变体模型下载、校验与推理
+
+llama-android/                        # JNI/Kotlin Android 推理封装
+third_party/llama.cpp/                # 固定提交的 Git submodule
 ```
 
 设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，真机验收见
@@ -86,6 +101,8 @@ Bergamot Android 核心 PoC 见
 - JDK 17
 - Android SDK Platform 37
 - Android SDK Build Tools 37.0.0
+- Android NDK 29.0.14206865（HY-MT2 Q4 Experimental）
+- CMake 3.31.6（HY-MT2 Q4 Experimental）
 - Git
 
 Android Studio 安装 SDK 后，在未跟踪的 `local.properties` 中指向本机目录：
@@ -106,6 +123,12 @@ Windows PowerShell 使用：
 ```powershell
 java -version
 .\gradlew.bat --version
+```
+
+获取 llama.cpp 固定提交：
+
+```bash
+git submodule update --init --recursive
 ```
 
 首次执行构建任务时，`preparePpOcrv6Assets` 会下载并校验固定版本的
@@ -131,6 +154,40 @@ APK 输出：
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+### HY-MT2 Q4 Experimental
+
+实验变体使用独立包名
+`com.screentranslation.app.hymt2.experimental`，可与默认 APK 并存安装。
+版本名为 `0.1.0-experimental-hymt2-q4.1`，界面标题、启动器名称和常驻通知
+均明确标记 `Experimental` / `HY-MT2 Q4 集成版本`。
+
+Windows 构建与校验：
+
+```powershell
+git submodule update --init --recursive
+.\gradlew.bat testDebugUnitTest assembleHymt2Experimental lintHymt2Experimental
+```
+
+APK 输出：
+
+```text
+app/build/outputs/apk/hymt2Experimental/app-hymt2Experimental.apk
+```
+
+安装：
+
+```powershell
+adb install -r app\build\outputs\apk\hymt2Experimental\app-hymt2Experimental.apk
+adb shell am start -n com.screentranslation.app.hymt2.experimental/.MainActivity
+```
+
+模型不写入 APK。首次点击“准备 Hy-MT2 Q4 实验模型”或“运行 Hy-MT2 Q4
+集成自检”时，应用从固定版本下载官方 `Hy-MT2-1.8B-Q4_K_M.gguf`，校验
+`1,133,080,448` 字节及 SHA-256
+`dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699`，
+再保存到应用内部 `no_backup/models/hymt2-q4`。实验变体当前只输出简体中文；
+内置固定英文长句自检会实际加载 JNI/llama.cpp 并显示原文、译文和总耗时。
 
 ### 安装
 
@@ -170,6 +227,8 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 
 - 屏幕帧只在进程内存中处理，不落盘。
 - OCR 与翻译推理在设备端进行；翻译模型按需联网下载。
+- HY-MT2 Q4 Experimental 的模型保存在应用内部 `no_backup` 目录，不进入
+  系统备份；卸载该实验包时一并清除。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。
 - 停止服务时释放 `VirtualDisplay`、`MediaProjection`、`ImageReader`、OCR/翻译客户端和悬浮窗。
 - 项目代码不上传屏幕图像、OCR 原文或译文。
@@ -191,6 +250,8 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - Bergamot 目前仅为 `tools/bergamot-android-poc` 下的实验性 ARM64 核心，
   尚未进入生产 APK；Mozilla 当前无直接日中候选，双模型级联内存过高，
   默认翻译器仍为 ML Kit。
+- Hy-MT2 Q4 已进入独立 experimental APK，但单次应用内长句自检约 20 秒，
+  峰值 RSS 约 2.32 GiB，不作为持续识屏默认路径。
 
 ## 开源维护
 
@@ -218,3 +279,5 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - [ML Kit Android data disclosure](https://developers.google.com/ml-kit/android-data-disclosure)
 - [Bergamot Translator](https://github.com/browsermt/bergamot-translator)
 - [Firefox Translations models](https://mozilla.github.io/translations/firefox-models/)
+- [Tencent Hy-MT2](https://github.com/Tencent-Hunyuan/Hy-MT2)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)

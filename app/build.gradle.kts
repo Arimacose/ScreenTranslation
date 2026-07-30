@@ -175,6 +175,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -207,6 +208,13 @@ android {
             versionNameSuffix = "-benchmark"
             matchingFallbacks += listOf("debug")
         }
+        create("hymt2Experimental") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".hymt2.experimental"
+            versionNameSuffix = "-experimental-hymt2-q4.1"
+            buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "true")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
@@ -227,6 +235,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     androidResources {
@@ -272,6 +281,9 @@ dependencies {
 
     // Translation models are downloaded on demand, then run on device.
     implementation("com.google.mlkit:translate:17.0.3")
+
+    // Only the explicitly labelled experimental APK contains llama.cpp.
+    add("hymt2ExperimentalImplementation", project(":llama-android"))
 
     // ML Kit OCR remains benchmark-only as the v0.1.0 comparison baseline.
     add("benchmarkImplementation", "com.google.mlkit:text-recognition:16.0.1")

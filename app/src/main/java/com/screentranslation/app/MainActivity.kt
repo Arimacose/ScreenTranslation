@@ -8,7 +8,10 @@ import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
+import android.text.format.Formatter
+import android.util.Log
 import android.view.View
 import android.view.WindowInsets
 import android.widget.AdapterView
@@ -21,7 +24,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import com.screentranslation.app.ml.TranslationEngine
+import com.screentranslation.app.ml.ModelPreparationProgress
+import com.screentranslation.app.ml.ModelPreparationStage
+import com.screentranslation.app.ml.TranslationBackend
+import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.service.ScreenTranslationService
@@ -30,12 +36,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var preferences: AppPreferences
     private lateinit var projectionManager: MediaProjectionManager
 
+    private lateinit var experimentalBannerView: TextView
     private lateinit var sourceSpinner: Spinner
     private lateinit var targetSpinner: Spinner
     private lateinit var intervalSeekBar: SeekBar
     private lateinit var intervalValueView: TextView
     private lateinit var prepareModelsButton: Button
     private lateinit var modelStatusView: TextView
+    private lateinit var experimentalSmokeTestButton: Button
+    private lateinit var experimentalSmokeTestResultView: TextView
     private lateinit var notificationPermissionButton: Button
     private lateinit var notificationPermissionStatusView: TextView
     private lateinit var overlayPermissionButton: Button
@@ -46,9 +55,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
     private lateinit var serviceStatusView: TextView
 
-    private var modelPreparationEngine: TranslationEngine? = null
+    private val availableSourceOptions: List<LanguageOption> = LanguageOption.sourceOptions
+    private val availableTargetOptions: List<LanguageOption> by lazy {
+        if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+            listOf(LanguageOption.CHINESE_SIMPLIFIED)
+        } else {
+            LanguageOption.targetOptions
+        }
+    }
+
+    private var modelPreparationEngine: TranslationBackend? = null
     private var modelPreparationGeneration = 0
     private var modelReadyFor: Pair<String, String>? = null
+    private var experimentalSmokeTestEngine: TranslationBackend? = null
+    private var experimentalSmokeTestGeneration = 0
     private var languageListenersReady = false
     private var pendingStartAfterNotificationPermission = false
     private var pendingStartAfterOverlayPermission = false
@@ -145,16 +165,35 @@ class MainActivity : AppCompatActivity() {
         modelPreparationGeneration += 1
         modelPreparationEngine?.close()
         modelPreparationEngine = null
+        experimentalSmokeTestGeneration += 1
+        experimentalSmokeTestEngine?.close()
+        experimentalSmokeTestEngine = null
         super.onDestroy()
     }
 
     private fun bindViews() {
+        experimentalBannerView = findViewById(R.id.text_experimental_banner)
+        experimentalBannerView.visibility = if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         sourceSpinner = findViewById(R.id.spinner_source_language)
         targetSpinner = findViewById(R.id.spinner_target_language)
         intervalSeekBar = findViewById(R.id.seek_frame_interval)
         intervalValueView = findViewById(R.id.text_frame_interval)
         prepareModelsButton = findViewById(R.id.button_prepare_models)
         modelStatusView = findViewById(R.id.text_model_status)
+        experimentalSmokeTestButton = findViewById(R.id.button_experimental_smoke_test)
+        experimentalSmokeTestResultView =
+            findViewById(R.id.text_experimental_smoke_test_result)
+        val experimentalVisibility = if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        experimentalSmokeTestButton.visibility = experimentalVisibility
+        experimentalSmokeTestResultView.visibility = experimentalVisibility
         notificationPermissionButton = findViewById(R.id.button_notification_permission)
         notificationPermissionStatusView =
             findViewById(R.id.text_notification_permission_status)
@@ -180,8 +219,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureLanguageSelectors() {
-        val sourceOptions = LanguageOption.sourceOptions
-        val targetOptions = LanguageOption.targetOptions
+        val sourceOptions = availableSourceOptions
+        val targetOptions = availableTargetOptions
         val sourceAdapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_item,
@@ -268,6 +307,9 @@ class MainActivity : AppCompatActivity() {
         prepareModelsButton.setOnClickListener {
             prepareCurrentModels()
         }
+        experimentalSmokeTestButton.setOnClickListener {
+            runExperimentalSmokeTest()
+        }
         notificationPermissionButton.setOnClickListener {
             requestNotificationPermission()
         }
@@ -316,7 +358,8 @@ class MainActivity : AppCompatActivity() {
         val requestedPair = source.languageTag to target.languageTag
         val generation = ++modelPreparationGeneration
         modelPreparationEngine?.close()
-        val engine = TranslationEngine(
+        val engine = TranslationBackendFactory.create(
+            context = this,
             sourceLanguage = source.languageTag,
             targetLanguage = target.languageTag,
         )
@@ -330,7 +373,17 @@ class MainActivity : AppCompatActivity() {
             target.displayName(this),
         )
 
-        engine.prepare(requireWifi = false) { result ->
+        engine.prepare(
+            requireWifi = false,
+            warmRuntime = false,
+            onProgress = { progress ->
+                runOnUiThread {
+                    if (generation == modelPreparationGeneration && !isDestroyed) {
+                        modelStatusView.text = modelPreparationStatus(progress)
+                    }
+                }
+            },
+        ) { result ->
             runOnUiThread {
                 if (generation != modelPreparationGeneration || isDestroyed) {
                     engine.close()
@@ -369,6 +422,135 @@ class MainActivity : AppCompatActivity() {
                     },
                 )
             }
+        }
+    }
+
+    private fun modelPreparationStatus(progress: ModelPreparationProgress): String =
+        when (progress.stage) {
+            ModelPreparationStage.PREPARING -> getString(R.string.model_progress_preparing)
+            ModelPreparationStage.VERIFYING -> getString(R.string.model_progress_verifying)
+            ModelPreparationStage.LOADING_RUNTIME -> getString(R.string.model_progress_loading_runtime)
+            ModelPreparationStage.DOWNLOADING -> {
+                val completed = progress.completedBytes ?: 0L
+                val total = progress.totalBytes ?: 0L
+                val percent = if (total > 0L) {
+                    ((completed * 100L) / total).coerceIn(0L, 100L)
+                } else {
+                    0L
+                }
+                getString(
+                    R.string.model_progress_downloading,
+                    Formatter.formatFileSize(this, completed),
+                    Formatter.formatFileSize(this, total),
+                    percent,
+                )
+            }
+        }
+
+    private fun runExperimentalSmokeTest() {
+        if (!BuildConfig.HYMT2_Q4_EXPERIMENTAL) return
+
+        val generation = ++experimentalSmokeTestGeneration
+        experimentalSmokeTestEngine?.close()
+        val engine = TranslationBackendFactory.create(
+            context = this,
+            sourceLanguage = EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE,
+            targetLanguage = EXPERIMENTAL_SMOKE_TARGET_LANGUAGE,
+        )
+        experimentalSmokeTestEngine = engine
+        experimentalSmokeTestButton.isEnabled = false
+        experimentalSmokeTestResultView.setText(R.string.experimental_smoke_test_running)
+        val startedAt = SystemClock.elapsedRealtime()
+
+        engine.prepare(
+            requireWifi = false,
+            warmRuntime = true,
+            onProgress = { progress ->
+                runOnUiThread {
+                    if (
+                        generation == experimentalSmokeTestGeneration &&
+                        !isDestroyed
+                    ) {
+                        experimentalSmokeTestResultView.text =
+                            modelPreparationStatus(progress)
+                    }
+                }
+            },
+        ) { preparation ->
+            preparation.fold(
+                onSuccess = {
+                    engine.translate(EXPERIMENTAL_SMOKE_SOURCE_TEXT) { translation ->
+                        finishExperimentalSmokeTest(
+                            generation = generation,
+                            engine = engine,
+                            startedAt = startedAt,
+                            translation = translation,
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    finishExperimentalSmokeTest(
+                        generation = generation,
+                        engine = engine,
+                        startedAt = startedAt,
+                        translation = Result.failure(error),
+                    )
+                },
+            )
+        }
+    }
+
+    private fun finishExperimentalSmokeTest(
+        generation: Int,
+        engine: TranslationBackend,
+        startedAt: Long,
+        translation: Result<String>,
+    ) {
+        val elapsedMs = SystemClock.elapsedRealtime() - startedAt
+        runOnUiThread {
+            if (generation != experimentalSmokeTestGeneration || isDestroyed) {
+                engine.close()
+                return@runOnUiThread
+            }
+            if (experimentalSmokeTestEngine === engine) {
+                experimentalSmokeTestEngine = null
+            }
+            engine.close()
+            experimentalSmokeTestButton.isEnabled = true
+            translation.fold(
+                onSuccess = { translatedText ->
+                    Log.i(
+                        EXPERIMENTAL_SMOKE_LOG_TAG,
+                        "elapsedMs=$elapsedMs translation=$translatedText",
+                    )
+                    val smokePair = EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE to
+                        EXPERIMENTAL_SMOKE_TARGET_LANGUAGE
+                    val currentPair = selectedSourceLanguage().languageTag to
+                        selectedTargetLanguage().languageTag
+                    if (currentPair == smokePair) {
+                        modelReadyFor = smokePair
+                        modelStatusView.text = getString(
+                            R.string.model_ready,
+                            selectedSourceLanguage().displayName(this),
+                            selectedTargetLanguage().displayName(this),
+                        )
+                    }
+                    experimentalSmokeTestResultView.text = getString(
+                        R.string.experimental_smoke_test_success,
+                        elapsedMs,
+                        EXPERIMENTAL_SMOKE_SOURCE_TEXT,
+                        translatedText,
+                    )
+                },
+                onFailure = { error ->
+                    Log.e(EXPERIMENTAL_SMOKE_LOG_TAG, "Self-test failed", error)
+                    experimentalSmokeTestResultView.text = getString(
+                        R.string.experimental_smoke_test_failed,
+                        elapsedMs,
+                        error.localizedMessage ?: getString(R.string.unknown_error),
+                    )
+                },
+            )
         }
     }
 
@@ -577,19 +759,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun selectedSourceLanguage(): LanguageOption {
-        return LanguageOption.sourceOptions[
+        return availableSourceOptions[
             sourceSpinner.selectedItemPosition.coerceIn(
                 0,
-                LanguageOption.sourceOptions.lastIndex,
+                availableSourceOptions.lastIndex,
             )
         ]
     }
 
     private fun selectedTargetLanguage(): LanguageOption {
-        return LanguageOption.targetOptions[
+        return availableTargetOptions[
             targetSpinner.selectedItemPosition.coerceIn(
                 0,
-                LanguageOption.targetOptions.lastIndex,
+                availableTargetOptions.lastIndex,
             )
         ]
     }
@@ -670,5 +852,12 @@ class MainActivity : AppCompatActivity() {
         private const val HYPER_OS_APP_DETAILS_ACTIVITY =
             "com.miui.appmanager.ApplicationsDetailsActivity"
         private const val HYPER_OS_APP_DETAILS_PACKAGE_EXTRA = "package_name"
+        private const val EXPERIMENTAL_SMOKE_LOG_TAG = "HyMt2Q4Smoke"
+        private const val EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE = "en"
+        private const val EXPERIMENTAL_SMOKE_TARGET_LANGUAGE = "zh"
+        private const val EXPERIMENTAL_SMOKE_SOURCE_TEXT =
+            "Although the committee acknowledged that the proposal could reduce costs " +
+                "in the short term, it postponed the vote because no one could explain " +
+                "how the system would protect users whose accounts had been flagged by mistake."
     }
 }

@@ -81,4 +81,18 @@
     <string name="translation_attribution">Powered by Google Translate</string>
     <string name="overlay_reselect">重选区域</string>
     <string name="overlay_stop">停止</string>
+
+    <string name="experimental_banner">EXPERIMENTAL build</string>
+    <string name="model_progress_preparing">正在准备离线翻译模型…</string>
+    <string name="model_progress_downloading">正在下载模型：%1$s / %2$s（%3$d%%）</string>
+    <string name="model_progress_verifying">正在校验模型完整性…</string>
+    <string name="model_progress_loading_runtime">正在加载端侧推理引擎…</string>
+    <string name="experimental_smoke_test">运行实验模型集成自检</string>
+    <string name="experimental_smoke_test_not_run">尚未运行实验模型集成自检</string>
+    <string name="experimental_smoke_test_running">正在运行实验模型集成自检…</string>
+    <string name="experimental_smoke_test_success">集成自检通过（%1$d ms）\n原文：%2$s\n译文：%3$s</string>
+    <string name="experimental_smoke_test_failed">集成自检失败（%1$d ms）：%2$s</string>
+    <string name="capture_notification_title">识屏翻译正在运行</string>
+    <string name="capture_notification_text">点按悬浮窗可重新框选，或在此停止</string>
+    <string name="capture_notification_stop">停止</string>
 </resources>

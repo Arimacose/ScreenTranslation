@@ -16,6 +16,15 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 | PP-OCRv6 small recognition ONNX | `b8f84f0b80c529de40b4fbb3544b84fa7233a513` | Apache License 2.0 |
 | ML Kit Translate | 17.0.3 | ML Kit Terms of Service |
 
+## HY-MT2 Q4 Experimental 依赖
+
+以下组件只进入 `hymt2Experimental` 变体；默认 APK 仍使用 ML Kit：
+
+| 组件 | 当前版本/固定提交 | 上游条款 |
+|---|---:|---|
+| Hy-MT2 1.8B GGUF experimental/benchmark model | `1cd5208700acedef4ef93019b6cfc148b8522d45` | Apache License 2.0 |
+| llama.cpp experimental app/benchmark runtime | `caa596ab3` (`b10181`) | MIT License |
+
 ## 模型基准依赖
 
 以下组件只进入 `benchmark` 变体，用于候选模型真机比较：
@@ -47,6 +56,8 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 - [Bergamot Translator](https://github.com/browsermt/bergamot-translator)
 - [Firefox Translations models](https://github.com/mozilla/firefox-translations-models)
 - [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/)
+- [Tencent Hy-MT2](https://github.com/Tencent-Hunyuan/Hy-MT2)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)
 
 ML Kit Maven POM 将翻译组件及 benchmark-only OCR 组件的许可证字段标记为
 “ML Kit Terms of Service”，因此它们不因本仓库采用 Apache-2.0 而转为
@@ -55,6 +66,10 @@ Apache-2.0。应用界面保留 Google Translate 归属说明。
 Bergamot 与 Firefox Translations 模型当前只用于被忽略构建目录中的概念验证，
 不进入生产 APK。若后续分发原生库或模型，发布流程还需随包收录 MPL-2.0 文本、
 对应源码修改说明，以及 Bergamot 各第三方子模块要求的 notice。
+
+Hy-MT2 Q4 模型由独立 experimental APK 在运行时下载，不写入 APK；
+llama.cpp 原生运行时会进入该 experimental APK。二者均未进入默认生产变体。
+实验发布清单必须固定模型/runtime 哈希，并随包保留各自许可证与 notice。
 
 Gradle 还会解析传递依赖。发布维护者应在依赖更新和正式发布前检查：
 

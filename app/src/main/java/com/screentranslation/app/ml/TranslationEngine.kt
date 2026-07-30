@@ -1,11 +1,79 @@
 package com.screentranslation.app.ml
 
+import android.content.Context
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
+import com.screentranslation.app.BuildConfig
+import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicBoolean
+
+enum class ModelPreparationStage {
+    PREPARING,
+    DOWNLOADING,
+    VERIFYING,
+    LOADING_RUNTIME,
+}
+
+data class ModelPreparationProgress(
+    val stage: ModelPreparationStage,
+    val completedBytes: Long? = null,
+    val totalBytes: Long? = null,
+)
+
+/** Common asynchronous contract shared by ML Kit and experimental backends. */
+interface TranslationBackend : AutoCloseable {
+    fun prepare(
+        requireWifi: Boolean = false,
+        warmRuntime: Boolean = true,
+        onProgress: (ModelPreparationProgress) -> Unit = {},
+        onResult: (Result<Unit>) -> Unit,
+    )
+
+    fun translate(text: String, onResult: (Result<String>) -> Unit)
+}
+
+/**
+ * Keeps experimental code out of production variants while preserving a typed
+ * backend boundary in the shared capture pipeline.
+ */
+object TranslationBackendFactory {
+    fun create(
+        context: Context,
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): TranslationBackend {
+        if (!BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+            return TranslationEngine(sourceLanguage, targetLanguage)
+        }
+
+        try {
+            val backendClass = Class.forName(HYMT2_BACKEND_CLASS)
+            val constructor = backendClass.getConstructor(
+                Context::class.java,
+                String::class.java,
+                String::class.java,
+            )
+            return constructor.newInstance(
+                context.applicationContext,
+                sourceLanguage,
+                targetLanguage,
+            ) as TranslationBackend
+        } catch (error: InvocationTargetException) {
+            throw error.targetException
+        } catch (error: ReflectiveOperationException) {
+            throw IllegalStateException(
+                "Hy-MT2 Q4 experimental backend is missing from this APK",
+                error,
+            )
+        }
+    }
+
+    private const val HYMT2_BACKEND_CLASS =
+        "com.screentranslation.app.ml.HyMt2Q4TranslationEngine"
+}
 
 /**
  * On-device ML Kit translator with explicit model preparation.
@@ -17,7 +85,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TranslationEngine(
     sourceLanguage: String,
     targetLanguage: String,
-) : AutoCloseable {
+) : TranslationBackend {
     private val sourceLanguageCode = requireSupportedLanguage(sourceLanguage, "source")
     private val targetLanguageCode = requireSupportedLanguage(targetLanguage, "target")
     private val passThrough = sourceLanguageCode == targetLanguageCode
@@ -42,8 +110,10 @@ class TranslationEngine(
     @Volatile
     private var preparing = false
 
-    fun prepare(
-        requireWifi: Boolean = false,
+    override fun prepare(
+        requireWifi: Boolean,
+        warmRuntime: Boolean,
+        onProgress: (ModelPreparationProgress) -> Unit,
         onResult: (Result<Unit>) -> Unit,
     ) {
         if (closed.get()) {
@@ -74,6 +144,7 @@ class TranslationEngine(
         }
 
         if (!shouldStartDownload) return
+        onProgress(ModelPreparationProgress(ModelPreparationStage.PREPARING))
 
         val conditionsBuilder = DownloadConditions.Builder()
         if (requireWifi) {
@@ -103,7 +174,7 @@ class TranslationEngine(
             }
     }
 
-    fun translate(text: String, onResult: (Result<String>) -> Unit) {
+    override fun translate(text: String, onResult: (Result<String>) -> Unit) {
         if (closed.get()) {
             onResult(Result.failure(IllegalStateException("Translation engine is closed")))
             return

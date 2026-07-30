@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ScreenTranslation"
 include(":app")
+include(":llama-android")
