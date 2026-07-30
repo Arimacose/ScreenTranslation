@@ -1,9 +1,13 @@
 # ScreenTranslation Online 版设计
 
-> 状态：设计候选  
-> 目标版本：v0.2.x 之后的独立 Online edition  
-> 目标系统：Android 16 / 小米 15 Pro / HyperOS  
-> OCR：PP-OCRv6-small  
+> 状态：设计候选
+>
+> 目标版本：v0.2.x 之后的独立 Online edition
+>
+> 目标系统：Android 16 / 小米 15 Pro / HyperOS
+>
+> OCR：PP-OCRv6-small
+>
 > 翻译：用户配置的 OpenAI-compatible Chat Completions 服务
 
 ## 1. 产品边界
