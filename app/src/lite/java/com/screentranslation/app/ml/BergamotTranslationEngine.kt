@@ -11,6 +11,7 @@ import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -179,9 +180,9 @@ private class BergamotRunner private constructor(
     private val writer: BufferedWriter,
     private val reader: BufferedReader,
     private val lineReader: BergamotBoundedLineReader,
+    private val closed: AtomicBoolean,
 ) : AutoCloseable {
     private val requestIds = AtomicLong(0L)
-    private val closed = AtomicBoolean(false)
 
     fun translate(source: String): String {
         check(!closed.get()) { "Bergamot runner is closed" }
@@ -258,14 +259,15 @@ private class BergamotRunner private constructor(
             val process = ProcessBuilder(command)
                 .redirectErrorStream(false)
                 .start()
-            drainStderr(process)
+            val closed = AtomicBoolean(false)
+            drainStderr(process, closed)
             val writer = BufferedWriter(OutputStreamWriter(process.outputStream, Charsets.UTF_8))
             val reader = BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8))
             val lineReader = BergamotBoundedLineReader(
                 reader = reader,
                 threadName = "bergamot-lite-stdout",
             )
-            val runnerInstance = BergamotRunner(process, writer, reader, lineReader)
+            val runnerInstance = BergamotRunner(process, writer, reader, lineReader, closed)
             try {
                 val ready = lineReader.readLine(
                     timeoutMillis = READY_TIMEOUT_MS,
@@ -282,11 +284,28 @@ private class BergamotRunner private constructor(
             return runnerInstance
         }
 
-        private fun drainStderr(process: Process) {
+        private fun drainStderr(
+            process: Process,
+            shutdownRequested: AtomicBoolean,
+        ) {
             Thread(
                 {
-                    process.errorStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                        lines.forEach { line -> Log.w("BergamotRunner", line) }
+                    val failure = consumeBergamotStderr(process.errorStream) { line ->
+                        Log.w("BergamotRunner", line)
+                    }
+                    if (failure != null) {
+                        if (shutdownRequested.get()) {
+                            Log.d(
+                                "BergamotRunner",
+                                "Runner stderr reader closed with the runner",
+                            )
+                        } else {
+                            Log.w(
+                                "BergamotRunner",
+                                "Runner stderr reader stopped unexpectedly",
+                                failure,
+                            )
+                        }
                     }
                 },
                 "bergamot-lite-stderr",
@@ -313,6 +332,23 @@ private class BergamotRunner private constructor(
         }
     }
 }
+
+/**
+ * Drains runner diagnostics without allowing stream-close races to escape the
+ * daemon thread as an uncaught Android process exception.
+ */
+internal fun consumeBergamotStderr(
+    stream: InputStream,
+    onLine: (String) -> Unit,
+): Exception? =
+    try {
+        stream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+            lines.forEach(onLine)
+        }
+        null
+    } catch (error: Exception) {
+        error
+    }
 
 /**
  * Keeps blocking BufferedReader operations off the engine/service thread and
@@ -495,7 +531,7 @@ private class BergamotModelStore(
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "ScreenTranslation-Lite/0.2.0")
+            setRequestProperty("User-Agent", "ScreenTranslation-Lite/0.2.1")
             decision.rangeStart?.let { rangeStart ->
                 setRequestProperty("Range", "bytes=$rangeStart-")
             }

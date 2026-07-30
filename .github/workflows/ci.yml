@@ -83,8 +83,17 @@ jobs:
           set -euo pipefail
           apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
+          version_info="$(./gradlew -q :app:printVersionInfo)"
+          expected_version_name="$(
+            printf '%s\n' "$version_info" | sed -n 's/^versionName=//p'
+          )"
+          expected_version_code="$(
+            printf '%s\n' "$version_info" | sed -n 's/^versionCode=//p'
+          )"
           test -x "$apkanalyzer"
           test -x "$aapt"
+          [[ "$expected_version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$expected_version_code" =~ ^[1-9][0-9]*$ ]]
 
           find_apk() {
             local edition="$1"
@@ -126,7 +135,7 @@ jobs:
             local badging
 
             [[ "$("$apkanalyzer" manifest application-id "$apk")" == "$expected_id" ]]
-            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "2" ]]
+            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "$expected_version_code" ]]
             [[ "$("$apkanalyzer" manifest version-name "$apk")" == "$expected_name" ]]
             [[ "$("$apkanalyzer" manifest target-sdk "$apk")" == "36" ]]
             badging="$("$aapt" dump badging "$apk")"
@@ -168,7 +177,7 @@ jobs:
           verify_common \
             "$lite_apk" \
             "com.screentranslation.app" \
-            "0.2.0-lite" \
+            "${expected_version_name}-lite" \
             "ScreenTranslation Lite" \
             "$lite_listing"
           assert_entry "$lite_listing" "lib/arm64-v8a/libbergamot_runner.so"
@@ -189,7 +198,7 @@ jobs:
           verify_common \
             "$full_apk" \
             "com.screentranslation.app.full" \
-            "0.2.0-full" \
+            "${expected_version_name}-full" \
             "HY-MT2 Q4 Experimental" \
             "$full_listing"
           assert_entry "$full_listing" "lib/arm64-v8a/libhymt2_jni.so"

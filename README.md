@@ -190,7 +190,7 @@ app/build/outputs/apk/full/release/app-full-release-unsigned.apk
 
 ### Lite · Bergamot
 
-Lite 使用 `com.screentranslation.app` 和 `0.2.0-lite`，可覆盖升级 v0.1.0。
+Lite 使用 `com.screentranslation.app` 和 `0.2.1-lite`，可覆盖升级 v0.1.0。
 APK 随包提供固定的 ARM64 Bergamot runner；构建时
 `verifyBergamotRunner` 校验其 8,416,304 bytes 与 SHA-256。英语→中文使用
 直模，日语→中文使用 `ja→en→zh` 级联。压缩模型和解压文件均校验长度与
@@ -202,7 +202,7 @@ SHA-256。
 
 ### Full · HY-MT2 Q4 Experimental
 
-Full 使用 `com.screentranslation.app.full` 和 `0.2.0-full`，可与 Lite
+Full 使用 `com.screentranslation.app.full` 和 `0.2.1-full`，可与 Lite
 并存。应用名称、标题、Banner、通知和 attribution 均包含
 `Full · HY-MT2 Q4 Experimental`。
 
@@ -258,7 +258,7 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。
 - 停止服务时释放 `VirtualDisplay`、`MediaProjection`、`ImageReader`、OCR/翻译客户端和悬浮窗。
 - 项目代码不上传屏幕图像、OCR 原文或译文。
-- v0.2.0 Lite / Full APK 不携带 ML Kit Translate；该组件只保留在
+- v0.2.1 Lite / Full APK 不携带 ML Kit Translate；该组件只保留在
   `benchmark` build type。完整数据流见 [`PRIVACY.md`](PRIVACY.md)。
 - 规划中的 Online edition 具有单独的数据发送确认与密钥存储设计，见
   [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。

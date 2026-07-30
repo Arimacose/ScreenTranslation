@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-31
+
+### Changed
+
+- 应用版本提高为 `versionCode 3` / `0.2.1-lite` / `0.2.1-full`。
+
+### Fixed
+
+- 修复 Lite 停止 Bergamot 服务时关闭 stderr 管道可能触发
+  `InterruptedIOException` 未捕获异常并导致进程崩溃的问题；正常关闭期间的
+  reader 中断现在按预期回收，非关闭期的读取错误仍记录告警。
+
 ## [0.2.0] - 2026-07-31
 
 ### Added
@@ -80,6 +92,7 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Arimacose/ScreenTranslation/releases/tag/v0.1.0

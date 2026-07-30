@@ -385,7 +385,7 @@ private class HyMt2Q4ModelStore(
             requestMethod = "GET"
             setRequestProperty(
                 "User-Agent",
-                "ScreenTranslation-Full-HY-MT2-Q4-Experimental/0.2.0",
+                "ScreenTranslation-Full-HY-MT2-Q4-Experimental/0.2.1",
             )
             if (existingBytes > 0L) {
                 setRequestProperty("Range", "bytes=$existingBytes-")

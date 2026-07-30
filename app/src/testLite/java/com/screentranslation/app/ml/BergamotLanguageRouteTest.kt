@@ -7,10 +7,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.io.InterruptedIOException
 import java.io.Reader
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class BergamotLanguageRouteTest {
     @get:Rule
@@ -149,6 +153,45 @@ class BergamotLanguageRouteTest {
         assertTrue(error is IllegalStateException)
         assertTrue(error?.message.orEmpty().contains("timed out"))
         assertTrue("read took ${elapsedMillis}ms", elapsedMillis < 2_000L)
+    }
+
+    @Test
+    fun stderrDrainThreadContainsInterruptedCloseWithoutUncaughtException() {
+        val expected = InterruptedIOException("read interrupted by close() on another thread")
+        val stream = object : InputStream() {
+            override fun read(): Int = throw expected
+        }
+        val lines = mutableListOf<String>()
+        val failure = AtomicReference<Exception?>()
+        val uncaught = AtomicReference<Throwable?>()
+        val thread = Thread {
+            failure.set(consumeBergamotStderr(stream, lines::add))
+        }.apply {
+            uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, error ->
+                uncaught.set(error)
+            }
+        }
+
+        thread.start()
+        thread.join(1_000L)
+
+        assertFalse(thread.isAlive)
+        assertTrue(failure.get() === expected)
+        assertEquals(null, uncaught.get())
+        assertTrue(lines.isEmpty())
+    }
+
+    @Test
+    fun stderrDrainForwardsLinesAndTreatsEofAsSuccess() {
+        val lines = mutableListOf<String>()
+
+        val failure = consumeBergamotStderr(
+            ByteArrayInputStream("first\nsecond\n".toByteArray()),
+            lines::add,
+        )
+
+        assertEquals(null, failure)
+        assertEquals(listOf("first", "second"), lines)
     }
 
     private fun sha256(bytes: ByteArray): String =
