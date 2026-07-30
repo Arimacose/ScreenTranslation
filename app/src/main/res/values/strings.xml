@@ -46,8 +46,9 @@
     <string name="battery_policy">省电策略</string>
     <string name="battery_policy_explanation">HyperOS / MIUI 会主动回收后台前台服务。请将本应用的省电策略设为「无限制」，否则长时间翻译可能被系统中断。</string>
     <string name="open_battery_policy">打开省电策略设置</string>
-    <string name="battery_policy_unrestricted">系统电池优化：已放行</string>
-    <string name="battery_policy_restricted">系统电池优化：未放行（建议设为「无限制」）</string>
+    <string name="battery_policy_background_restricted">系统后台限制：已开启（请在省电策略中选择「无限制」）</string>
+    <string name="battery_policy_aosp_allowlisted">系统后台限制：未检测到；AOSP 电源白名单：已加入</string>
+    <string name="battery_policy_vendor_unverified">系统后台限制：未检测到；HyperOS「无限制」状态请以设置页为准</string>
 
     <string name="section_capture">开始识别</string>
     <string name="capture_explanation">系统将只共享默认显示器。授权后，请拖动蓝框选择要持续识别的区域。</string>

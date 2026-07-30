@@ -2,6 +2,7 @@ package com.screentranslation.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
@@ -31,6 +32,26 @@ import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.service.ScreenTranslationService
+
+internal enum class BatteryPolicyUiState {
+    BACKGROUND_RESTRICTED,
+    AOSP_POWER_ALLOWLISTED,
+    VENDOR_POLICY_UNVERIFIED,
+}
+
+/**
+ * Android exposes background restriction and the AOSP power allowlist as
+ * separate signals. HyperOS' per-app "Unrestricted" policy is vendor-owned and
+ * does not necessarily add the package to the AOSP allowlist.
+ */
+internal fun resolveBatteryPolicyUiState(
+    isBackgroundRestricted: Boolean?,
+    isAospPowerAllowlisted: Boolean?,
+): BatteryPolicyUiState = when {
+    isBackgroundRestricted == true -> BatteryPolicyUiState.BACKGROUND_RESTRICTED
+    isAospPowerAllowlisted == true -> BatteryPolicyUiState.AOSP_POWER_ALLOWLISTED
+    else -> BatteryPolicyUiState.VENDOR_POLICY_UNVERIFIED
+}
 
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: AppPreferences
@@ -675,14 +696,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Reports only the AOSP battery optimization whitelist. A vendor power
-     * policy is not readable from here, so the wording stays advisory rather
-     * than claiming the service is safe from being killed.
-     */
-    private fun isIgnoringBatteryOptimizations(): Boolean =
-        getSystemService(PowerManager::class.java)
-            ?.isIgnoringBatteryOptimizations(packageName) == true
+    private fun batteryPolicyUiState(): BatteryPolicyUiState =
+        resolveBatteryPolicyUiState(
+            isBackgroundRestricted =
+                getSystemService(ActivityManager::class.java)?.isBackgroundRestricted,
+            isAospPowerAllowlisted =
+                getSystemService(PowerManager::class.java)
+                    ?.isIgnoringBatteryOptimizations(packageName),
+        )
 
     private fun maybeContinueAfterOverlayPermission() {
         if (!pendingStartAfterOverlayPermission) return
@@ -722,13 +743,17 @@ class MainActivity : AppCompatActivity() {
         )
         overlayPermissionButton.isEnabled = !overlayGranted
 
-        // The button stays enabled either way: the vendor power policy is a
-        // separate setting that this check cannot see.
+        // Keep the button enabled: Android does not expose HyperOS' vendor
+        // policy, so the app must not equate absence from the AOSP allowlist
+        // with the vendor setting being restricted.
         batteryPolicyStatusView.setText(
-            if (isIgnoringBatteryOptimizations()) {
-                R.string.battery_policy_unrestricted
-            } else {
-                R.string.battery_policy_restricted
+            when (batteryPolicyUiState()) {
+                BatteryPolicyUiState.BACKGROUND_RESTRICTED ->
+                    R.string.battery_policy_background_restricted
+                BatteryPolicyUiState.AOSP_POWER_ALLOWLISTED ->
+                    R.string.battery_policy_aosp_allowlisted
+                BatteryPolicyUiState.VENDOR_POLICY_UNVERIFIED ->
+                    R.string.battery_policy_vendor_unverified
             },
         )
     }
