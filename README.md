@@ -34,6 +34,7 @@
 | ML Kit Translate | `17.0.3` |
 | Experimental translation candidate | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
 | Experimental app translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181` |
+| Low-bit translation PoC | Hy-MT2 1.8B STQ1_0 1.25-bit + llama.cpp PR `#22836` |
 
 PP-OCRv6 检测模型、识别模型和字符表随 APK/AAB 打包，运行时无需下载 OCR
 权重。首次构建会从 PaddlePaddle 官方仓库获取约 31 MB 的固定 ONNX 资产，
@@ -54,11 +55,19 @@ Bergamot Android ARM64 概念验证已经在目标真机完成：核心运行时
 多元英/日中报告见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
-Hy-MT2 1.8B Q4_K_M 已进入独立的 Android 应用实验变体。小米 15 Pro /
-Android 16 上的应用内固定长句自检耗时 `20.302 s`，采样峰值 PSS / RSS
-为 `2249.0 / 2377.1 MiB`。`MediaProjection → PP-OCRv6 → HY-MT2 Q4 →
-悬浮窗` 主链路也已在公开的 Example Domain 页面完成真机验收。该变体用于
-质量、内存和静止画面链路验证，不代表持续识屏默认方案。
+Hy-MT2 1.8B Q4_K_M 已进入独立的 Android 应用实验变体；STQ1_0
+1.25-bit 仍为 standalone PoC。Q4 是当前质量上限；1.25-bit 相对
+ML Kit/Bergamot 仍有 `6.9–9.5` BLEU 优势，但只保留 Q4 的
+`88.4–93.4%` BLEU，日中关键语义检查也低于 Bergamot。
+1.25-bit 模型为 440.46 MiB、进程 HWM 约 0.88 GiB，资源比 Q4 低约 59%，
+raw 中位延迟仍为 `616–622 ms`。四模型数据、格式兼容过程和验收结论见
+[`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md)。
+
+HY-MT2 Q4 Experimental 在小米 15 Pro / Android 16 上的应用内固定长句
+自检耗时 `20.302 s`，采样峰值 PSS / RSS 为 `2249.0 / 2377.1 MiB`。
+`MediaProjection → PP-OCRv6 → HY-MT2 Q4 → 悬浮窗` 主链路也已在公开的
+Example Domain 页面完成真机验收。该变体用于质量、内存和静止画面链路验证，
+不代表持续识屏默认方案。
 
 ## 工程结构
 
@@ -92,7 +101,9 @@ third_party/llama.cpp/                # 固定提交的 Git submodule
 Bergamot Android 核心 PoC 见
 [`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](docs/BERGAMOT_ANDROID_POC_2026-07-29.md)，
 多语言翻译质量对比见
-[`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
+[`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)，
+Hy-MT2 综合对比见
+[`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md)。
 
 ## 构建
 
@@ -251,8 +262,9 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
   尚未进入生产 APK；Mozilla 当前无直接日中候选，双模型级联内存过高，
   默认翻译器仍为 ML Kit。
 - Hy-MT2 Q4 已进入独立 experimental APK，但单次应用内长句自检约 20 秒，
-  峰值 RSS 约 2.32 GiB，不作为持续识屏默认路径。
-
+  峰值 RSS 约 2.32 GiB，不作为持续识屏默认路径。1.25-bit 仍为 standalone
+  PoC，并依赖开放中的专用 kernel PR；当前官方 GGUF 与 PR 重排后的类型号
+  需要可审计的 header 兼容处理。
 ## 开源维护
 
 - 贡献流程：[`CONTRIBUTING.md`](CONTRIBUTING.md)
