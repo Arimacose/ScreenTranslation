@@ -92,8 +92,8 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/full/release/app-
 ```bash
 git switch main
 git pull --ff-only
-git tag -s v0.2.0 -m "ScreenTranslation v0.2.0"
-git push origin v0.2.0
+git tag -s v0.2.1 -m "ScreenTranslation v0.2.1"
+git push origin v0.2.1
 ```
 
 优先使用已验证签名的 annotated tag。Tag 必须与 Gradle `versionName` 完全匹配，否则 workflow
@@ -114,12 +114,12 @@ git push origin v0.2.0
    保存 Lite/Full R8 mapping Actions artifact；
 8. 生成 GitHub 自动变更记录，并在前置说明中标记 Full 为 `HY-MT2 Q4 Experimental`；
 9. 发布以下七项：
-   - `ScreenTranslation-0.2.0-lite-bergamot.apk`
-   - `ScreenTranslation-0.2.0-lite-bergamot.aab`
-   - `ScreenTranslation-0.2.0-full-hymt2-q4-experimental.apk`
-   - `ScreenTranslation-0.2.0-full-hymt2-q4-experimental.aab`
-   - `ScreenTranslation-0.2.0-LICENSE.txt`
-   - `ScreenTranslation-0.2.0-THIRD-PARTY.zip`
+   - `ScreenTranslation-0.2.1-lite-bergamot.apk`
+   - `ScreenTranslation-0.2.1-lite-bergamot.aab`
+   - `ScreenTranslation-0.2.1-full-hymt2-q4-experimental.apk`
+   - `ScreenTranslation-0.2.1-full-hymt2-q4-experimental.aab`
+   - `ScreenTranslation-0.2.1-LICENSE.txt`
+   - `ScreenTranslation-0.2.1-THIRD-PARTY.zip`
    - `SHA256SUMS`
 
 ## 6. 发布后核验
@@ -128,9 +128,9 @@ git push origin v0.2.0
 
 ```bash
 sha256sum -c SHA256SUMS
-apksigner verify --verbose --print-certs ScreenTranslation-0.2.0-lite-bergamot.apk
+apksigner verify --verbose --print-certs ScreenTranslation-0.2.1-lite-bergamot.apk
 apksigner verify --verbose --print-certs \
-  ScreenTranslation-0.2.0-full-hymt2-q4-experimental.apk
+  ScreenTranslation-0.2.1-full-hymt2-q4-experimental.apk
 ```
 
 随后安装到干净测试设备，确认版本、首次权限链、模型下载和基础翻译。检查 release notes、

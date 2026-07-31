@@ -2,6 +2,84 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
+## 2026-07-31 v0.2.1 公开 Release 热修复验收
+
+### 发布物与静态复核
+
+v0.2.1 标签指向合并提交
+`d28728fe50802b157f4894c961912218a2a8076e`。签名发布工作流
+[`30570083086`](https://github.com/Arimacose/ScreenTranslation/actions/runs/30570083086)
+成功，正式 Release 位于
+[`v0.2.1`](https://github.com/Arimacose/ScreenTranslation/releases/tag/v0.2.1)。
+
+| 项目 | Lite · Bergamot | Full · HY-MT2 Q4 Experimental |
+|---|---|---|
+| 包名 / 版本 | `com.screentranslation.app` / `0.2.1-lite` | `com.screentranslation.app.full` / `0.2.1-full` |
+| APK 大小 | 46,226,563 B | 45,218,284 B |
+| APK SHA-256 | `8C1527FD359D2E70F5C7F0E189A9D702F30C70A95DCCE8919E5BC251A28444CB` | `757A51329A9DC6CC81C5C9342AD9B3807C9B24F3BD392C4711CD00B4724CB5DB` |
+| 版本码 | 3 | 3 |
+| 发布定位 | 稳定 Lite | 明确标注 Experimental |
+
+从 GitHub Release 重新下载全部七个公开资产后完成独立复核：
+
+- GitHub 资产大小与服务器 SHA-256 元数据 7/7 匹配，`SHA256SUMS` 6/6
+  通过；
+- 两份 APK 均为非 debuggable Release，使用 APK Signature Scheme v2，
+  通过 16 KiB page-aware zipalign，签名证书 SHA-256 为
+  `B58712578045532158D45B847AB7ED1BE041236B5A7A0BD1A1DB5480FBE0439F`；
+- 两份 AAB 均通过 JAR 签名验证，证书与 APK 相同；
+- Lite/Full 均携带 PP-OCRv6-small；Lite 只包含 Bergamot runner，Full
+  只包含 HY-MT2 JNI，发布包不内置翻译权重；
+- 第三方 ZIP 含 43 个文件，内部 `SHA256SUMS` 的 41 项全部通过；
+- Lite/Full 共 137 项 JVM 测试、双版本 Release Lint、R8 APK/AAB 构建
+  均通过。两份 R8 mapping 由 Actions 保留至 2026-10-28。
+
+### Lite：Issue #28 最终回归
+
+公开 Lite APK 使用 `adb install -r` 覆盖本地候选后，设备端 `base.apk`
+SHA-256 与上述 GitHub 下载物完全一致。目标机为 Xiaomi 15 Pro
+`2410DPN6CC` / `haotian`，Android 16 / API 36，HyperOS
+`OS3.0.304.0.WOBCNXM`。
+
+清空 logcat 与 `ApplicationExitInfo` 后连续执行五轮：
+
+1. 启动识屏并确认 Bergamot runner、前台服务、MediaProjection 和
+   `ScreenTranslationCapture` VirtualDisplay 均已建立；
+2. 点击真实悬浮层“停止”按钮；
+3. 等待上述四项资源全部归零；
+4. 比对停止前后的主进程 PID。
+
+五轮均通过，主进程 PID 始终为 `18494`。新日志窗口中
+`FATAL EXCEPTION: bergamot-lite-stderr`、对应
+`InterruptedIOException`、unexpected stderr reader warning、应用 ANR、
+OOM 和 native fatal 的命中均为 0；清空后的 `exit-info` 中 APP CRASH 与
+ANR 也均为 0。由此确认 Issue
+[#28](https://github.com/Arimacose/ScreenTranslation/issues/28) 的 stderr
+关闭竞态在公开 Release 中已修复。
+
+通过 ADB 覆盖安装时，HyperOS 再次把悬浮窗 app-op 重置为 `ignore`，通知
+权限保持 `allow`；恢复测试基线后应用内两项状态均为已授予。该厂商侧现象与
+v0.2.0 验收一致，不用于推断普通用户安装器升级时的权限保留行为。
+
+### Full：公开包自检
+
+公开 Full APK 的设备端 `base.apk` SHA-256 同样与 GitHub 下载物完全一致。
+界面标题、副标题和 Banner 均显示
+`Full · HY-MT2 Q4 Experimental`。应用内模型为
+`Hy-MT2-1.8B-Q4_K_M.gguf`，实测 1,133,080,448 B，SHA-256 为
+`dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699`。
+
+固定英文长句端侧自检耗时 `17,875 ms`，通过并得到：
+
+```text
+虽然委员会承认该提议能在短期内降低成本，但还是推迟了投票，
+因为没有人能解释该系统如何保护那些被误标记的用户。
+```
+
+自检后的 logcat 与 `exit-info` 中崩溃、ANR、OOM 和 native fatal 均为
+0。v0.2.0 Release 已保留原标签和七个资产，并增加 superseded 警告指向
+v0.2.1。
+
 ## 2026-07-31 v0.2.0 Lite / Full 签名 Release 验收
 
 ### 构建与发布候选
