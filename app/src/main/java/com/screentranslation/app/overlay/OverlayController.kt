@@ -21,6 +21,17 @@ import android.widget.TextView
 import com.screentranslation.app.R
 
 /**
+ * Keeps the translation panel visible in user-initiated screenshots and
+ * recordings. The capture pipeline excludes the reported panel rectangle
+ * before OCR, so preventing recursive recognition does not depend on
+ * [WindowManager.LayoutParams.FLAG_SECURE].
+ */
+internal fun overlayWindowFlags(): Int =
+    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+/**
  * Owns exactly one TYPE_APPLICATION_OVERLAY window.
  *
  * The window temporarily fills the display while the user drags a capture ROI.
@@ -302,8 +313,9 @@ class OverlayController(
     /**
      * Reports the actual overlay window rectangle in physical screen pixels.
      *
-     * Some vendor MediaProjection implementations include secure application
-     * overlays in captured frames. The capture pipeline masks this rectangle
+     * The window deliberately remains capturable so user screenshots and
+     * recordings include the translation. MediaProjection therefore also sees
+     * the panel on the target ROM; the capture pipeline masks this rectangle
      * before OCR so the result panel cannot recursively recognize itself.
      */
     private fun dispatchOverlayBounds() {
@@ -534,10 +546,7 @@ class OverlayController(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_SECURE,
+            overlayWindowFlags(),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
