@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 移除译文悬浮窗的 `FLAG_SECURE`，使用户发起的系统截图和录屏可以保留译文
+  面板；MediaProjection 帧仍在 OCR 前按实际悬浮层坐标遮蔽，避免译文回灌。
+
 ## [0.2.1] - 2026-07-31
 
 ### Changed
