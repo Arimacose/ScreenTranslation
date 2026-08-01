@@ -28,7 +28,7 @@ internal class OnlineTranslationConfigRepository(
         val endpoint = OpenAiEndpoint.parse(baseUrl)
         val normalizedModel = modelId.trim()
         require(normalizedModel.isNotEmpty()) { "Model ID is blank" }
-        require(normalizedModel.length <= MAX_MODEL_ID_LENGTH) { "Model ID is too long" }
+        require(normalizedModel.length <= MAX_ONLINE_MODEL_ID_LENGTH) { "Model ID is too long" }
 
         val previous = load()
         val hostChanged = previous.consentHost != endpoint.consentIdentity
@@ -38,7 +38,10 @@ internal class OnlineTranslationConfigRepository(
             )
         require(consentValid) { "Data-flow consent is required for this service host" }
 
-        newApiKey?.trim()?.takeIf { it.isNotEmpty() }?.let(secretStore::save)
+        newApiKey?.trim()?.takeIf { it.isNotEmpty() }?.let { apiKey ->
+            validateApiKey(apiKey)
+            secretStore.save(apiKey)
+        }
         val config = OnlineTranslationConfig(
             baseUrl = endpoint.baseUrl,
             modelId = normalizedModel,
@@ -71,12 +74,27 @@ internal class OnlineTranslationConfigRepository(
 
     fun hasApiKey(): Boolean = secretStore.hasSecret()
 
+    fun resolveApiKey(newApiKey: String?): String {
+        val apiKey = newApiKey?.trim()?.takeIf { it.isNotEmpty() }
+            ?: secretStore.load()?.trim().orEmpty()
+        require(apiKey.isNotEmpty()) { "API key is not configured" }
+        validateApiKey(apiKey)
+        return apiKey
+    }
+
     fun deleteApiKey() {
         secretStore.delete()
     }
 
+    private fun validateApiKey(apiKey: String) {
+        require(apiKey.length <= MAX_API_KEY_LENGTH) { "API key is too long" }
+        require('\r' !in apiKey && '\n' !in apiKey) {
+            "API key contains invalid characters"
+        }
+    }
+
     private companion object {
-        const val MAX_MODEL_ID_LENGTH = 256
+        const val MAX_API_KEY_LENGTH = 4_096
         const val PREFERENCES_FILE = "online_translation_config"
         const val KEY_BASE_URL = "base_url"
         const val KEY_MODEL_ID = "model_id"

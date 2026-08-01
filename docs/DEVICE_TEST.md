@@ -5,7 +5,7 @@
 ## 2026-08-01 Online edition 候选（本地构建通过，真机待测）
 
 - 已实现独立 `com.screentranslation.app.online` / `0.2.1-online` flavor，Online
-  单元测试 79 项全部通过，Release Lint 为 0 error / 7 条既有基线 warning，
+  单元测试 83 项全部通过，Release Lint 为 0 error / 7 条既有基线 warning，
   R8 APK、AAB 与 debug-signed 可安装 APK 均构建成功。
 - 静态 APK 审计确认只包含 ARM64 PP-OCRv6、ONNX Runtime 和 Online HTTP 路径；
   Bergamot runner、HY-MT2 JNI、ML Kit Translate 与翻译模型权重均未进入包。
@@ -13,7 +13,9 @@
   是未签名的 R8 审计产物，可安装候选为标准 debug 证书签名包。正式发行由 GitHub
   Secrets 注入既有证书。
 - 本轮尚未连接或安装到真机。开始前需明确通知设备持有人；真机/API 验收依次检查：
-  设置页不回显密钥、重启后密钥状态、真实 HTTPS 翻译、单稳定区域单请求、快速三段
+  自动补全 `GET /models`、含空格/连字符模型 ID 的下拉选择、自动补全
+  `POST /chat/completions`、设置页不回显密钥、重启后密钥与模型状态、真实 HTTPS
+  翻译、单稳定区域单请求、快速三段
   latest-wins、停止/重选/息屏取消、401/429/timeout UI、logcat 脱敏，以及抓包确认
   只有 OCR 文本 JSON 而无截图二进制。
 

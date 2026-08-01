@@ -17,6 +17,9 @@ import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+private const val MAX_ONLINE_RESPONSE_BYTES = 1024 * 1024L
+private const val DEFAULT_ONLINE_RESPONSE_BUFFER_BYTES = 8 * 1024
+
 internal class OnlineChatClient(
     private val callFactory: Call.Factory,
     private val retryScheduler: ScheduledExecutorService,
@@ -127,7 +130,9 @@ internal class OnlineChatClient(
                             return
                         }
                         val translated = runCatching {
-                            OpenAiChatProtocol.parseTranslation(readBounded(response.body))
+                            OpenAiChatProtocol.parseTranslation(
+                                readOnlineResponseBounded(response.body),
+                            )
                         }
                         finish(
                             translated.fold(
@@ -181,41 +186,135 @@ internal class OnlineChatClient(
             .build()
     }
 
-    private fun readBounded(body: ResponseBody): String {
-        val declaredSize = body.contentLength()
-        if (declaredSize > MAX_RESPONSE_BYTES) {
-            throw OnlineTranslationException(OnlineFailureCategory.RESPONSE)
-        }
-        return body.byteStream().use { input ->
-            val output = ByteArrayOutputStream(
-                declaredSize.takeIf { it in 1..MAX_RESPONSE_BYTES }
-                    ?.toInt()
-                    ?: DEFAULT_RESPONSE_BUFFER_BYTES,
-            )
-            val buffer = ByteArray(DEFAULT_RESPONSE_BUFFER_BYTES)
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                total += count
-                if (total > MAX_RESPONSE_BYTES) {
-                    throw OnlineTranslationException(OnlineFailureCategory.RESPONSE)
-                }
-                output.write(buffer, 0, count)
-            }
-            String(output.toByteArray(), Charsets.UTF_8)
-        }
-    }
-
     private fun retryJitterMillis(): Long =
         ThreadLocalRandom.current().nextLong(MIN_RETRY_JITTER_MILLIS, MAX_RETRY_JITTER_MILLIS + 1L)
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val MAX_INPUT_CHARACTERS = 6_000
-        const val MAX_RESPONSE_BYTES = 1024 * 1024L
-        const val DEFAULT_RESPONSE_BUFFER_BYTES = 8 * 1024
         const val MIN_RETRY_JITTER_MILLIS = 300L
         const val MAX_RETRY_JITTER_MILLIS = 800L
+    }
+}
+
+internal class OnlineModelCatalogClient(
+    private val callFactory: Call.Factory,
+    private val endpoint: OpenAiEndpoint,
+    private val apiKey: String,
+) {
+    init {
+        require(apiKey.isNotBlank()) { "API key is blank" }
+        require('\r' !in apiKey && '\n' !in apiKey) { "API key contains invalid characters" }
+    }
+
+    fun fetchModels(onResult: (Result<List<String>>) -> Unit): TranslationCall {
+        val request = try {
+            Request.Builder()
+                .url(endpoint.modelsUrl)
+                .header("Authorization", "Bearer $apiKey")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+        } catch (error: Throwable) {
+            onResult(Result.failure(OnlineHttpPolicy.sanitizeNetworkFailure(error)))
+            return TranslationCall.NONE
+        }
+        val call = try {
+            callFactory.newCall(request)
+        } catch (error: Throwable) {
+            onResult(Result.failure(OnlineHttpPolicy.sanitizeNetworkFailure(error)))
+            return TranslationCall.NONE
+        }
+        return ModelCatalogCall(call, onResult).also { logicalCall ->
+            try {
+                call.enqueue(logicalCall)
+            } catch (error: Throwable) {
+                logicalCall.finish(
+                    Result.failure(OnlineHttpPolicy.sanitizeNetworkFailure(error)),
+                )
+            }
+        }
+    }
+
+    private class ModelCatalogCall(
+        private val networkCall: Call,
+        private val onResult: (Result<List<String>>) -> Unit,
+    ) : Callback, TranslationCall {
+        private val cancelled = AtomicBoolean(false)
+        private val completed = AtomicBoolean(false)
+
+        override fun onFailure(call: Call, e: IOException) {
+            finish(
+                Result.failure(
+                    if (cancelled.get()) {
+                        CancellationException("Model catalog request cancelled")
+                    } else {
+                        OnlineHttpPolicy.sanitizeNetworkFailure(e)
+                    },
+                ),
+            )
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            response.use {
+                if (cancelled.get()) {
+                    finish(Result.failure(CancellationException("Model catalog request cancelled")))
+                    return
+                }
+                if (!response.isSuccessful) {
+                    finish(Result.failure(OnlineHttpPolicy.failureForStatus(response.code)))
+                    return
+                }
+                finish(
+                    runCatching {
+                        OpenAiChatProtocol.parseModelIds(
+                            readOnlineResponseBounded(response.body),
+                        )
+                    }.fold(
+                        onSuccess = { Result.success(it) },
+                        onFailure = {
+                            Result.failure(OnlineHttpPolicy.sanitizeNetworkFailure(it))
+                        },
+                    ),
+                )
+            }
+        }
+
+        override fun cancel() {
+            if (!cancelled.compareAndSet(false, true)) return
+            networkCall.cancel()
+            finish(Result.failure(CancellationException("Model catalog request cancelled")))
+        }
+
+        fun finish(result: Result<List<String>>) {
+            if (!completed.compareAndSet(false, true)) return
+            onResult(result)
+        }
+    }
+}
+
+private fun readOnlineResponseBounded(body: ResponseBody): String {
+    val declaredSize = body.contentLength()
+    if (declaredSize > MAX_ONLINE_RESPONSE_BYTES) {
+        throw OnlineTranslationException(OnlineFailureCategory.RESPONSE)
+    }
+    return body.byteStream().use { input ->
+        val output = ByteArrayOutputStream(
+            declaredSize.takeIf { it in 1..MAX_ONLINE_RESPONSE_BYTES }
+                ?.toInt()
+                ?: DEFAULT_ONLINE_RESPONSE_BUFFER_BYTES,
+        )
+        val buffer = ByteArray(DEFAULT_ONLINE_RESPONSE_BUFFER_BYTES)
+        var total = 0
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > MAX_ONLINE_RESPONSE_BYTES) {
+                throw OnlineTranslationException(OnlineFailureCategory.RESPONSE)
+            }
+            output.write(buffer, 0, count)
+        }
+        String(output.toByteArray(), Charsets.UTF_8)
     }
 }

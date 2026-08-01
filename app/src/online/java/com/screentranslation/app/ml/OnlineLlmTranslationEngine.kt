@@ -2,12 +2,11 @@ package com.screentranslation.app.ml
 
 import android.content.Context
 import com.screentranslation.app.online.OnlineChatClient
+import com.screentranslation.app.online.OnlineHttpClientFactory
 import com.screentranslation.app.online.OnlineTranslationConfigRepository
-import okhttp3.OkHttpClient
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Online edition backend for user-configured OpenAI-compatible HTTPS APIs. */
@@ -24,15 +23,7 @@ class OnlineLlmTranslationEngine(
     private val retryScheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "online-translation-retry").apply { isDaemon = true }
     }
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(10L, TimeUnit.SECONDS)
-        .writeTimeout(10L, TimeUnit.SECONDS)
-        .readTimeout(30L, TimeUnit.SECONDS)
-        .callTimeout(40L, TimeUnit.SECONDS)
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .retryOnConnectionFailure(false)
-        .build()
+    private val httpClient = OnlineHttpClientFactory.create()
 
     @Volatile
     private var chatClient: OnlineChatClient? = null

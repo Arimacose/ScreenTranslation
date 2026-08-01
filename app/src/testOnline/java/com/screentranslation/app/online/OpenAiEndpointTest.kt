@@ -14,6 +14,10 @@ class OpenAiEndpointTest {
             "https://api.example.test/v1/chat/completions",
             endpoint.requestUrl.toString(),
         )
+        assertEquals(
+            "https://api.example.test/v1/models",
+            endpoint.modelsUrl.toString(),
+        )
         assertEquals("api.example.test", endpoint.host)
         assertEquals("api.example.test:443", endpoint.consentIdentity)
     }
@@ -25,6 +29,25 @@ class OpenAiEndpointTest {
         )
 
         assertEquals("https://api.example.test/v1", endpoint.baseUrl)
+        assertEquals(
+            "https://api.example.test/v1/chat/completions",
+            endpoint.requestUrl.toString(),
+        )
+        assertEquals(
+            "https://api.example.test/v1/models",
+            endpoint.modelsUrl.toString(),
+        )
+    }
+
+    @Test
+    fun `normalizes an existing models endpoint to the api base`() {
+        val endpoint = OpenAiEndpoint.parse("https://api.example.test/v1/models/")
+
+        assertEquals("https://api.example.test/v1", endpoint.baseUrl)
+        assertEquals(
+            "https://api.example.test/v1/models",
+            endpoint.modelsUrl.toString(),
+        )
         assertEquals(
             "https://api.example.test/v1/chat/completions",
             endpoint.requestUrl.toString(),

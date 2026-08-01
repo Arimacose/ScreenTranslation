@@ -55,4 +55,33 @@ class OpenAiChatProtocolTest {
             assertTrue(runCatching { OpenAiChatProtocol.parseTranslation(value) }.isFailure)
         }
     }
+
+    @Test
+    fun `parses model ids without changing spaces or hyphens`() {
+        val modelIds = OpenAiChatProtocol.parseModelIds(
+            """{"data":[""" +
+                """{"id":"model with spaces"},""" +
+                """{"id":"model-with-hyphens"},""" +
+                """{"id":"model with spaces"},""" +
+                """{"id":"   "},{"name":"missing-id"}]}""",
+        )
+
+        assertEquals(
+            listOf("model with spaces", "model-with-hyphens"),
+            modelIds,
+        )
+    }
+
+    @Test
+    fun `rejects malformed or empty model catalogs`() {
+        val values = listOf(
+            "not-json",
+            "{}",
+            """{"data":[]}""",
+            """{"data":[{"id":"   "}]}""",
+        )
+        values.forEach { value ->
+            assertTrue(runCatching { OpenAiChatProtocol.parseModelIds(value) }.isFailure)
+        }
+    }
 }

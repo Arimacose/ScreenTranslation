@@ -122,8 +122,10 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
   最小请求间隔后形成一次 Chat Completions 请求；协调器保持一个活跃请求和一个
   latest pending，旧 generation 的响应不进入悬浮窗。
 - Online 只接受 HTTPS，拒绝 URL credentials/query/fragment 并关闭跨主机及同主机
-  重定向。请求只含固定 system message、OCR 文本、语言和模型 ID；API Key 由
-  Android Keystore AES-256-GCM 加密，服务停止、选区重置或息屏时取消活跃请求。
+  重定向。设置页使用 Bearer 凭据调用同源 `GET /models`，解析 `data[].id` 后由用户
+  从列表选择；Base URL 或 API Key 改动会使旧列表失效。翻译请求只含固定 system
+  message、OCR 文本、语言和所选模型 ID；API Key 由 Android Keystore AES-256-GCM
+  加密，服务停止、选区重置或息屏时取消活跃请求。
 - 两个后端都把模型 URL 固定到明确 revision，并校验预期大小与 SHA-256。
   模型按需下载到 `noBackupFilesDir/models/...`，APK/AAB 只包含对应 native
   runtime，不包含 Bergamot 翻译权重或 HY-MT2 GGUF。

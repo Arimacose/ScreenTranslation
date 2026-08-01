@@ -51,7 +51,8 @@
   Hy-MT2 1.8B Q4_K_M，所有界面及发布资产均标记为 Experimental。
 - 增加 Hy-MT2 Q4 / 1.25-bit、ML Kit、Bergamot 多语言真机基准。
 - 增加 Online edition 的 Base URL、API Key、固定翻译提示、可取消请求、
-  Android Keystore 与隐私边界设计。
+  Android Keystore 与隐私边界设计；通过同源 `GET /models` 自动获取可用模型，
+  由用户从下拉列表选择，避免手工输入模型 ID。
 
 ### Changed
 

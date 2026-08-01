@@ -227,11 +227,13 @@ Full 使用 `com.screentranslation.app.full` 和 `0.2.1-full`，可与 Lite
 ### Online · user-configured LLM
 
 Online 使用 `com.screentranslation.app.online` 和 `0.2.1-online`，可与 Lite/Full
-并存。进入“配置 Online 翻译服务”，填写 HTTPS Base URL、模型 ID 与 API Key，
-确认 OCR 文本的数据流后保存；“保存并测试翻译”会发送输入框中的一条纯文本请求。
-请求固定使用 `/chat/completions`、Bearer 认证与防提示注入的 system message，
-不上传截图。稳定 OCR 以整段单请求发送；协调器采用 600 ms 去抖、750 ms 最小
-间隔、单活跃请求和单 latest pending，停止、重选区域或息屏会取消请求。
+并存。进入“配置 Online 翻译服务”，填写 HTTPS Base URL 与 API Key、确认数据流，
+再点击“获取可用模型”；应用通过 `GET /models` 读取模型 ID 并让用户从下拉列表选择，
+无需手工输入模型名。应用会为 API 根地址自动补充 `/models` 和
+`/chat/completions`。选择模型后，“保存并测试翻译”会发送输入框中的一条纯文本
+请求。翻译固定使用 Bearer 认证与防提示注入的 system message，不上传截图。稳定
+OCR 以整段单请求发送；协调器采用 600 ms 去抖、750 ms 最小间隔、单活跃请求和
+单 latest pending，停止、重选区域或息屏会取消请求。
 
 ### 安装
 
@@ -306,6 +308,8 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
   PoC，并依赖开放中的专用 kernel PR；当前官方 GGUF 与 PR 重排后的类型号
   需要可审计的 header 兼容处理。
 - Online 的翻译质量、延迟、配额、日志留存和可用语言由用户选择的服务与模型决定；
+  `/models` 返回的是账号可见模型，不保证每个模型都接受 Chat Completions，需使用
+  “保存并测试翻译”验证所选模型；
   当前本地验收只覆盖构建、协议、安全边界和依赖隔离，真实 API 与真机持续识屏
   仍需在合并前按 `docs/ONLINE_TRANSLATION_DESIGN.md` 的验收矩阵执行。
 ## 开源维护

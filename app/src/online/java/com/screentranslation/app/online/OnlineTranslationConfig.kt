@@ -1,5 +1,7 @@
 package com.screentranslation.app.online
 
+internal const val MAX_ONLINE_MODEL_ID_LENGTH = 256
+
 data class OnlineTranslationConfig(
     val baseUrl: String = "",
     val modelId: String = "",

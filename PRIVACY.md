@@ -15,7 +15,7 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 - 翻译结果；
 - 用户选择的源语言、目标语言和采样间隔；
 - Lite 或 Full edition 所需的本地翻译模型；
-- Online edition 中用户填写的服务地址、模型 ID、API Key 与数据流确认状态。
+- Online edition 中用户填写的服务地址、从服务列表选择的模型 ID、API Key 与数据流确认状态。
 
 ## 屏幕内容
 
@@ -32,7 +32,7 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 
 ## 本地保存
 
-应用保存源语言、目标语言和采样间隔等设置。Online 还保存 Base URL、模型 ID、
+应用保存源语言、目标语言和采样间隔等设置。Online 还保存 Base URL、所选模型 ID、
 数据流确认版本与主机；API Key 使用 Android Keystore 中不可导出的 AES-256-GCM
 密钥加密，SharedPreferences 只保存 IV 和密文，设置页不回显密钥。应用的
 SharedPreferences、文件和数据库均排除云备份与设备迁移。
@@ -64,7 +64,10 @@ GitHub Release APK。
 
 Online edition 只接受 HTTPS Base URL，拒绝 URL 中的账号密码、query 与 fragment，
 关闭 HTTP/HTTPS 重定向，使用 `Authorization: Bearer` 连接用户选择的
-OpenAI-compatible Chat Completions 服务。一次请求包含：
+OpenAI-compatible 服务。用户主动点击“获取可用模型”时，应用向自动补全的
+`GET Base URL/models` 发送 API Key，并读取响应 `data[].id`；该请求不包含 OCR
+文字或截图。选择模型后的翻译请求发送至自动补全的
+`POST Base URL/chat/completions`，一次请求包含：
 
 - 固定的纯翻译 system message；
 - 稳定后的整段 OCR 文本；

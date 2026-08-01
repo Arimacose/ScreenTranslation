@@ -71,6 +71,33 @@ class OnlineChatClientTest {
         }
     }
 
+    @Test
+    fun `gets bearer-authenticated model catalog and preserves returned ids`() {
+        val factory = RecordingCallFactory()
+        val client = OnlineModelCatalogClient(
+            callFactory = factory,
+            endpoint = OpenAiEndpoint.parse("https://api.example.test/v1"),
+            apiKey = "test-key",
+        )
+        var result: Result<List<String>>? = null
+
+        client.fetchModels { result = it }
+
+        val request = factory.lastCall.request()
+        assertEquals("GET", request.method)
+        assertEquals("https://api.example.test/v1/models", request.url.toString())
+        assertEquals("Bearer test-key", request.header("Authorization"))
+        factory.lastCall.respond(
+            200,
+            """{"data":[{"id":"chat model"},{"id":"chat-model-v2"}]}""",
+        )
+
+        assertEquals(
+            listOf("chat model", "chat-model-v2"),
+            checkNotNull(result).getOrThrow(),
+        )
+    }
+
     private fun client(
         factory: RecordingCallFactory,
         scheduler: java.util.concurrent.ScheduledExecutorService,

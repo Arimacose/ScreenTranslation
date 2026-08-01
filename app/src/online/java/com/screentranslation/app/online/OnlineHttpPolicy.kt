@@ -1,16 +1,18 @@
 package com.screentranslation.app.online
 
+import okhttp3.OkHttpClient
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.CancellationException
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
 internal enum class OnlineFailureCategory(val displayMessage: String) {
     CREDENTIALS("凭据或服务权限错误"),
-    ENDPOINT_OR_MODEL("服务地址或模型 ID 错误"),
+    ENDPOINT_OR_MODEL("服务地址、模型列表或所选模型错误"),
     RATE_LIMIT("服务请求限流"),
     TEMPORARY_SERVICE("翻译服务暂时异常"),
     REQUEST_CONTRACT("服务不接受当前请求"),
@@ -105,4 +107,16 @@ internal object OnlineHttpPolicy {
     }
 
     private val RETRYABLE_STATUS_CODES = setOf(408, 429, 502, 503, 504)
+}
+
+internal object OnlineHttpClientFactory {
+    fun create(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10L, TimeUnit.SECONDS)
+        .writeTimeout(10L, TimeUnit.SECONDS)
+        .readTimeout(30L, TimeUnit.SECONDS)
+        .callTimeout(40L, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .retryOnConnectionFailure(false)
+        .build()
 }
