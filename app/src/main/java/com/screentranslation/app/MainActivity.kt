@@ -3,6 +3,7 @@ package com.screentranslation.app
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
@@ -88,6 +89,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var intervalValueView: TextView
     private lateinit var prepareModelsButton: Button
     private lateinit var modelStatusView: TextView
+    private lateinit var onlineSettingsButton: Button
+    private lateinit var onlineConfigStatusView: TextView
     private lateinit var experimentalSmokeTestButton: Button
     private lateinit var experimentalSmokeTestResultView: TextView
     private lateinit var notificationPermissionButton: Button
@@ -136,6 +139,13 @@ class MainActivity : AppCompatActivity() {
     ) {
         refreshPermissionState()
         maybeContinueAfterOverlayPermission()
+    }
+
+    private val onlineSettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        invalidatePreparedModel()
+        refreshOnlineConfigurationStatus()
     }
 
     private val projectionLauncher = registerForActivityResult(
@@ -189,6 +199,7 @@ class MainActivity : AppCompatActivity() {
         refreshPermissionState()
         handleLaunchIntent(intent)
         setServiceRunningUi(false)
+        refreshOnlineConfigurationStatus()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -204,6 +215,7 @@ class MainActivity : AppCompatActivity() {
             refreshPermissionState()
             maybeContinueAfterOverlayPermission()
             refreshServiceStatus()
+            refreshOnlineConfigurationStatus()
         }
     }
 
@@ -219,7 +231,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindViews() {
         experimentalBannerView = findViewById(R.id.text_experimental_banner)
-        experimentalBannerView.visibility = if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+        experimentalBannerView.visibility = if (
+            BuildConfig.HYMT2_Q4_EXPERIMENTAL || BuildConfig.ONLINE_LLM
+        ) {
             View.VISIBLE
         } else {
             View.GONE
@@ -230,6 +244,8 @@ class MainActivity : AppCompatActivity() {
         intervalValueView = findViewById(R.id.text_frame_interval)
         prepareModelsButton = findViewById(R.id.button_prepare_models)
         modelStatusView = findViewById(R.id.text_model_status)
+        onlineSettingsButton = findViewById(R.id.button_online_settings)
+        onlineConfigStatusView = findViewById(R.id.text_online_config_status)
         experimentalSmokeTestButton = findViewById(R.id.button_experimental_smoke_test)
         experimentalSmokeTestResultView =
             findViewById(R.id.text_experimental_smoke_test_result)
@@ -240,6 +256,9 @@ class MainActivity : AppCompatActivity() {
         }
         experimentalSmokeTestButton.visibility = experimentalVisibility
         experimentalSmokeTestResultView.visibility = experimentalVisibility
+        val onlineVisibility = if (BuildConfig.ONLINE_LLM) View.VISIBLE else View.GONE
+        onlineSettingsButton.visibility = onlineVisibility
+        onlineConfigStatusView.visibility = onlineVisibility
         notificationPermissionButton = findViewById(R.id.button_notification_permission)
         notificationPermissionStatusView =
             findViewById(R.id.text_notification_permission_status)
@@ -355,6 +374,13 @@ class MainActivity : AppCompatActivity() {
         }
         experimentalSmokeTestButton.setOnClickListener {
             runExperimentalSmokeTest()
+        }
+        onlineSettingsButton.setOnClickListener {
+            if (BuildConfig.ONLINE_LLM) {
+                onlineSettingsLauncher.launch(
+                    Intent().setClassName(this, ONLINE_SETTINGS_ACTIVITY_CLASS),
+                )
+            }
         }
         notificationPermissionButton.setOnClickListener {
             requestNotificationPermission()
@@ -858,10 +884,23 @@ class MainActivity : AppCompatActivity() {
         startButton.isEnabled = !running && operationIdle
         stopButton.isEnabled = running
         prepareModelsButton.isEnabled = !running && operationIdle
+        onlineSettingsButton.isEnabled =
+            !running && operationIdle && BuildConfig.ONLINE_LLM
         experimentalSmokeTestButton.isEnabled =
             !running && operationIdle && BuildConfig.HYMT2_Q4_EXPERIMENTAL
         if (running && serviceStatusView.text == getString(R.string.service_idle)) {
             serviceStatusView.setText(R.string.service_running)
+        }
+    }
+
+    private fun refreshOnlineConfigurationStatus() {
+        if (!BuildConfig.ONLINE_LLM || !::onlineConfigStatusView.isInitialized) return
+        onlineConfigStatusView.text = runCatching {
+            val bridge = Class.forName(ONLINE_EDITION_BRIDGE_CLASS)
+            val method = bridge.getMethod("configurationSummary", Context::class.java)
+            method.invoke(null, this) as String
+        }.getOrElse {
+            getString(R.string.online_config_status_unavailable)
         }
     }
 
@@ -914,6 +953,10 @@ class MainActivity : AppCompatActivity() {
             "com.miui.appmanager.ApplicationsDetailsActivity"
         private const val HYPER_OS_APP_DETAILS_PACKAGE_EXTRA = "package_name"
         private const val EXPERIMENTAL_SMOKE_LOG_TAG = "HyMt2Q4Smoke"
+        private const val ONLINE_SETTINGS_ACTIVITY_CLASS =
+            "com.screentranslation.app.online.OnlineSettingsActivity"
+        private const val ONLINE_EDITION_BRIDGE_CLASS =
+            "com.screentranslation.app.online.OnlineEditionBridge"
         private const val EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE = "en"
         private const val EXPERIMENTAL_SMOKE_TARGET_LANGUAGE = "zh"
         private const val EXPERIMENTAL_SMOKE_SOURCE_TEXT =

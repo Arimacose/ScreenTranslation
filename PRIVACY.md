@@ -1,6 +1,6 @@
 # 隐私说明
 
-最近更新：2026-07-31
+最近更新：2026-08-01
 
 ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。本文件描述当前开源代码的
 数据流；发行者若修改代码、接入服务或增加分析 SDK，应发布相应版本的隐私说明。
@@ -14,13 +14,16 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 - OCR 识别出的文本；
 - 翻译结果；
 - 用户选择的源语言、目标语言和采样间隔；
-- Lite 或 Full edition 所需的本地翻译模型。
+- Lite 或 Full edition 所需的本地翻译模型；
+- Online edition 中用户填写的服务地址、模型 ID、API Key 与数据流确认状态。
 
 ## 屏幕内容
 
-- 屏幕帧、OCR 原文和译文在应用进程内用于当前任务。
+- 屏幕帧始终只在应用进程内用于当前任务。Lite/Full 的 OCR 原文和译文也只在
+  设备端处理；Online 的稳定 OCR 文本按下述边界发送到用户配置的服务。
 - 当前生产代码不把截图、原文或译文写入文件、数据库、历史记录或应用日志。
-- 当前项目代码不把屏幕图像、OCR 原文或译文发送到项目自建服务器。
+- 当前项目代码不设置翻译中转服务器，也不向项目维护者发送屏幕图像、OCR 原文
+  或译文。Online 请求直接连接用户填写的服务主机，且不上传截图二进制。
 - 停止任务时释放 MediaProjection、VirtualDisplay、ImageReader、OCR/翻译客户端和悬浮窗。
 - 使用 `FLAG_SECURE`、DRM 或组织策略保护的窗口由 Android 决定是否返回黑屏或空白。
 
@@ -29,7 +32,12 @@ ScreenTranslation 是一个由用户主动启动的屏幕区域翻译工具。�
 
 ## 本地保存
 
-应用只保存源语言、目标语言和采样间隔等设置。PP-OCRv6 权重随安装包提供，
+应用保存源语言、目标语言和采样间隔等设置。Online 还保存 Base URL、模型 ID、
+数据流确认版本与主机；API Key 使用 Android Keystore 中不可导出的 AES-256-GCM
+密钥加密，SharedPreferences 只保存 IV 和密文，设置页不回显密钥。应用的
+SharedPreferences、文件和数据库均排除云备份与设备迁移。
+
+PP-OCRv6 权重随安装包提供，
 首次启动 OCR 时复制到应用 `codeCacheDir` 供 ONNX Runtime 读取。Lite edition
 按需下载 Firefox Translations 的 Bergamot 模型；Full edition 按需下载固定版本
 的 Hy-MT2 Q4 GGUF。模型在校验固定大小与 SHA-256 后写入应用专属
@@ -48,9 +56,25 @@ Firefox Translations 固定 HTTPS 地址。Full edition 的 Hy-MT2 Q4 模型来�
 Hugging Face revision。应用逐文件校验发布清单中的长度和 SHA-256；校验通过后，
 翻译推理全部在设备端执行。
 
-v0.2.1 的 Lite 与 Full APK 不使用 ML Kit Translate。仓库中的 `benchmark`
-build type 仍保留 ML Kit Translate 作为可复现实验对照，但该对照不属于两份
+v0.2.1 的 Lite、Full 与 Online APK 不使用 ML Kit Translate。仓库中的 `benchmark`
+build type 仍保留 ML Kit Translate 作为可复现实验对照，但该对照不属于三份
 GitHub Release APK。
+
+## Online 翻译请求
+
+Online edition 只接受 HTTPS Base URL，拒绝 URL 中的账号密码、query 与 fragment，
+关闭 HTTP/HTTPS 重定向，使用 `Authorization: Bearer` 连接用户选择的
+OpenAI-compatible Chat Completions 服务。一次请求包含：
+
+- 固定的纯翻译 system message；
+- 稳定后的整段 OCR 文本；
+- 用户选择的源语言、目标语言与模型 ID。
+
+请求不包含截图、框选坐标、设备标识、翻译历史或 API Key 之外的账号数据。应用不安装
+HTTP body logger，不记录请求/响应正文；服务方能够看到上述请求内容，其日志、留存、
+训练和跨境处理政策由用户选择的服务决定。首次发送以及 Base URL 主机变化后，应用要求
+重新确认该数据流。停止服务、重选区域或息屏会取消活跃请求。应用只在内存保存小型
+翻译缓存，进程结束后消失。
 
 参考：
 
@@ -64,7 +88,7 @@ GitHub Release APK。
 
 | 权限/能力 | 用途 |
 |---|---|
-| `INTERNET` | 下载用户选择语言所需的固定翻译模型 |
+| `INTERNET` | Lite/Full 下载固定翻译模型；Online 连接用户配置的翻译服务 |
 | `ACCESS_NETWORK_STATE` | 展示连接状态和模型准备反馈 |
 | `SYSTEM_ALERT_WINDOW` | 框选区域并在其他应用上方显示结果 |
 | `POST_NOTIFICATIONS` | 显示前台捕获任务通知 |
@@ -78,6 +102,7 @@ GitHub Release APK。
 - 可从应用或前台服务通知停止任务。
 - 可在 Android 设置中撤销悬浮窗、通知和应用权限。
 - 清除应用数据可删除设置；卸载应用可删除应用及其专属数据。
+- Online 设置页可单独删除 API Key 密文和对应 Android Keystore 条目。
 - 重新开始屏幕共享时，Android 会再次显示系统授权界面。
 
 ## 变更要求
@@ -89,7 +114,5 @@ GitHub Release APK。
 3. 增加对应测试和迁移说明；
 4. 在版本变更记录中标明。
 
-计划中的 Online edition 会把 OCR 文本发送到用户自行配置的翻译服务；它的
-API 契约、Android Keystore 密钥存储、数据流确认和验收门槛见
+Online edition 的 API 契约、Android Keystore 密钥存储、数据流确认和验收门槛见
 [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。
-该设计不属于 v0.2.1 Lite / Full APK 的运行路径。

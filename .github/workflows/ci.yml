@@ -22,7 +22,7 @@ env:
 
 jobs:
   build:
-    name: Verify Lite (Bergamot) and Full (Hy-MT2 Q4 Experimental)
+    name: Verify Lite, Full, and Online editions
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
@@ -70,12 +70,16 @@ jobs:
           ./gradlew --no-daemon --stacktrace \
             testLiteDebugUnitTest \
             testFullDebugUnitTest \
+            testOnlineDebugUnitTest \
             lintLiteRelease \
             lintFullRelease \
+            lintOnlineRelease \
             assembleLiteRelease \
             assembleFullRelease \
+            assembleOnlineRelease \
             bundleLiteRelease \
-            bundleFullRelease
+            bundleFullRelease \
+            bundleOnlineRelease
 
       - name: Verify R8, edition metadata, OCR assets, and backend isolation
         shell: bash
@@ -171,8 +175,10 @@ jobs:
 
           lite_apk="$(find_apk lite)"
           full_apk="$(find_apk full)"
+          online_apk="$(find_apk online)"
           lite_listing="$(unzip -Z1 "$lite_apk")"
           full_listing="$(unzip -Z1 "$full_apk")"
+          online_listing="$(unzip -Z1 "$online_apk")"
 
           verify_common \
             "$lite_apk" \
@@ -216,6 +222,19 @@ jobs:
           reject_entry "$full_listing" "lib/arm64-v8a/libbergamot_runner.so"
           reject_entry "$full_listing" "lib/arm64-v8a/libtranslate_jni.so"
 
+          verify_common \
+            "$online_apk" \
+            "com.screentranslation.app.online" \
+            "${expected_version_name}-online" \
+            "识屏翻译 Online" \
+            "$online_listing"
+          assert_entry "$online_listing" "assets/licenses/ONLINE.md"
+          reject_entry "$online_listing" "lib/arm64-v8a/libbergamot_runner.so"
+          reject_entry "$online_listing" "lib/arm64-v8a/libhymt2_jni.so"
+          reject_entry "$online_listing" "lib/arm64-v8a/libtranslate_jni.so"
+          grep -Fq 'okhttp3.OkHttpClient ->' \
+            app/build/outputs/mapping/onlineRelease/mapping.txt
+
       - name: Upload edition build outputs
         uses: actions/upload-artifact@v7
         with:
@@ -223,8 +242,10 @@ jobs:
           path: |
             app/build/outputs/apk/lite/release/*.apk
             app/build/outputs/apk/full/release/*.apk
+            app/build/outputs/apk/online/release/*.apk
             app/build/outputs/bundle/liteRelease/app-lite-release.aab
             app/build/outputs/bundle/fullRelease/app-full-release.aab
+            app/build/outputs/bundle/onlineRelease/app-online-release.aab
           if-no-files-found: error
           retention-days: 14
 
@@ -236,9 +257,12 @@ jobs:
           path: |
             app/build/reports/lint-results-liteRelease.html
             app/build/reports/lint-results-fullRelease.html
+            app/build/reports/lint-results-onlineRelease.html
             app/build/reports/tests/testLiteDebugUnitTest/
             app/build/reports/tests/testFullDebugUnitTest/
+            app/build/reports/tests/testOnlineDebugUnitTest/
             app/build/outputs/mapping/liteRelease/
             app/build/outputs/mapping/fullRelease/
+            app/build/outputs/mapping/onlineRelease/
           if-no-files-found: warn
           retention-days: 14

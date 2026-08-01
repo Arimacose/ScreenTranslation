@@ -2,33 +2,35 @@
 
 ## 1. 目标与约束
 
-ScreenTranslation 是单 Activity、单前台服务的 Android 16 原生应用，目标设备为小米 15 Pro（HyperOS 最新稳定版）。设计优先级依次为：
+ScreenTranslation 是主入口 Activity、单前台服务的 Android 16 原生应用；Online
+edition 额外提供一个非导出的设置 Activity。目标设备为小米 15 Pro（HyperOS 最新稳定版）。设计优先级依次为：
 
 1. 系统授权链正确，用户能随时看见并停止屏幕捕获。
-2. 屏幕帧不落盘，OCR 与翻译在设备端完成。
+2. 屏幕帧不落盘，OCR 始终在设备端完成；远程文字数据流必须由用户明确配置和确认。
 3. 同一时刻最多处理一帧，避免积压、发热和翻译结果乱序。
 4. 悬浮层职责单一，区域选择与译文展示互不混淆。
 5. 所有长生命周期资源在停止、投影撤销或服务销毁时统一释放。
 
 工程固定使用 API 36，因此不包含旧系统兼容分支。
 
-### 1.1 v0.2.0 edition 边界
+### 1.1 v0.2.x edition 边界
 
-v0.2.0 发布两个相互隔离的本地 edition，两者共用 MediaProjection、悬浮层、
+项目提供三个相互隔离的 edition，共用 MediaProjection、悬浮层、
 `FrameProcessor`、`StableTextGate` 和 PP-OCRv6-small：
 
-| Edition | applicationId | versionName | 翻译后端 | v0.2.0 语言范围 |
+| Edition | applicationId | versionName | 翻译后端 | 语言范围 |
 |---|---|---|---|---|
-| Lite | `com.screentranslation.app` | `0.2.0-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
-| Full | `com.screentranslation.app.full` | `0.2.0-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
+| Lite | `com.screentranslation.app` | `0.2.1-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
+| Full | `com.screentranslation.app.full` | `0.2.1-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
+| Online | `com.screentranslation.app.online` | `0.2.1-online` | 用户配置的 OpenAI-compatible LLM | 界面开放的源/目标语言，实际能力由服务模型决定 |
 
-Lite 保留基础包名以承接 v0.1.0 升级，Full 使用 `.full` 后缀，因此两者可在同一
-设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：Lite 只携带
-Bergamot runner，Full 只携带 HY-MT2 的 llama.cpp JNI；翻译权重均在用户准备
-模型时按需下载。
+Lite 保留基础包名以承接 v0.1.0 升级，Full/Online 使用 `.full`/`.online` 后缀，
+因此三者可在同一设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：
+Lite 只携带 Bergamot runner，Full 只携带 HY-MT2 的 llama.cpp JNI，Online 只增加
+OkHttp/Okio 且不携带翻译模型；Lite/Full 权重在用户准备模型时按需下载。
 
 ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历史基线
-对比，不进入 Lite/Full Release APK。
+对比，不进入 Lite/Full/Online Release APK。
 
 ## 2. 模块职责
 
@@ -45,6 +47,9 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 | `TranslationBackend` | 为公共流水线定义模型准备、翻译、取消与关闭接口 | edition 实现使用单工作线程；切换语言对时使旧回调失效 |
 | `BergamotTranslationEngine` | Lite 的 en→zh 与 ja→en→zh 路由、模型下载/校验和 Bergamot runner 生命周期 | 仅编入 Lite；模型位于应用私有 no-backup 目录 |
 | `HyMt2Q4TranslationEngine` | Full Experimental 的多语言→简体中文提示、GGUF 下载/校验和 llama.cpp 推理 | 仅编入 Full；模型位于应用私有 no-backup 目录 |
+| `OnlineLlmTranslationEngine` | 校验 Online 配置并执行可取消的 HTTPS Chat Completions | 仅编入 Online；不持久化原文或译文 |
+| `TranslationCoordinator` | Online 整段文本去抖、最小请求间隔、latest-wins、代次校验和内存 LRU | 一个活跃请求与一个最新待处理文本；重置/停止时取消 |
+| `OnlineTranslationConfigRepository` | 保存服务/模型/确认元数据并通过 Keystore 密文读取 API Key | API Key 不进入 Intent、日志、资源或 BuildConfig |
 | `AppPreferences` | 保存源/目标语言和采样间隔 | 不保存选择区域、截图、OCR 文本或翻译历史 |
 
 ## 3. 数据流
@@ -59,8 +64,11 @@ flowchart LR
     F --> G["BitmapExtractor：遮蔽悬浮层并裁剪区域"]
     G --> H["OcrEngine：文字识别"]
     H --> I["StableTextGate：稳定/去重"]
-    I --> J["Edition TranslationBackend：Bergamot 或 HY-MT2 Q4"]
-    J --> K["OverlayController：显示译文"]
+    I --> J["Edition TranslationBackend"]
+    J --> M["Lite/Full：分块端侧翻译"]
+    J --> N["Online：整段 latest-wins HTTPS 请求"]
+    M --> K["OverlayController：显示译文"]
+    N --> K
     D --> L["持续通知：停止入口"]
 ```
 
@@ -110,18 +118,21 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
   Bergamot 模型并级联推理；其他语对在准备阶段给出明确状态。
 - Full 使用 HY-MT2 1.8B Q4_K_M，通过 llama.cpp 把所选源语言直接翻译为简体
   中文。该后端及 Full 应用标签均为 **HY-MT2 Q4 Experimental**。
+- Online 使用 `WHOLE_REGION` 输入模式。稳定 OCR 整段经过 600 ms 去抖与 750 ms
+  最小请求间隔后形成一次 Chat Completions 请求；协调器保持一个活跃请求和一个
+  latest pending，旧 generation 的响应不进入悬浮窗。
+- Online 只接受 HTTPS，拒绝 URL credentials/query/fragment 并关闭跨主机及同主机
+  重定向。请求只含固定 system message、OCR 文本、语言和模型 ID；API Key 由
+  Android Keystore AES-256-GCM 加密，服务停止、选区重置或息屏时取消活跃请求。
 - 两个后端都把模型 URL 固定到明确 revision，并校验预期大小与 SHA-256。
   模型按需下载到 `noBackupFilesDir/models/...`，APK/AAB 只包含对应 native
   runtime，不包含 Bergamot 翻译权重或 HY-MT2 GGUF。
-- 模型下载需要 `INTERNET`；校验通过后，OCR 文本和翻译推理均留在设备端。
+- Lite/Full 模型下载需要 `INTERNET`；校验通过后其 OCR 文本和翻译推理均留在设备端。
+  Online 的 OCR 留在设备端，翻译文本直接发送到用户配置的服务。
 - 配置改变或服务结束时关闭旧后端，并通过会话代次丢弃迟到回调。
-- ML Kit Translate 的适配器和依赖只供 `benchmark` 基线，不参与 v0.2.0 的
-  Lite/Full 运行时。
-
-后续 Online edition 的候选链路、密钥存储与请求调度见
-[`ONLINE_TRANSLATION_DESIGN.md`](ONLINE_TRANSLATION_DESIGN.md)。该文档是后续
-版本设计输入，Online source set、HTTP 客户端和远程 LLM 请求均不属于 v0.2.0
-运行时或发布产物。
+- ML Kit Translate 的适配器和依赖只供 `benchmark` 基线，不参与三个 production
+  edition 的运行时。Online 的完整契约与验收矩阵见
+  [`ONLINE_TRANSLATION_DESIGN.md`](ONLINE_TRANSLATION_DESIGN.md)。
 
 ### 3.4 悬浮层
 
@@ -195,9 +206,9 @@ stateDiagram-v2
 
 ## 7. 隐私与故障语义
 
-- 不写入截图，不记录 OCR/译文历史，不上传屏幕内容。
+- 不写入截图，不记录 OCR/译文历史，不上传截图。Online 仅在用户确认后发送 OCR 文本。
 - 翻译模型按需下载；项目代码不把屏幕图像、OCR 原文或译文发送到项目服务器。
-- v0.2.0 Lite/Full Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
+- v0.2.x Lite/Full/Online Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
   `benchmark` 变体中用于基线测量。各 edition 的数据边界见
   [`PRIVACY.md`](../PRIVACY.md)。
 - `FLAG_SECURE`、DRM、工作资料策略保护的窗口可能是黑屏或空白，视为系统拒绝捕获，而不是 OCR 故障。
@@ -207,7 +218,7 @@ stateDiagram-v2
 ## 8. 构建依赖
 
 ```text
-AGP                                      9.3.0
+AGP application / library                9.3.1 / 9.3.0
 Gradle Wrapper                           9.6.1
 compile / min / target SDK               37 / 36 / 36
 Android Build Tools                      37.0.0
@@ -222,6 +233,8 @@ Lite: Bergamot native runner             pinned + SHA-256 verified
 Lite: Bergamot en-zh / ja-en / en-zh     runtime download + SHA-256 verified
 Full: llama-android / llama.cpp           HY-MT2 Q4 Experimental runtime
 Full: HY-MT2-1.8B-Q4_K_M.gguf            runtime download + SHA-256 verified
+Online: com.squareup.okhttp3:okhttp       5.4.0
+Online: com.squareup.okio:okio            3.17.0 (transitive)
 benchmark: com.google.mlkit:translate     17.0.3
 benchmark: com.google.mlkit:text-*        16.0.1
 ```

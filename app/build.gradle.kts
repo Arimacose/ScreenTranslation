@@ -209,6 +209,7 @@ android {
         versionName = "0.2.1"
         buildConfigField("boolean", "BERGAMOT_LITE", "false")
         buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
+        buildConfigField("boolean", "ONLINE_LLM", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -244,6 +245,12 @@ android {
             versionNameSuffix = "-full"
             buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "true")
         }
+        create("online") {
+            dimension = "edition"
+            applicationIdSuffix = ".online"
+            versionNameSuffix = "-online"
+            buildConfigField("boolean", "ONLINE_LLM", "true")
+        }
     }
 
     sourceSets {
@@ -255,6 +262,9 @@ android {
         )
         getByName("full").assets.srcDir(
             rootProject.file("third_party/licenses/full"),
+        )
+        getByName("online").assets.srcDir(
+            rootProject.file("third_party/licenses/online"),
         )
     }
 
@@ -350,6 +360,9 @@ dependencies {
     // The Full edition contains the Hy-MT2 Q4 llama.cpp runtime.
     add("fullImplementation", project(":llama-android"))
 
+    // The Online edition sends OCR text to a user-configured HTTPS endpoint.
+    add("onlineImplementation", "com.squareup.okhttp3:okhttp:5.4.0")
+
     // ML Kit OCR remains benchmark-only as the v0.1.0 comparison baseline.
     add("benchmarkImplementation", "com.google.mlkit:text-recognition:16.0.1")
     add("benchmarkImplementation", "com.google.mlkit:text-recognition-chinese:16.0.1")
@@ -357,6 +370,7 @@ dependencies {
     add("benchmarkImplementation", "com.google.mlkit:text-recognition-korean:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
+    add("testOnlineImplementation", "org.json:json:20260719")
 }
 
 tasks.register("printVersionInfo") {

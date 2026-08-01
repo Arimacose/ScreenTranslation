@@ -1,8 +1,8 @@
 # ScreenTranslation Online 版设计
 
-> 状态：设计候选
+> 状态：首版实现完成；本地 JVM/Lint/R8/静态 APK 验收通过，真机与真实 API 验收待执行
 >
-> 目标版本：v0.2.x 之后的独立 Online edition
+> 目标版本：v0.2.x 独立 Online edition
 >
 > 目标系统：Android 16 / 小米 15 Pro / HyperOS
 >
@@ -63,19 +63,19 @@ productFlavors {
     create("lite") {
         dimension = "edition"
         versionNameSuffix = "-lite"
-        buildConfigField("String", "TRANSLATION_BACKEND", "\"bergamot\"")
+        buildConfigField("boolean", "BERGAMOT_LITE", "true")
     }
     create("full") {
         dimension = "edition"
         applicationIdSuffix = ".full"
         versionNameSuffix = "-full"
-        buildConfigField("String", "TRANSLATION_BACKEND", "\"hymt2-q4\"")
+        buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "true")
     }
     create("online") {
         dimension = "edition"
         applicationIdSuffix = ".online"
         versionNameSuffix = "-online"
-        buildConfigField("String", "TRANSLATION_BACKEND", "\"online-llm\"")
+        buildConfigField("boolean", "ONLINE_LLM", "true")
     }
 }
 ```
@@ -85,17 +85,16 @@ productFlavors {
 | 项目 | 值 |
 |---|---|
 | applicationId | `com.screentranslation.app.online` |
-| versionName | `0.2.0-online` |
+| versionName | `0.2.1-online` |
 | 标签 | `识屏翻译 Online` |
-| APK | `ScreenTranslation-0.2.0-online-arm64-v8a.apk` |
+| APK | `ScreenTranslation-0.2.1-online-llm.apk` |
 
 edition 依赖隔离：
 
 ```kotlin
-add("liteImplementation", project(":bergamot-android"))
 add("fullImplementation", project(":llama-android"))
-add("onlineImplementation", "com.squareup.okhttp3:okhttp:PINNED_VERSION")
-add("testOnlineImplementation", "com.squareup.okhttp3:mockwebserver3:PINNED_VERSION")
+add("onlineImplementation", "com.squareup.okhttp3:okhttp:5.4.0")
+add("testOnlineImplementation", "org.json:json:20260719")
 ```
 
 Online APK 的依赖审计应确认其中只保留 PP-OCRv6、ONNX Runtime 和 HTTP
@@ -322,15 +321,17 @@ SharedPreferences 和数据库的云备份与设备迁移。
 Online source set：
 
 - `app/src/online/AndroidManifest.xml`
-- `app/src/online/java/com/screentranslation/app/ml/EditionTranslationBackendProvider.kt`
 - `app/src/online/java/com/screentranslation/app/ml/OnlineLlmTranslationEngine.kt`
+- `app/src/online/java/com/screentranslation/app/online/OnlineChatClient.kt`
 - `app/src/online/java/com/screentranslation/app/online/OpenAiEndpoint.kt`
 - `app/src/online/java/com/screentranslation/app/online/OpenAiChatProtocol.kt`
+- `app/src/online/java/com/screentranslation/app/online/OnlineHttpPolicy.kt`
 - `app/src/online/java/com/screentranslation/app/online/OnlineTranslationConfig.kt`
 - `app/src/online/java/com/screentranslation/app/online/OnlineTranslationConfigRepository.kt`
 - `app/src/online/java/com/screentranslation/app/online/ApiKeySecretStore.kt`
 - `app/src/online/java/com/screentranslation/app/online/AndroidKeystoreSecretCipher.kt`
 - `app/src/online/java/com/screentranslation/app/online/OnlineSettingsActivity.kt`
+- `app/src/online/java/com/screentranslation/app/online/OnlineEditionBridge.kt`
 - `app/src/online/res/layout/activity_online_settings.xml`
 - `app/src/online/res/values/strings.xml`
 
@@ -348,3 +349,8 @@ Online source set：
 10. 抓包确认只发送 OCR 文本 JSON，不包含截图二进制。
 11. HTTP 地址和跨主机重定向均在发送凭据前被拦截。
 12. 首次网络发送的数据流确认与 `PRIVACY.md` 一致。
+
+截至 2026-08-01，本地已通过门槛 1–3；协议/调度单元测试覆盖 HTTPS URL
+拒绝规则、401/404/429/503 分类、一次重试上限、timeout/DNS 脱敏、畸形 JSON、
+空译文、请求取消和 latest-wins。门槛 4–12 中依赖 Android Keystore、真实网络、
+抓包或 logcat 的部分留到真机/API 验收执行。

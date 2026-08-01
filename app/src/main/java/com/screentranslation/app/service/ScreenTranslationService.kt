@@ -652,7 +652,7 @@ class ScreenTranslationService : Service() {
             "识屏翻译",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "保持屏幕捕获和离线翻译运行"
+            description = getString(R.string.capture_channel_description)
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)

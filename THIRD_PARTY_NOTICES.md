@@ -34,6 +34,15 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 | Hy-MT2 1.8B Q4_K_M GGUF model | `1cd5208700acedef4ef93019b6cfc148b8522d45` | Apache License 2.0 |
 | llama.cpp Android runtime | `caa596ab3` (`b10181`) | MIT License |
 
+## Online / user-configured LLM 依赖
+
+Online edition 不携带翻译模型或服务商 SDK；它增加以下 HTTP 运行时：
+
+| 组件 | 当前版本 | 上游条款 |
+|---|---:|---|
+| OkHttp / okhttp-android | 5.4.0 | Apache License 2.0 |
+| Okio / okio-jvm | 3.17.0 | Apache License 2.0 |
+
 ## 模型基准依赖
 
 以下组件只进入 `benchmark` 变体，用于候选模型真机比较：
@@ -66,6 +75,8 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 - [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/)
 - [Hy-MT2 1.8B GGUF exact source and license](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/tree/1cd5208700acedef4ef93019b6cfc148b8522d45)
 - [llama.cpp exact source](https://github.com/ggml-org/llama.cpp/tree/caa596ab3f0f8768ee326d6e3d5d39782194676c)
+- [OkHttp 5.4.0 source](https://github.com/square/okhttp/tree/parent-5.4.0)
+- [Okio 3.17.0 source](https://github.com/square/okio/tree/parent-3.17.0)
 
 ML Kit Maven POM 将 benchmark-only 翻译与 OCR 组件的许可证字段标记为
 “ML Kit Terms of Service”，因此它们不因本仓库采用 Apache-2.0 而转为
@@ -92,7 +103,7 @@ Android NDK shared C++ runtime。对应 MIT 文本、Arm copyright 与 NDK notic
 copyright 与 Apache-2.0 原文也在 Full license bundle 中。Full 的界面、包名与
 发布说明均标记为 Experimental / HY-MT2 Q4。
 
-两版共同把以下材料打入 `assets/licenses/`：
+三个 edition 共同把以下材料打入 `assets/licenses/`：
 
 - 项目与 PP-OCRv6 使用的 Apache License 2.0 全文；
 - ONNX Runtime 1.26.0 MIT 全文；

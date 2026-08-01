@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- 实现独立 `com.screentranslation.app.online` edition：PP-OCRv6 在设备端识别，
+  通过用户配置的 OpenAI-compatible HTTPS Chat Completions 服务翻译整段 OCR 文本。
+- 增加 Online 设置页、服务/模型配置摘要、保存并测试入口，以及 600 ms 去抖、
+  750 ms 最小间隔、单活跃/单 latest pending 的可取消翻译协调器。
+- 将 Online 单元测试、Release Lint/R8、APK/AAB、后端隔离和许可证检查纳入
+  CI 与签名发布工作流。
+
+### Security
+
+- API Key 使用 Android Keystore AES-256-GCM 加密，输入框不回显；更换服务主机
+  后必须重新确认 OCR 文本数据流。
+- Online 仅接受无账号密码/query/fragment 的 HTTPS 地址，关闭重定向与 OkHttp
+  隐式重试，不记录认证头、OCR 原文、请求正文或译文。
+
 ### Fixed
 
 - 移除译文悬浮窗的 `FLAG_SECURE`，使用户发起的系统截图和录屏可以保留译文

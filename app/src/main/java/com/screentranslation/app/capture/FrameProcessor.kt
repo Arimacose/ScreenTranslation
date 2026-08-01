@@ -6,6 +6,7 @@ import android.media.ImageReader
 import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationBackend
+import com.screentranslation.app.ml.TranslationInputMode
 import com.screentranslation.app.util.ClauseSplitter
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,6 +34,18 @@ class FrameProcessor(
     )
 
     private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
+    private val wholeRegionCoordinator =
+        if (translationEngine.inputMode == TranslationInputMode.WHOLE_REGION) {
+            TranslationCoordinator(
+                backend = translationEngine,
+                onTranslation = { original, translated ->
+                    onTranslation(FrameTranslation(original, translated))
+                },
+                onError = onError,
+            )
+        } else {
+            null
+        }
 
     /**
      * Most of a UI is unchanged between frames, so the same block text is
@@ -50,11 +63,16 @@ class FrameProcessor(
 
     fun setEnabled(value: Boolean) {
         gate.setEnabled(value)
+        if (!value) {
+            wholeRegionCoordinator?.reset()
+            stableTextGate.reset()
+        }
     }
 
     fun resetStability() {
         gate.invalidate()
         stableTextGate.reset()
+        wholeRegionCoordinator?.reset()
     }
 
     /**
@@ -113,6 +131,14 @@ class FrameProcessor(
                     val stableText = stableTextGate.offer(recognition.text)
                     if (stableText == null) {
                         gate.release()
+                    } else if (
+                        translationEngine.inputMode == TranslationInputMode.WHOLE_REGION
+                    ) {
+                        // Online requests must not hold the capture single-flight
+                        // slot: newer stable OCR is allowed to replace an older
+                        // in-flight request through the coordinator.
+                        gate.release()
+                        checkNotNull(wholeRegionCoordinator).submit(stableText)
                     } else {
                         translate(stableText, recognition.blocks, frameGeneration)
                     }
@@ -212,6 +238,7 @@ class FrameProcessor(
     override fun close() {
         if (gate.isClosed) return
         gate.close()
+        wholeRegionCoordinator?.close()
         stableTextGate.reset()
         synchronized(translationCache) { translationCache.clear() }
     }

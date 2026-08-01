@@ -124,12 +124,16 @@ jobs:
           ./gradlew --no-daemon --stacktrace clean \
             testLiteDebugUnitTest \
             testFullDebugUnitTest \
+            testOnlineDebugUnitTest \
             lintLiteRelease \
             lintFullRelease \
+            lintOnlineRelease \
             assembleLiteRelease \
             assembleFullRelease \
+            assembleOnlineRelease \
             bundleLiteRelease \
-            bundleFullRelease
+            bundleFullRelease \
+            bundleOnlineRelease
 
       - name: Verify and stage signed editions
         shell: bash
@@ -143,13 +147,18 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner"
           lite_apk="app/build/outputs/apk/lite/release/app-lite-release.apk"
           full_apk="app/build/outputs/apk/full/release/app-full-release.apk"
+          online_apk="app/build/outputs/apk/online/release/app-online-release.apk"
           lite_aab="app/build/outputs/bundle/liteRelease/app-lite-release.aab"
           full_aab="app/build/outputs/bundle/fullRelease/app-full-release.aab"
+          online_aab="app/build/outputs/bundle/onlineRelease/app-online-release.aab"
 
           for tool in "$apkanalyzer" "$aapt" "$zipalign" "$apksigner"; do
             test -x "$tool"
           done
-          for artifact in "$lite_apk" "$full_apk" "$lite_aab" "$full_aab"; do
+          for artifact in \
+            "$lite_apk" "$full_apk" "$online_apk" \
+            "$lite_aab" "$full_aab" "$online_aab"
+          do
             test -s "$artifact"
           done
 
@@ -246,9 +255,17 @@ jobs:
             "HY-MT2 Q4 Experimental" \
             "lib/arm64-v8a/libhymt2_jni.so" \
             "lib/arm64-v8a/libbergamot_runner.so"
+          verify_apk \
+            "$online_apk" \
+            "com.screentranslation.app.online" \
+            "${version}-online" \
+            "识屏翻译 Online" \
+            "assets/licenses/ONLINE.md" \
+            "lib/arm64-v8a/libbergamot_runner.so"
 
           lite_apk_listing="$(unzip -Z1 "$lite_apk")"
           full_apk_listing="$(unzip -Z1 "$full_apk")"
+          online_apk_listing="$(unzip -Z1 "$online_apk")"
           assert_entry "$lite_apk_listing" "assets/licenses/LITE.md"
           assert_entry "$lite_apk_listing" \
             "assets/licenses/FIREFOX-TRANSLATIONS-MODELS.md"
@@ -271,11 +288,17 @@ jobs:
             "assets/licenses/models/HY-MT2-1.8B-GGUF.md"
           assert_entry "$full_apk_listing" \
             "assets/licenses/models/HY-MT2-1.8B-GGUF-LICENSE.txt"
+          assert_entry "$online_apk_listing" "assets/licenses/ONLINE.md"
+          reject_entry "$online_apk_listing" "lib/arm64-v8a/libhymt2_jni.so"
+          grep -Fq 'okhttp3.OkHttpClient ->' \
+            app/build/outputs/mapping/onlineRelease/mapping.txt
 
           jarsigner -verify "$lite_aab" >/dev/null
           jarsigner -verify "$full_aab" >/dev/null
+          jarsigner -verify "$online_aab" >/dev/null
           lite_aab_listing="$(unzip -Z1 "$lite_aab")"
           full_aab_listing="$(unzip -Z1 "$full_aab")"
+          online_aab_listing="$(unzip -Z1 "$online_aab")"
           assert_entry "$lite_aab_listing" \
             "base/assets/licenses/bergamot-9271618/SOURCE-CODE.md"
           assert_entry "$lite_aab_listing" \
@@ -283,6 +306,10 @@ jobs:
           assert_entry "$full_aab_listing" \
             "base/assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
           assert_entry "$full_aab_listing" \
+            "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+          assert_entry "$online_aab_listing" \
+            "base/assets/licenses/ONLINE.md"
+          assert_entry "$online_aab_listing" \
             "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
 
           mkdir -p dist
@@ -292,6 +319,8 @@ jobs:
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk"
           cp "$full_aab" \
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
+          cp "$online_apk" "dist/ScreenTranslation-$version-online-llm.apk"
+          cp "$online_aab" "dist/ScreenTranslation-$version-online-llm.aab"
           cp LICENSE "dist/ScreenTranslation-$version-LICENSE.txt"
           third_party_stage="$RUNNER_TEMP/screen-translation-third-party"
           mkdir -p "$third_party_stage"
@@ -312,11 +341,13 @@ jobs:
               "ScreenTranslation-$version-lite-bergamot.aab" \
               "ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
               "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
+              "ScreenTranslation-$version-online-llm.apk" \
+              "ScreenTranslation-$version-online-llm.aab" \
               "ScreenTranslation-$version-LICENSE.txt" \
               "ScreenTranslation-$version-THIRD-PARTY.zip" \
               > SHA256SUMS
             sha256sum -c SHA256SUMS
-            [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 7 ]]
+            [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 9 ]]
           )
 
       - name: Preserve Lite R8 mapping
@@ -343,6 +374,18 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Preserve Online R8 mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-online-mapping
+          path: |
+            app/build/outputs/mapping/onlineRelease/configuration.txt
+            app/build/outputs/mapping/onlineRelease/mapping.txt
+            app/build/outputs/mapping/onlineRelease/seeds.txt
+            app/build/outputs/mapping/onlineRelease/usage.txt
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -355,8 +398,9 @@ jobs:
 
           - **Lite · Bergamot**: PP-OCRv6-small OCR with the Bergamot translation backend. Translation models are downloaded at runtime.
           - **Full · HY-MT2 Q4 Experimental**: PP-OCRv6-small OCR with the HY-MT2 Q4 backend. This edition and model integration are explicitly **Experimental**; model weights are downloaded at runtime.
+          - **Online · user-configured LLM**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. OCR text is sent only after explicit data-flow consent; screenshots are not uploaded.
 
-          The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. The Full Experimental package uses `com.screentranslation.app.full` so both editions can coexist.
+          The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. Full and Online use `.full` and `.online`, so all three editions can coexist.
 
           Complete third-party license texts, native dependency notices, immutable model coordinates, and the MPL corresponding-source instructions are included in `ScreenTranslation-${{ steps.version.outputs.version_name }}-THIRD-PARTY.zip` and embedded in the applicable APK/AAB.
           NOTES
@@ -366,6 +410,8 @@ jobs:
             "dist/ScreenTranslation-$version-lite-bergamot.aab" \
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
+            "dist/ScreenTranslation-$version-online-llm.apk" \
+            "dist/ScreenTranslation-$version-online-llm.aab" \
             "dist/ScreenTranslation-$version-LICENSE.txt" \
             "dist/ScreenTranslation-$version-THIRD-PARTY.zip" \
             "dist/SHA256SUMS" \

@@ -29,6 +29,8 @@
     <string name="model_failed">模型准备失败：%1$s</string>
     <string name="model_same_language">原文语言和目标语言需要不同</string>
     <string name="unknown_error">未知错误</string>
+    <string name="online_settings">配置 Online 翻译服务</string>
+    <string name="online_config_status_unavailable">Online 配置状态暂不可用</string>
 
     <string name="section_permissions">运行权限</string>
     <string name="notification_permission">通知</string>
@@ -97,4 +99,5 @@
     <string name="capture_notification_title">识屏翻译正在运行</string>
     <string name="capture_notification_text">点按悬浮窗可重新框选，或在此停止</string>
     <string name="capture_notification_stop">停止</string>
+    <string name="capture_channel_description">保持屏幕捕获和翻译运行</string>
 </resources>
