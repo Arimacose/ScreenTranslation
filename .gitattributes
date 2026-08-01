@@ -24,6 +24,11 @@ keystore.properties.example text eol=lf
 *.pro text eol=lf
 *.sh text eol=lf
 *.py text eol=lf
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
 *.txt text eol=lf
 
 # Keep third-party license snapshots byte-for-byte identical to their upstream

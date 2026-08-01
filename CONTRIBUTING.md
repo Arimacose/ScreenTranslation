@@ -18,20 +18,34 @@ MediaProjection 生命周期、隐私边界和小米 15 Pro / HyperOS 的可验�
 - Android SDK Platform 37（运行目标仍为 API 36）
 - Android SDK Build Tools 37.0.0
 - Git
+- Go 1.26.5（仅修改 `services/managed-cloud-gateway` 时需要）
 - 可选：Android 16 设备；ROM 相关修改需要小米 15 Pro / HyperOS 复测
 
 克隆后在仓库根目录执行：
 
 ```bash
 ./gradlew --version
-./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest
+./gradlew lintLiteRelease lintFullRelease lintOnlineRelease
+./gradlew assembleLiteDebug assembleFullDebug assembleOnlineDebug
 ```
 
 Windows PowerShell：
 
 ```powershell
 .\gradlew.bat --version
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
+.\gradlew.bat testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest
+.\gradlew.bat lintLiteRelease lintFullRelease lintOnlineRelease
+.\gradlew.bat assembleLiteDebug assembleFullDebug assembleOnlineDebug
+```
+
+托管网关变更另执行：
+
+```bash
+cd services/managed-cloud-gateway
+go test ./...
+go vet ./...
+docker build -t screen-translation-managed-gateway:test .
 ```
 
 本机 SDK 路径只写入被忽略的 `local.properties`：
@@ -67,12 +81,12 @@ ONNX 权重并校验 SHA-256。模型缓存属于 `app/build` 生成物，不提
 
 ## 测试要求
 
-所有 PR 至少执行：
+所有 PR 至少执行受影响 edition 的：
 
 ```text
-testDebugUnitTest
-lintDebug
-assembleDebug
+testEDITIONDebugUnitTest
+lintEDITIONRelease
+assembleEDITIONDebug
 ```
 
 按变更类型增加验证：

@@ -193,6 +193,29 @@ require(!releaseSigningRequested || missingReleaseSigningKeys.isEmpty()) {
     "Release signing is partially configured; missing: ${missingReleaseSigningKeys.joinToString()}"
 }
 val releaseSigningConfigured = releaseSigningRequested && missingReleaseSigningKeys.isEmpty()
+val managedCloudBaseUrl = providers.environmentVariable(
+    "SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL",
+).orElse(
+    providers.gradleProperty("managedCloudBaseUrl"),
+).orElse("").get().trim()
+if (managedCloudBaseUrl.isNotEmpty()) {
+    val parsedManagedCloudUrl = runCatching { URI(managedCloudBaseUrl) }.getOrNull()
+    require(
+        parsedManagedCloudUrl != null &&
+            parsedManagedCloudUrl.scheme.equals("https", ignoreCase = true) &&
+            !parsedManagedCloudUrl.host.isNullOrBlank() &&
+            parsedManagedCloudUrl.rawUserInfo == null &&
+            parsedManagedCloudUrl.rawQuery == null &&
+            parsedManagedCloudUrl.rawFragment == null &&
+            '\r' !in managedCloudBaseUrl &&
+            '\n' !in managedCloudBaseUrl,
+    ) {
+        "Managed cloud Base URL must be absolute HTTPS without credentials, query, or fragment"
+    }
+}
+val managedCloudBaseUrlLiteral = managedCloudBaseUrl
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.screentranslation.app"
@@ -210,6 +233,11 @@ android {
         buildConfigField("boolean", "BERGAMOT_LITE", "false")
         buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
         buildConfigField("boolean", "ONLINE_LLM", "false")
+        buildConfigField(
+            "String",
+            "MANAGED_CLOUD_BASE_URL",
+            "\"$managedCloudBaseUrlLiteral\"",
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -360,7 +388,7 @@ dependencies {
     // The Full edition contains the Hy-MT2 Q4 llama.cpp runtime.
     add("fullImplementation", project(":llama-android"))
 
-    // The Online edition sends OCR text to a user-configured HTTPS endpoint.
+    // The Online edition sends OCR text to the managed gateway or a user API.
     add("onlineImplementation", "com.squareup.okhttp3:okhttp:5.4.0")
 
     // ML Kit OCR remains benchmark-only as the v0.1.0 comparison baseline.

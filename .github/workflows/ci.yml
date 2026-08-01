@@ -19,6 +19,7 @@ env:
   BERGAMOT_NDK: "23.1.7779620"
   HYMT2_NDK: "29.0.14206865"
   ANDROID_CMAKE: "3.31.6"
+  SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL: "https://managed-ci.example.test/v1"
 
 jobs:
   build:
@@ -49,6 +50,18 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: services/managed-cloud-gateway/go.mod
+
+      - name: Test managed cloud gateway
+        working-directory: services/managed-cloud-gateway
+        run: |
+          go test ./...
+          docker build -t screen-translation-managed-gateway:ci .
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4.0.1

@@ -9,6 +9,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -24,6 +25,9 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private lateinit var repository: OnlineTranslationConfigRepository
     private lateinit var preferences: AppPreferences
     private lateinit var modelHttpClient: OkHttpClient
+    private lateinit var providerGroup: RadioGroup
+    private lateinit var userApiContainer: View
+    private lateinit var managedStatusView: TextView
     private lateinit var baseUrlView: EditText
     private lateinit var modelSpinner: Spinner
     private lateinit var modelAdapter: ArrayAdapter<String>
@@ -48,7 +52,8 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private var suppressConfigWatchers = false
     private var testEngine: TranslationBackend? = null
     private var testGeneration = 0L
-    private var savedConsentHost = ""
+    private var savedUserConsentHost = ""
+    private var savedManagedConsentHost = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +78,9 @@ class OnlineSettingsActivity : AppCompatActivity() {
     }
 
     private fun bindViews() {
+        providerGroup = findViewById(R.id.radio_group_online_provider)
+        userApiContainer = findViewById(R.id.container_online_user_api)
+        managedStatusView = findViewById(R.id.text_online_managed_status)
         baseUrlView = findViewById(R.id.edit_online_base_url)
         modelSpinner = findViewById(R.id.spinner_online_model)
         modelStatusView = findViewById(R.id.text_online_model_status)
@@ -101,10 +109,15 @@ class OnlineSettingsActivity : AppCompatActivity() {
         baseUrlView.setText(config.baseUrl)
         apiKeyView.text.clear()
         suppressConfigWatchers = false
-        savedConsentHost = config.consentHost
-        consentView.isChecked =
-            config.consentVersion == OnlineTranslationConfig.CURRENT_CONSENT_VERSION &&
-                config.consentHost.isNotBlank()
+        savedUserConsentHost = config.consentHost
+        savedManagedConsentHost = config.managedConsentHost
+        providerGroup.check(
+            if (config.providerMode == OnlineProviderMode.MANAGED_CLOUD) {
+                R.id.radio_online_managed_cloud
+            } else {
+                R.id.radio_online_user_api
+            },
+        )
         if (config.modelId.isNotBlank()) {
             setModelOptions(listOf(config.modelId), config.modelId)
             modelCatalogBaseUrl = runCatching {
@@ -121,6 +134,8 @@ class OnlineSettingsActivity : AppCompatActivity() {
         if (testTextView.text.isBlank()) {
             testTextView.setText(R.string.online_default_test_text)
         }
+        consentView.isChecked = hasCurrentConsent(selectedProviderMode())
+        applyProviderModeUi()
         refreshKeyStatus()
         updateActionState()
     }
@@ -131,7 +146,10 @@ class OnlineSettingsActivity : AppCompatActivity() {
             val currentHost = runCatching {
                 OpenAiEndpoint.parse(text?.toString().orEmpty()).consentIdentity
             }.getOrNull()
-            if (currentHost == null || currentHost != savedConsentHost) {
+            if (
+                selectedProviderMode() == OnlineProviderMode.USER_API &&
+                (currentHost == null || currentHost != savedUserConsentHost)
+            ) {
                 consentView.isChecked = false
             }
             invalidateModelCatalog()
@@ -153,13 +171,18 @@ class OnlineSettingsActivity : AppCompatActivity() {
                 updateActionState()
             }
         }
+        providerGroup.setOnCheckedChangeListener { _, _ ->
+            consentView.isChecked = hasCurrentConsent(selectedProviderMode())
+            applyProviderModeUi()
+            updateActionState()
+        }
         fetchModelsButton.setOnClickListener { fetchModels() }
         saveButton.setOnClickListener {
             saveConfiguration().fold(
                 onSuccess = { config ->
                     resultView.text = getString(
                         R.string.online_save_success,
-                        OpenAiEndpoint.parse(config.baseUrl).requestUrl,
+                        activeRequestUrl(config),
                     )
                 },
                 onFailure = ::showFailure,
@@ -189,6 +212,9 @@ class OnlineSettingsActivity : AppCompatActivity() {
 
     private fun fetchModels() {
         val requestConfig = runCatching {
+            require(selectedProviderMode() == OnlineProviderMode.USER_API) {
+                "Model catalog is only used by the user API mode"
+            }
             val endpoint = OpenAiEndpoint.parse(baseUrlView.text.toString())
             require(consentView.isChecked) {
                 getString(R.string.online_consent_required)
@@ -254,6 +280,22 @@ class OnlineSettingsActivity : AppCompatActivity() {
     }
 
     private fun saveConfiguration(): Result<OnlineTranslationConfig> = runCatching {
+        if (selectedProviderMode() == OnlineProviderMode.MANAGED_CLOUD) {
+            require(preferences.targetLanguage.equals("zh", ignoreCase = true)) {
+                getString(R.string.online_managed_target_required)
+            }
+            require(consentView.isChecked) {
+                getString(R.string.online_managed_consent_required)
+            }
+            val config = repository.saveManagedCloud(
+                consentAccepted = consentView.isChecked,
+            )
+            savedManagedConsentHost = config.managedConsentHost
+            consentView.isChecked = true
+            updateActionState()
+            setResult(Activity.RESULT_OK)
+            return@runCatching config
+        }
         val endpoint = OpenAiEndpoint.parse(baseUrlView.text.toString())
         require(consentView.isChecked) {
             getString(R.string.online_consent_required)
@@ -272,7 +314,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
             newApiKey = apiKeyView.text.toString().takeIf { it.isNotBlank() },
             consentAccepted = consentView.isChecked,
         )
-        savedConsentHost = config.consentHost
+        savedUserConsentHost = config.consentHost
         consentView.isChecked = true
         suppressConfigWatchers = true
         apiKeyView.text.clear()
@@ -380,17 +422,84 @@ class OnlineSettingsActivity : AppCompatActivity() {
 
     private fun updateActionState() {
         val busy = fetchingModels || testingTranslation
+        val providerMode = selectedProviderMode()
+        val managedMode = providerMode == OnlineProviderMode.MANAGED_CLOUD
         val hasModel = selectedModelId() != null
+        val managedReady = ManagedCloudService.isConfigured &&
+            preferences.targetLanguage.equals("zh", ignoreCase = true)
+        for (index in 0 until providerGroup.childCount) {
+            providerGroup.getChildAt(index).isEnabled = !busy
+        }
         baseUrlView.isEnabled = !busy
         apiKeyView.isEnabled = !busy
         consentView.isEnabled = !busy
-        fetchModelsButton.isEnabled = !busy
+        fetchModelsButton.isEnabled = !busy && !managedMode
         modelSpinner.isEnabled = !busy && modelIds.isNotEmpty()
-        saveButton.isEnabled = !busy && hasModel
-        saveAndTestButton.isEnabled = !busy && hasModel
-        deleteKeyButton.isEnabled = !busy
+        val selectedModeReady = if (managedMode) managedReady else hasModel
+        saveButton.isEnabled = !busy && selectedModeReady
+        saveAndTestButton.isEnabled = !busy && selectedModeReady
+        deleteKeyButton.isEnabled = !busy && !managedMode
         testTextView.isEnabled = !busy
     }
+
+    private fun selectedProviderMode(): OnlineProviderMode =
+        if (providerGroup.checkedRadioButtonId == R.id.radio_online_user_api) {
+            OnlineProviderMode.USER_API
+        } else {
+            OnlineProviderMode.MANAGED_CLOUD
+        }
+
+    private fun hasCurrentConsent(providerMode: OnlineProviderMode): Boolean {
+        val config = repository.load()
+        return when (providerMode) {
+            OnlineProviderMode.USER_API -> {
+                val currentHost = runCatching {
+                    OpenAiEndpoint.parse(baseUrlView.text.toString()).consentIdentity
+                }.getOrNull()
+                config.consentVersion == OnlineTranslationConfig.CURRENT_CONSENT_VERSION &&
+                    currentHost != null && currentHost == savedUserConsentHost
+            }
+            OnlineProviderMode.MANAGED_CLOUD -> {
+                val currentHost = runCatching {
+                    ManagedCloudService.endpoint().consentIdentity
+                }.getOrNull()
+                config.managedConsentVersion ==
+                    OnlineTranslationConfig.CURRENT_CONSENT_VERSION &&
+                    currentHost != null && currentHost == savedManagedConsentHost
+            }
+        }
+    }
+
+    private fun applyProviderModeUi() {
+        val managedMode = selectedProviderMode() == OnlineProviderMode.MANAGED_CLOUD
+        userApiContainer.visibility = if (managedMode) View.GONE else View.VISIBLE
+        deleteKeyButton.visibility = if (managedMode) View.GONE else View.VISIBLE
+        managedStatusView.visibility = if (managedMode) View.VISIBLE else View.GONE
+        consentView.setText(
+            if (managedMode) {
+                R.string.online_managed_data_flow_consent
+            } else {
+                R.string.online_user_data_flow_consent
+            },
+        )
+        if (managedMode) {
+            if (ManagedCloudService.isConfigured) {
+                val host = ManagedCloudService.endpoint().host
+                managedStatusView.text = getString(
+                    R.string.online_managed_configured,
+                    host,
+                )
+            } else {
+                managedStatusView.setText(R.string.online_managed_not_configured)
+            }
+        }
+    }
+
+    private fun activeRequestUrl(config: OnlineTranslationConfig): String =
+        when (config.providerMode) {
+            OnlineProviderMode.MANAGED_CLOUD -> ManagedCloudService.endpoint().requestUrl.toString()
+            OnlineProviderMode.USER_API -> OpenAiEndpoint.parse(config.baseUrl).requestUrl.toString()
+        }
 
     private fun refreshKeyStatus() {
         keyStatusView.setText(

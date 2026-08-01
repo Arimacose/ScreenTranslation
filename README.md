@@ -15,9 +15,9 @@
   包名并支持签名升级。
 - **Full · HY-MT2 Q4 Experimental**：多语言直接译为简体中文，使用独立
   `.full` 包名，可与 Lite 并存安装。
-- **Online · user-configured LLM**：使用独立 `.online` 包名，把稳定后的整段
-  OCR 文本发送到用户配置的 OpenAI-compatible HTTPS 服务；API Key 由 Android
-  Keystore 加密，首次发送及更换服务主机时需确认数据流。
+- **Online · managed Hy-MT2 / user API**：使用独立 `.online` 包名；用户既可
+  直接选择项目托管的 Hy-MT2 Q4，也可填写 OpenAI-compatible HTTPS Base URL
+  与 API Key、自动拉取模型后翻译。两种模式都只发送稳定后的整段 OCR 文本。
 - Lite/Full 的翻译模型按需下载、校验后在设备端推理；Online 不携带翻译模型；
   模型权重均不进入 APK/AAB。
 - 三个 APK/AAB 都内嵌适用的完整第三方许可证与 notices；GitHub Release
@@ -40,7 +40,7 @@
 | OCR runtime | ONNX Runtime Android `1.26.0` |
 | Lite translation | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
 | Full translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181`，Experimental |
-| Online translation | OkHttp `5.4.0` + Okio `3.17.0`，OpenAI-compatible Chat Completions |
+| Online translation | 托管 Hy-MT2 Q4 网关，或 OkHttp `5.4.0` + OpenAI-compatible Chat Completions |
 | Benchmark baseline | ML Kit Translate `17.0.3` |
 | Low-bit translation PoC | Hy-MT2 1.8B STQ1_0 1.25-bit + llama.cpp PR `#22836` |
 
@@ -103,9 +103,11 @@ app/src/full/
 └── java/.../HyMt2Q4TranslationEngine.kt  # Q4 下载、校验与本地推理
 
 app/src/online/
-├── java/.../OnlineLlmTranslationEngine.kt # HTTPS Chat Completions 后端
-├── java/.../online/                       # Endpoint、协议、Keystore 与设置页
+├── java/.../OnlineLlmTranslationEngine.kt # 托管云端/用户 API 双模式后端
+├── java/.../online/                       # 两种协议、Endpoint、Keystore 与设置页
 └── res/                                   # Online 标签与配置界面
+
+services/managed-cloud-gateway/            # 固定 Hy-MT2 契约的无状态 Go 网关
 
 app/src/benchmark/
 └── java/.../TranslationEngine.kt     # ML Kit Translate 对照
@@ -123,6 +125,8 @@ Bergamot Android 核心 PoC 见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)，
 Hy-MT2 综合对比见
 [`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md)，
+云端 Hy-MT2/TranslateGemma 质量、GPU、流量与选型见
+[`docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md`](docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md)，
 Online edition 设计见
 [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。
 
@@ -224,16 +228,34 @@ Full 使用 `com.screentranslation.app.full` 和 `0.2.1-full`，可与 Lite
 再保存到应用内部 `no_backup/models/hymt2-q4`。Full 当前只输出简体中文；
 内置固定英文长句自检会实际加载 JNI/llama.cpp 并显示原文、译文和总耗时。
 
-### Online · user-configured LLM
+### Online · managed Hy-MT2 / user API
 
 Online 使用 `com.screentranslation.app.online` 和 `0.2.1-online`，可与 Lite/Full
-并存。进入“配置 Online 翻译服务”，填写 HTTPS Base URL 与 API Key、确认数据流，
-再点击“获取可用模型”；应用通过 `GET /models` 读取模型 ID 并让用户从下拉列表选择，
-无需手工输入模型名。应用会为 API 根地址自动补充 `/models` 和
-`/chat/completions`。选择模型后，“保存并测试翻译”会发送输入框中的一条纯文本
-请求。翻译固定使用 Bearer 认证与防提示注入的 system message，不上传截图。稳定
-OCR 以整段单请求发送；协调器采用 600 ms 去抖、750 ms 最小间隔、单活跃请求和
-单 latest pending，停止、重选区域或息屏会取消请求。
+并存。设置页提供两种模式：
+
+- **项目托管云端**：固定 `Hy-MT2 1.8B Q4_K_M`，无需用户填写 API Key，当前
+  只翻译为简体中文；
+- **自己的 API**：填写 HTTPS Base URL 与 API Key、确认数据流，再点击“获取可用
+  模型”；应用通过 `GET /models` 获取并展示模型 ID，无需手工输入。
+
+用户 API 模式会为根地址自动补充 `/models` 和 `/chat/completions`。API Key 由
+Android Keystore 加密，托管模式不读取或发送该密钥，切换模式也不会删除已有用户
+API 配置。两种模式都不上传截图。稳定 OCR 以整段单请求发送；协调器采用 600 ms
+去抖、750 ms 最小间隔、单活跃请求和单 latest pending，停止、重选区域或息屏会
+取消请求。
+
+开源构建默认不绑定维护者的生产域名。维护者部署
+[`services/managed-cloud-gateway`](services/managed-cloud-gateway/) 后，在构建时
+注入公开 HTTPS Base URL：
+
+```powershell
+.\gradlew.bat assembleOnlineRelease `
+  -PmanagedCloudBaseUrl=https://PUBLIC_GATEWAY/v1
+```
+
+也可设置环境变量 `SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL`。该值是公开 URL，
+不是云厂商密钥；上游模型地址和可选上游密钥只配置在网关环境中。未注入时设置页会
+禁用托管保存/测试，但用户 API 模式保持可用。
 
 ### 安装
 
@@ -252,8 +274,9 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 ## 首次使用顺序
 
 1. 打开应用，选择源语言和采样间隔。Lite 提供英语/日语→简体中文；Full
-   提供界面列出的非中文源语言→简体中文；Online 可选择界面列出的源/目标语言，
-   并需先完成服务配置与数据流确认。PP-OCRv6 使用同一套多语言权重。
+   提供界面列出的非中文源语言→简体中文；Online 的托管 Hy-MT2 当前仅译为
+   简体中文，用户 API 模式可使用界面列出的源/目标语言。先在 Online 设置页选择
+   模式并确认对应数据流。PP-OCRv6 使用同一套多语言权重。
 2. 点击悬浮窗授权；HyperOS 会打开本应用权限编辑页，进入“其他权限 → 显示悬浮窗 → 始终允许”。
 3. Android 13+ 首次运行时允许通知；拒绝后，系统仍可能在任务管理界面显示前台服务，但用户体验不完整。
 4. 点击开始，接受 Android 系统的“共享/录制屏幕”提示。每个捕获会话都必须使用新的授权结果。
@@ -279,7 +302,7 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 
 - 屏幕帧只在进程内存中处理，不落盘。
 - OCR 始终在设备端进行。Lite/Full 翻译在设备端推理；Online 只把稳定后的 OCR
-  文本、语言、模型 ID 和固定提示发送到用户配置的 HTTPS 服务。
+  文本、语言、模型 ID 和固定提示发送到用户选择的项目托管网关或用户 API。
 - Lite 的 Firefox Translations 模型与 Full 的 Hy-MT2 Q4 模型均保存在各自
   应用内部 `no_backup` 目录，不进入系统备份。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。

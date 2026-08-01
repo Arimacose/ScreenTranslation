@@ -24,84 +24,125 @@
             android:text="@string/online_settings_explanation"
             android:textColor="?android:attr/textColorSecondary" />
 
-        <EditText
-            android:id="@+id/edit_online_base_url"
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:hint="@string/online_base_url_hint"
-            android:importantForAutofill="no"
-            android:inputType="textUri"
-            android:maxLines="2" />
+            android:text="@string/online_provider_label"
+            android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/edit_online_api_key"
+        <RadioGroup
+            android:id="@+id/radio_group_online_provider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:autofillHints="password"
-            android:hint="@string/online_api_key_hint"
-            android:importantForAutofill="no"
-            android:inputType="textPassword"
-            android:maxLines="1" />
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/radio_online_managed_cloud"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/online_provider_managed" />
+
+            <RadioButton
+                android:id="@+id/radio_online_user_api"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/online_provider_user_api" />
+        </RadioGroup>
 
         <TextView
-            android:id="@+id/text_online_key_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textAppearance="?android:attr/textAppearanceSmall"
-            android:textColor="?android:attr/textColorSecondary" />
-
-        <TextView
+            android:id="@+id/text_online_managed_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="@string/online_endpoint_path_help"
             android:textAppearance="?android:attr/textAppearanceSmall"
             android:textColor="?android:attr/textColorSecondary" />
+
+        <LinearLayout
+            android:id="@+id/container_online_user_api"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/edit_online_base_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:hint="@string/online_base_url_hint"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:maxLines="2" />
+
+            <EditText
+                android:id="@+id/edit_online_api_key"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:autofillHints="password"
+                android:hint="@string/online_api_key_hint"
+                android:importantForAutofill="no"
+                android:inputType="textPassword"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/text_online_key_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/online_endpoint_path_help"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <Button
+                android:id="@+id/button_online_fetch_models"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/online_fetch_models"
+                android:textAllCaps="false" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:labelFor="@id/spinner_online_model"
+                android:text="@string/online_model_selection_label"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spinner_online_model"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:enabled="false"
+                android:minHeight="48dp"
+                android:spinnerMode="dropdown" />
+
+            <TextView
+                android:id="@+id/text_online_model_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:accessibilityLiveRegion="polite"
+                android:text="@string/online_models_not_loaded"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?android:attr/textColorSecondary" />
+        </LinearLayout>
 
         <CheckBox
             android:id="@+id/check_online_consent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/online_data_flow_consent" />
-
-        <Button
-            android:id="@+id/button_online_fetch_models"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/online_fetch_models"
-            android:textAllCaps="false" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:labelFor="@id/spinner_online_model"
-            android:text="@string/online_model_selection_label"
-            android:textStyle="bold" />
-
-        <Spinner
-            android:id="@+id/spinner_online_model"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:enabled="false"
-            android:minHeight="48dp"
-            android:spinnerMode="dropdown" />
-
-        <TextView
-            android:id="@+id/text_online_model_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:accessibilityLiveRegion="polite"
-            android:text="@string/online_models_not_loaded"
-            android:textAppearance="?android:attr/textAppearanceSmall"
-            android:textColor="?android:attr/textColorSecondary" />
+            android:text="@string/online_user_data_flow_consent" />
 
         <Button
             android:id="@+id/button_online_save"

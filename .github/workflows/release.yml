@@ -18,6 +18,7 @@ env:
   HYMT2_NDK: "29.0.14206865"
   ANDROID_CMAKE: "3.31.6"
   EXPECTED_SIGNER_SHA256: "b58712578045532158d45b847ab7ed1be041236b5a7a0bd1a1db5480fbe0439f"
+  SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL: ${{ vars.MANAGED_CLOUD_BASE_URL }}
 
 jobs:
   release:
@@ -55,6 +56,18 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: services/managed-cloud-gateway/go.mod
+
+      - name: Test managed cloud gateway
+        working-directory: services/managed-cloud-gateway
+        run: |
+          go test ./...
+          docker build -t screen-translation-managed-gateway:release .
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4.0.1
 
@@ -86,6 +99,10 @@ jobs:
               missing=1
             fi
           done
+          if [[ ! "$SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL" =~ ^https:// ]]; then
+            echo "::error::Repository variable MANAGED_CLOUD_BASE_URL must be an HTTPS base URL"
+            missing=1
+          fi
           [[ "$missing" -eq 0 ]]
 
       - name: Materialize release keystore
@@ -398,7 +415,7 @@ jobs:
 
           - **Lite · Bergamot**: PP-OCRv6-small OCR with the Bergamot translation backend. Translation models are downloaded at runtime.
           - **Full · HY-MT2 Q4 Experimental**: PP-OCRv6-small OCR with the HY-MT2 Q4 backend. This edition and model integration are explicitly **Experimental**; model weights are downloaded at runtime.
-          - **Online · user-configured LLM**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. OCR text is sent only after explicit data-flow consent; screenshots are not uploaded.
+          - **Online · managed Hy-MT2 / user API**: PP-OCRv6-small OCR with either the project-managed Hy-MT2 Q4 gateway or a user-configured OpenAI-compatible HTTPS endpoint. OCR text is sent only after the selected provider's explicit data-flow consent; screenshots are not uploaded.
 
           The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. Full and Online use `.full` and `.online`, so all three editions can coexist.
 

@@ -2,14 +2,17 @@ package com.screentranslation.app.ml
 
 import android.content.Context
 import com.screentranslation.app.online.OnlineChatClient
+import com.screentranslation.app.online.OnlineChatRequestMode
 import com.screentranslation.app.online.OnlineHttpClientFactory
+import com.screentranslation.app.online.OnlineProviderMode
 import com.screentranslation.app.online.OnlineTranslationConfigRepository
+import com.screentranslation.app.online.ManagedCloudService
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Online edition backend for user-configured OpenAI-compatible HTTPS APIs. */
+/** Online backend for either the managed Hy-MT2 service or a user API. */
 class OnlineLlmTranslationEngine(
     context: Context,
     sourceLanguage: String,
@@ -104,14 +107,22 @@ class OnlineLlmTranslationEngine(
         checkOpen()
         chatClient?.let { return it }
         val ready = repository.requireReady()
+        val requestMode = when (ready.config.providerMode) {
+            OnlineProviderMode.MANAGED_CLOUD -> {
+                ManagedCloudService.requireSupportedTarget(targetLanguageCode)
+                OnlineChatRequestMode.MANAGED_HYMT2
+            }
+            OnlineProviderMode.USER_API -> OnlineChatRequestMode.USER_API
+        }
         return OnlineChatClient(
             callFactory = httpClient,
             retryScheduler = retryScheduler,
             endpoint = ready.endpoint,
-            modelId = ready.config.modelId,
+            modelId = ready.modelId,
             apiKey = ready.apiKey,
             sourceLanguage = sourceLanguageCode,
             targetLanguage = targetLanguageCode,
+            requestMode = requestMode,
         ).also { chatClient = it }
     }
 

@@ -13,6 +13,10 @@
   750 ms 最小间隔、单活跃/单 latest pending 的可取消翻译协调器。
 - 将 Online 单元测试、Release Lint/R8、APK/AAB、后端隔离和许可证检查纳入
   CI 与签名发布工作流。
+- 为 Online 增加项目托管 Hy-MT2 Q4 / 用户 API 双 provider；切换模式保留用户
+  Base URL、已选模型与 Keystore 密钥，托管模式固定译为简体中文。
+- 增加无状态 Go 托管网关、固定请求契约、上游模型/密钥隔离、正文/频率/并发限制，
+  以及 TranslateGemma/Hy-MT2 的 80 条同 GPU 质量、性能与流量报告。
 
 ### Security
 
@@ -20,6 +24,8 @@
   后必须重新确认 OCR 文本数据流。
 - Online 仅接受无账号密码/query/fragment 的 HTTPS 地址，关闭重定向与 OkHttp
   隐式重试，不记录认证头、OCR 原文、请求正文或译文。
+- 托管云端公开 URL 由构建变量注入；云厂商/模型服务密钥仅存在网关服务器环境，
+  Release workflow 拒绝缺少 HTTPS 托管地址的发布。
 
 ### Fixed
 

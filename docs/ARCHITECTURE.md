@@ -22,7 +22,7 @@ edition 额外提供一个非导出的设置 Activity。目标设备为小米 15
 |---|---|---|---|---|
 | Lite | `com.screentranslation.app` | `0.2.1-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
 | Full | `com.screentranslation.app.full` | `0.2.1-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
-| Online | `com.screentranslation.app.online` | `0.2.1-online` | 用户配置的 OpenAI-compatible LLM | 界面开放的源/目标语言，实际能力由服务模型决定 |
+| Online | `com.screentranslation.app.online` | `0.2.1-online` | 托管 Hy-MT2 Q4，或用户配置的 OpenAI-compatible LLM | 托管模式为多语言→简体中文；用户 API 能力由所选模型决定 |
 
 Lite 保留基础包名以承接 v0.1.0 升级，Full/Online 使用 `.full`/`.online` 后缀，
 因此三者可在同一设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：
@@ -47,9 +47,10 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 | `TranslationBackend` | 为公共流水线定义模型准备、翻译、取消与关闭接口 | edition 实现使用单工作线程；切换语言对时使旧回调失效 |
 | `BergamotTranslationEngine` | Lite 的 en→zh 与 ja→en→zh 路由、模型下载/校验和 Bergamot runner 生命周期 | 仅编入 Lite；模型位于应用私有 no-backup 目录 |
 | `HyMt2Q4TranslationEngine` | Full Experimental 的多语言→简体中文提示、GGUF 下载/校验和 llama.cpp 推理 | 仅编入 Full；模型位于应用私有 no-backup 目录 |
-| `OnlineLlmTranslationEngine` | 校验 Online 配置并执行可取消的 HTTPS Chat Completions | 仅编入 Online；不持久化原文或译文 |
+| `OnlineLlmTranslationEngine` | 在托管 Hy-MT2 与用户 API 间路由并执行可取消 HTTPS 请求 | 仅编入 Online；不持久化原文或译文 |
 | `TranslationCoordinator` | Online 整段文本去抖、最小请求间隔、latest-wins、代次校验和内存 LRU | 一个活跃请求与一个最新待处理文本；重置/停止时取消 |
-| `OnlineTranslationConfigRepository` | 保存服务/模型/确认元数据并通过 Keystore 密文读取 API Key | API Key 不进入 Intent、日志、资源或 BuildConfig |
+| `OnlineTranslationConfigRepository` | 分别保存 provider/同意状态；用户模式通过 Keystore 读取 API Key | 托管模式不读取用户密钥；上游密钥只在服务器环境中 |
+| `managed-cloud-gateway` | 固定 Hy-MT2 请求契约、隐藏私有上游、限制正文/频率/并发 | 独立 Go 服务；公网 TLS 与 GPU 模型服务由部署环境提供 |
 | `AppPreferences` | 保存源/目标语言和采样间隔 | 不保存选择区域、截图、OCR 文本或翻译历史 |
 
 ## 3. 数据流
@@ -66,7 +67,7 @@ flowchart LR
     H --> I["StableTextGate：稳定/去重"]
     I --> J["Edition TranslationBackend"]
     J --> M["Lite/Full：分块端侧翻译"]
-    J --> N["Online：整段 latest-wins HTTPS 请求"]
+    J --> N["Online：托管云端或用户 API 的整段 latest-wins HTTPS 请求"]
     M --> K["OverlayController：显示译文"]
     N --> K
     D --> L["持续通知：停止入口"]
@@ -121,16 +122,17 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 - Online 使用 `WHOLE_REGION` 输入模式。稳定 OCR 整段经过 600 ms 去抖与 750 ms
   最小请求间隔后形成一次 Chat Completions 请求；协调器保持一个活跃请求和一个
   latest pending，旧 generation 的响应不进入悬浮窗。
-- Online 只接受 HTTPS，拒绝 URL credentials/query/fragment 并关闭跨主机及同主机
-  重定向。设置页使用 Bearer 凭据调用同源 `GET /models`，解析 `data[].id` 后由用户
-  从列表选择；Base URL 或 API Key 改动会使旧列表失效。翻译请求只含固定 system
-  message、OCR 文本、语言和所选模型 ID；API Key 由 Android Keystore AES-256-GCM
-  加密，服务停止、选区重置或息屏时取消活跃请求。
+- Online 只接受 HTTPS，拒绝 URL credentials/query/fragment 并关闭重定向。托管
+  模式固定 `hymt2-1.8b-q4` 与已验收提示，不发送用户 API Key，当前只译为简体中文；
+  公开网关 URL 通过构建属性注入，上游 URL/密钥只存在服务端。用户 API 模式使用
+  Bearer 凭据调用同源 `GET /models`，解析 `data[].id` 后从列表选择；Base URL 或
+  API Key 改动会使旧列表失效。用户密钥由 Android Keystore AES-256-GCM 加密；
+  切换 provider 不删除它，服务停止、选区重置或息屏时取消活跃请求。
 - 两个后端都把模型 URL 固定到明确 revision，并校验预期大小与 SHA-256。
   模型按需下载到 `noBackupFilesDir/models/...`，APK/AAB 只包含对应 native
   runtime，不包含 Bergamot 翻译权重或 HY-MT2 GGUF。
 - Lite/Full 模型下载需要 `INTERNET`；校验通过后其 OCR 文本和翻译推理均留在设备端。
-  Online 的 OCR 留在设备端，翻译文本直接发送到用户配置的服务。
+  Online 的 OCR 留在设备端，翻译文本发送到用户选定的项目托管网关或用户 API。
 - 配置改变或服务结束时关闭旧后端，并通过会话代次丢弃迟到回调。
 - ML Kit Translate 的适配器和依赖只供 `benchmark` 基线，不参与三个 production
   edition 的运行时。Online 的完整契约与验收矩阵见
@@ -154,7 +156,7 @@ HyperOS 的“显示在其他应用上层”属于用户可撤销的特殊权限
 
 | 权限 | 原因 | 获取方式 |
 |---|---|---|
-| `INTERNET` | 首次下载指定语言翻译模型 | Manifest 普通权限 |
+| `INTERNET` | 下载端侧翻译模型，或发送 Online OCR 文本 | Manifest 普通权限 |
 | `ACCESS_NETWORK_STATE` | 给出下载前的网络状态反馈 | Manifest 普通权限 |
 | `SYSTEM_ALERT_WINDOW` | 区域选择和译文悬浮层 | 系统特殊权限设置页 |
 | `POST_NOTIFICATIONS` | Android 13+ 前台服务通知体验 | 运行时权限 |

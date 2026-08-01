@@ -307,6 +307,71 @@ does not load in the pinned upstream release. The 1.25-bit STQ variant depends
 on open PR `#22836`; treat its custom ARM runtime, translation quality,
 latency, thermals, and lifecycle as separate acceptance gates.
 
+## Cloud Q4 prescreen: Hy-MT2 vs TranslateGemma
+
+The managed-cloud prescreen runs both Q4_K_M files sequentially on the same
+GPU with pinned `llama.cpp b10181` / commit `caa596ab3`, a 2K context, one
+slot, eight threads, full GPU offload, and deterministic decoding. Set the
+three paths for your machine:
+
+```powershell
+$LLAMA_SERVER = "D:\PATH\llama-server.exe"
+$HY_MODEL = "D:\MODELS\Hy-MT2-1.8B-Q4_K_M.gguf"
+$TG_MODEL = "D:\MODELS\translategemma-4b-it-Q4_K_M.gguf"
+```
+
+Start the Hy-MT2 server:
+
+```powershell
+& $LLAMA_SERVER --model $HY_MODEL --host 127.0.0.1 --port 18088 `
+  --ctx-size 2048 --parallel 1 --threads 8 --threads-batch 8 `
+  --gpu-layers 99 --jinja --no-webui --metrics
+```
+
+In a second terminal, run each exported ML Kit language-pair fixture. The
+explicit runtime scope prevents an external desktop server from being labeled
+as an Android run:
+
+```powershell
+python .\tools\model-benchmark\run_hymt2.py `
+  BASELINE\translation-mlkit-en-zh-android.json `
+  --external-server-url http://127.0.0.1:18088 `
+  --model $HY_MODEL --threads 8 --repetitions 1 --repeat-penalty 1.05 `
+  --runtime-scope "Windows x86_64 GPU cloud prescreen" `
+  --log-directory .\app\build\model-benchmark\cloud-hymt2-en `
+  --output .\app\build\model-benchmark\cloud-hymt2-en.json
+```
+
+Stop that server, then start TranslateGemma on the same port and settings:
+
+```powershell
+& $LLAMA_SERVER --model $TG_MODEL --host 127.0.0.1 --port 18088 `
+  --ctx-size 2048 --parallel 1 --threads 8 --threads-batch 8 `
+  --gpu-layers 99 --no-webui --metrics
+```
+
+Run the TranslateGemma adapter with the pinned revision and hash:
+
+```powershell
+python .\tools\model-benchmark\run_translategemma.py `
+  BASELINE\translation-mlkit-en-zh-android.json `
+  --server-url http://127.0.0.1:18088 `
+  --model $TG_MODEL `
+  --model-revision 10042cb0e6e7fdce748996a71dc3dc432a4e0c89 `
+  --expected-model-sha256 `
+    69a5b429f745810b89599d550915370410a475c7cfc73bd25f72266d6f34526e `
+  --source-language en --repetitions 1 `
+  --output .\app\build\model-benchmark\cloud-translategemma-en.json
+```
+
+Repeat both runner commands with the Japanese baseline and
+`--source-language ja` for TranslateGemma, then score every emitted JSON with
+`score.py`. Raw outputs, latency, network-body bytes, model metadata, and
+decoding settings stay in the result JSON. GPU memory and power must be sampled
+outside the runner on the same host. The retained comparison and evidence
+hashes are in
+[`docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md`](../../docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md).
+
 ### Legacy STQ GGUF compatibility
 
 The official `tencent/Hy-MT2-1.8B-1.25Bit-GGUF` revision
