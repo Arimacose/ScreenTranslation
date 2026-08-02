@@ -5,7 +5,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -50,21 +49,19 @@ object CaptureShortcutNotification {
         }
         ensureChannel(appContext)
 
-        val launchIntent = Intent().apply {
-            component = ComponentName(appContext, ProjectionPermissionActivity::class.java)
-            setPackage(appContext.packageName)
-            action = ProjectionPermissionActivity.ACTION_QUICK_START
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
-            )
-        }
+        val launchIntent = Intent(appContext, ProjectionPermissionActivity::class.java)
+        launchIntent.setPackage(appContext.packageName)
+        launchIntent.action = ProjectionPermissionActivity.ACTION_QUICK_START
+        launchIntent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+        )
         val launchPendingIntent = PendingIntent.getActivity(
             appContext,
             START_REQUEST_CODE,
             launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = Notification.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)

@@ -12,7 +12,7 @@
 | 系统 / ROM | Android 16 / API 36；HyperOS `OS3.0.304.0.WOBCNXM` |
 | 包名 / 版本 | `com.screentranslation.app.online` / versionCode `4` / `0.3.0-online` |
 | R8 QA APK | `app/build/outputs/qa/ScreenTranslation-0.3.0-online-r8-qa.apk` |
-| 大小 / SHA-256 | 43,282,570 B / `A31EEB724331A0CE7AFB8A5BBD585D2CAA3CD46968F24A58E48FE21A10A3D9F4` |
+| 大小 / SHA-256 | 43,281,574 B / `E351C17697BD9872A66CCEAE15A6CB05AB47F83070FDB36863C87B4662086982` |
 | QA 签名 / 对齐 | 本机 debug 证书，仅用于真机验收；APK Signature Scheme v2；16 KiB zipalign 通过 |
 | 自动检查 | Lite `83/83`、Full `82/82`、Online `94/94`；三套 Release Lint 均为 0 error |
 | 发布边界 | 产品、构建与仓库均已移除 managed Hy-MT2/项目网关，只保留用户 API Key（BYOK） |
@@ -72,6 +72,11 @@ PP-OCRv6 识别出的完整原文与夹具一致，在线返回：
   保留“识屏翻译已就绪 / 开始识屏”；
 - 在 Chrome 内下拉并点通知，直接进入 Android 16“共享整个屏幕”确认页；授权后
   Chrome 保持可见并立即进入纯框选态，无需先返回应用主页；
+- CodeQL 修复后的最终 QA 包再次覆盖安装并真实点按通知，系统启动轨迹为
+  `act=com.screentranslation.app.action.QUICK_START_SCREEN_TRANSLATION`、
+  `pkg=com.screentranslation.app.online`、
+  `cmp=com.screentranslation.app.online/com.screentranslation.app.ProjectionPermissionActivity`；
+  此时临时 API Key 已删除，因此入口按设计回到配置页，没有向第三方组件分发；
 - `MILLET_NO_RESTRICT_APP` 初始只含 Lite 包名 `com.screentranslation.app` 时，Online
   准确显示“当前未设为无限制”，没有发生前缀误判；
 - 在 HyperOS 原生省电页面选择“无限制”后，键值新增精确包名
