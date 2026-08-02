@@ -2,12 +2,9 @@
 
 import android.app.Activity
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -96,7 +93,7 @@ class ScreenTranslationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        CaptureShortcutNotification.ensureChannel(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -123,6 +120,7 @@ class ScreenTranslationService : Service() {
             return START_NOT_STICKY
         }
 
+        CaptureShortcutNotification.cancel(this)
         startForeground(
             NOTIFICATION_ID,
             buildNotification(),
@@ -178,12 +176,10 @@ class ScreenTranslationService : Service() {
     }
 
     override fun onDestroy() {
-        val showProjectionStoppedNotification = projectionStoppedUnexpectedly
+        val projectionStopped = projectionStoppedUnexpectedly
         releaseSession()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        if (showProjectionStoppedNotification) {
-            showProjectionStoppedNotification()
-        }
+        CaptureShortcutNotification.show(this, projectionStopped = projectionStopped)
         super.onDestroy()
     }
 
@@ -226,6 +222,19 @@ class ScreenTranslationService : Service() {
             translationEngine = translator,
             stableTextGate = StableTextGate(),
             frameIntervalMs = frameIntervalMs,
+            onOriginalRecognized = { text ->
+                mainHandler.post {
+                    if (!closing) {
+                        val controller = overlayController
+                        if (controller != null && !controller.hasOverlayPermission()) {
+                            stopSelf()
+                        } else {
+                            controller?.updateContent(text, "")
+                            controller?.updateStatus(STATUS_TRANSLATING)
+                        }
+                    }
+                }
+            },
             onTranslation = { result ->
                 mainHandler.post {
                     if (!closing) {
@@ -237,6 +246,7 @@ class ScreenTranslationService : Service() {
                                 result.originalText,
                                 result.translatedText,
                             )
+                            controller?.updateStatus(STATUS_RUNNING)
                         }
                     }
                 }
@@ -316,9 +326,6 @@ class ScreenTranslationService : Service() {
         sessionStarted = true
         isRunning = true
         needsProjectionRestart = false
-        getSystemService(NotificationManager::class.java)
-            .cancel(PROJECTION_STOPPED_NOTIFICATION_ID)
-
         overlay.updateStatus(STATUS_PREPARING_MODEL)
         translator.prepare(
             requireWifi = false,
@@ -645,19 +652,6 @@ class ScreenTranslationService : Service() {
         captureThread = null
     }
 
-    private fun createNotificationChannel() {
-        val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            "识屏翻译",
-            NotificationManager.IMPORTANCE_LOW,
-        ).apply {
-            description = getString(R.string.capture_channel_description)
-            setShowBadge(false)
-        }
-        manager.createNotificationChannel(channel)
-    }
-
     private fun buildNotification(): Notification {
         val contentPendingIntent = PendingIntent.getActivity(
             this,
@@ -672,7 +666,7 @@ class ScreenTranslationService : Service() {
             stopIntent(this),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        return Notification.Builder(this, CaptureShortcutNotification.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.capture_notification_title))
             .setContentText(getString(R.string.capture_notification_text))
@@ -689,51 +683,6 @@ class ScreenTranslationService : Service() {
                 ).build(),
             )
             .build()
-    }
-
-    /**
-     * Android 15 QPR1+ ends every active MediaProjection when the device locks.
-     * The old token is invalid after [MediaProjection.Callback.onStop], and
-     * Android 14+ requires fresh user consent for the next capture session.
-     * Keep a non-ongoing notification so the user has a direct, explicit route
-     * back to the consent flow after unlocking.
-     */
-    private fun showProjectionStoppedNotification() {
-        // Spell out the destination and use a purely immutable PendingIntent.
-        // The request code and payload are stable across restart notifications,
-        // so FLAG_UPDATE_CURRENT is neither needed nor desirable here.
-        val restartIntent = Intent()
-        restartIntent.component = ComponentName(this, MainActivity::class.java)
-        restartIntent.addFlags(
-            Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
-        )
-        restartIntent.putExtra(MainActivity.EXTRA_PROJECTION_STOPPED, true)
-        val restartPendingIntent = PendingIntent.getActivity(
-            this,
-            PROJECTION_STOPPED_REQUEST_CODE,
-            restartIntent,
-            PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.projection_stopped_notification_title))
-            .setContentText(getString(R.string.projection_stopped_notification_text))
-            .setCategory(Notification.CATEGORY_STATUS)
-            .setContentIntent(restartPendingIntent)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .addAction(
-                Notification.Action.Builder(
-                    Icon.createWithResource(this, R.drawable.ic_notification),
-                    getString(R.string.projection_stopped_notification_action),
-                    restartPendingIntent,
-                ).build(),
-            )
-            .build()
-        getSystemService(NotificationManager::class.java).notify(
-            PROJECTION_STOPPED_NOTIFICATION_ID,
-            notification,
-        )
     }
 
     private data class CaptureSpec(
@@ -781,12 +730,9 @@ class ScreenTranslationService : Service() {
         private const val EXTRA_TARGET_LANGUAGE = "target_language"
         private const val EXTRA_FRAME_INTERVAL_MS = "frame_interval_ms"
 
-        private const val NOTIFICATION_CHANNEL_ID = "screen_translation_capture"
         private const val NOTIFICATION_ID = 1101
         private const val STOP_REQUEST_CODE = 1102
         private const val OPEN_APP_REQUEST_CODE = 1103
-        private const val PROJECTION_STOPPED_NOTIFICATION_ID = 1104
-        private const val PROJECTION_STOPPED_REQUEST_CODE = 1105
         private const val VIRTUAL_DISPLAY_NAME = "ScreenTranslationCapture"
         private const val CAPTURE_THREAD_NAME = "screen-translation-capture"
         private const val MAX_IMAGES = 2
@@ -794,6 +740,7 @@ class ScreenTranslationService : Service() {
         private const val STATUS_SELECT_REGION = "请框选需要翻译的屏幕区域"
         private const val STATUS_PREPARING_MODEL = "正在准备离线翻译模型…"
         private const val STATUS_RUNNING = "实时翻译中"
+        private const val STATUS_TRANSLATING = "正在请求在线翻译…"
         private const val STATUS_CONTENT_HIDDEN = "投屏内容暂不可见，处理已暂停"
         private const val STATUS_SCREEN_OFF = "屏幕已熄灭，处理已暂停"
         private const val STATUS_EXPANDED_PAUSED = "已展开全文，识别暂停；收起后恢复"

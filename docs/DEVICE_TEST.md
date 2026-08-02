@@ -2,7 +2,164 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
-## 2026-08-01 Online 双 provider 候选（桌面链路通过，真机待测）
+## 2026-08-02 v0.3.0 Online Release 候选验收
+
+### 候选产物与设备
+
+| 项目 | 实测值 |
+|---|---|
+| 设备 | Xiaomi 15 Pro，`2410DPN6CC` / `haotian` |
+| 系统 / ROM | Android 16 / API 36；HyperOS `OS3.0.304.0.WOBCNXM` |
+| 包名 / 版本 | `com.screentranslation.app.online` / versionCode `4` / `0.3.0-online` |
+| R8 QA APK | `app/build/outputs/qa/ScreenTranslation-0.3.0-online-r8-qa.apk` |
+| 大小 / SHA-256 | 43,282,686 B / `25B3D23943BA79DF6EFF7E3BB08787F863EA6BA8A8C2DE65C8BC677C15C27E55` |
+| QA 签名 / 对齐 | 本机 debug 证书，仅用于真机验收；APK Signature Scheme v2；16 KiB zipalign 通过 |
+| 自动检查 | Lite `83/83`、Full `82/82`、Online `94/94`；三套 Release Lint 均为 0 error |
+| 发布边界 | 产品、构建与仓库均已移除 managed Hy-MT2/项目网关，只保留用户 API Key（BYOK） |
+
+这里的 QA APK 是经过 R8 的 Release 代码路径，但使用本机 debug 证书临时签名，不能
+代替 GitHub Release 的正式签名产物。正式 APK 还需在发布工作流完成后复核证书摘要、
+版本、安装和冷启动。
+
+### 框选返工与返回手势
+
+- 最小边长在 600 dpi 真机上按 `32dp` 生效，小型选区可以提交；
+- 进入框选时只有顶部一条提示，底部控制面板、重复说明和全屏/底部黑色遮罩均不显示，
+  目标页面保持原亮度；
+- 左右边缘返回手势由透明守卫 Activity 与 Android 16 predictive-back 回调接管，
+  只取消本次框选并恢复紧凑控制条，Chrome 页面和滚动位置不发生返回；
+- HyperOS 侧边工具箱属于独立厂商热区，不计入本轮修复范围。
+
+证据截图位于忽略的构建目录：
+
+```text
+app/build/device-test/refactor-selection.png
+app/build/device-test/refactor-back-cancel.png
+app/build/device-test/notification-quick-start.png
+```
+
+### Online 长句、超时与状态反馈
+
+使用本地固定页面框选下列英文长句：
+
+```text
+The committee postponed the final vote because several members, who had not
+received the revised report until midnight, insisted that the evidence be
+reviewed carefully before any irreversible decision was made.
+```
+
+PP-OCRv6 识别出的完整原文与夹具一致，在线返回：
+
+```text
+委员会推迟了最终投票，因为几位成员直到午夜才收到修订后的报告，他们坚持认为在
+做出任何不可逆转的决定之前，必须仔细审查证据。
+```
+
+固定等待 6 秒后截图时结果已经完成；包含拖拽和截图传输的命令壁钟上界为 `7.7 s`。
+同一请求直接访问服务端为 HTTP 200 / `1.131 s`，因此这次真机链路没有触发超时。
+
+排查用户报告的“翻译请求超时”后，发现旧客户端为 connect/write/read/call
+`10/10/30/40 s`，且 `SocketTimeoutException` 还会自动再试一次，既可能等待约两轮，
+也可能重复计费。v0.3.0 调整为 `15/30/75/90 s`，生成超时不自动重试；HTTP 408、
+429、502、503、504 仍只做一次有界重试。稳定 OCR 一出现，悬浮层会先显示原文和
+“正在请求在线翻译…”，从而明确区分 OCR 等待和网络等待。JVM 测试固定四个超时值并
+断言生成超时不重试；本次真机日志中 timeout、HTTP 4xx/5xx、
+`NetworkOnMainThreadException` 与 `FATAL EXCEPTION` 命中均为 0。
+
+### 通知快捷入口与 HyperOS 省电策略
+
+- 从真实悬浮层停止后，`ScreenTranslationService` 记录为 0，常驻通知 `id=1106`
+  保留“识屏翻译已就绪 / 开始识屏”；
+- 在 Chrome 内下拉并点通知，直接进入 Android 16“共享整个屏幕”确认页；授权后
+  Chrome 保持可见并立即进入纯框选态，无需先返回应用主页；
+- `MILLET_NO_RESTRICT_APP` 初始只含 Lite 包名 `com.screentranslation.app` 时，Online
+  准确显示“当前未设为无限制”，没有发生前缀误判；
+- 在 HyperOS 原生省电页面选择“无限制”后，键值新增精确包名
+  `com.screentranslation.app.online`，返回应用立即显示“已识别为无限制”。设备保留
+  该设置。
+
+测试结束后已在设置页删除临时 API Key 密文和 Keystore alias；界面状态为“尚未保存”，
+logcat 中临时密钥字面量命中为 0。
+
+## 2026-08-02 Online BYOK / API 首轮 Debug 验收
+
+### 构建与设备
+
+| 项目 | 实测值 |
+|---|---|
+| 设备 | Xiaomi 15 Pro，`2410DPN6CC` / `haotian` |
+| 系统 | Android 16 / API 36 |
+| ROM | HyperOS `OS3.0.304.0.WOBCNXM` |
+| 包名 / 版本 | `com.screentranslation.app.online` / `0.2.1-online-debug` |
+| APK | `app/build/outputs/apk/online/debug/app-online-debug.apk` |
+| APK SHA-256 | `D7706DAE4BDA3B14DDA01898775A64DA6C9368776F45DF4D24A7629A832E6B88` |
+| 已安装包校验 | 设备端 `base.apk` 与本地 debug APK 的 SHA-256 完全一致；v2 签名 |
+| 自动检查 | Online JVM `90/90`；Debug/Release Lint 与 APK 构建均通过 |
+| R8 Release 审计包 | 未签名；43,275,518 B；SHA-256 `21168C95D12BF1EF10E435C2785413E2ECA9784B9421A346A670D7502CFC7044` |
+
+本轮使用临时 DeepSeek 凭据测试用户 API 模式，Base URL 为
+`https://api.deepseek.com`。应用实际向 `/models` 发起 HTTPS 请求并返回两个
+模型；`deepseek-v4-flash` 与 `deepseek-v4-pro` 的连字符均原样出现在下拉列表。
+选择 `deepseek-v4-flash` 后保存，密钥输入框不回显明文；覆盖安装、强制停止和冷启动
+后，Base URL、模型和“密钥已保存”状态仍保持。
+
+设置页的真实 Chat Completions 测试返回：
+
+```text
+原文：The Online edition sends only recognized text, not screenshots.
+译文：在线版仅发送可识别的文本，而非截图。
+```
+
+首次真机请求同时暴露了一个 Android 16 生命周期缺陷：请求完成后，
+`OnlineLlmTranslationEngine.close()` 在主线程调用 OkHttp
+`connectionPool.evictAll()`，TLS socket 关闭触发
+`NetworkOnMainThreadException`。HTTP 资源清理改由单线程 daemon executor 执行，
+设置页与引擎的两条关闭路径统一使用该实现，并增加“清理先排队、调用线程不直接
+关闭 dispatcher”的 JVM 回归测试。覆盖安装修复包后再次发送相同请求，设置页和
+PID `23558` 全程保持，运行时日志中该异常与 `FATAL EXCEPTION` 均为 0。
+
+### 跨应用完整链路
+
+在 Android 系统 MediaProjection 确认页选择共享整个屏幕后，将悬浮层收起并切换到
+Chrome 的 `example.com`。框选标题和正文，完成：
+
+```text
+MediaProjection -> PP-OCRv6-small -> DeepSeek V4-Flash -> 悬浮译文
+```
+
+4 秒证据截图中已经出现稳定结果：
+
+```text
+OCR：Example Domain This domain is for use in documentation examples without needing permi...
+译文：示例域名 此域名用于文档示例，无需获得许可。请避免在运营中使用。了解更多
+```
+
+前台服务确认为 `mediaProjection` 类型；从真实悬浮层点击停止后，
+`ScreenTranslationService`、投影和悬浮窗均退出，应用进程保持存活。应用 PID 日志中
+临时密钥、OCR 原文和译文命中均为 0，私有目录中的临时密钥明文命中也为 0。
+验收完成后已在设置页执行“删除已保存密钥”，界面确认同时删除密文与 Keystore
+密钥；再次强制停止和冷启动后状态为“密钥尚未保存”。
+
+### 历史 managed gateway 原型（发布前已移除）
+
+在没有公网域名的条件下，早期原型曾完成 3/3 单元测试并构建 Windows 二进制；随后启动
+真实回环 HTTP 网关和 mock 私有模型服务。`/healthz`、`/readyz`、`/v1/models` 与
+`/v1/chat/completions` 均返回 200，错误公共模型返回 400；最终指标为 2 次请求、
+1 次成功、0 次上游失败、1 次拒绝。上游收到固定私有模型
+`Hy-MT2-1.8B-Q4_K_M`，网关日志与 mock 日志均未记录 OCR 原文。
+
+证据位于忽略构建目录：
+
+```text
+app/build/device-test/online-byok-2026-08-02/
+app/build/gateway-test/gateway-smoke-result.json
+```
+
+本轮覆盖的是 debug-signed Online 候选、单次真实 BYOK 请求和单次完整识屏闭环。
+该托管 provider 与网关源码已在 Online Release 前从产品和仓库移除。签名 Release、
+latest-wins 压力、401/429/timeout UI、抓包和长时间运行保留为后续独立验收项。
+
+## 2026-08-01 历史双 provider 候选（未进入发布）
 
 - 已实现独立 `com.screentranslation.app.online` / `0.2.1-online` flavor，Online
   单元测试 88 项全部通过，Release Lint 为 0 error / 7 条既有基线 warning，

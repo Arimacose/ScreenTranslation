@@ -24,42 +24,7 @@
             android:text="@string/online_settings_explanation"
             android:textColor="?android:attr/textColorSecondary" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/online_provider_label"
-            android:textStyle="bold" />
-
-        <RadioGroup
-            android:id="@+id/radio_group_online_provider"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/radio_online_managed_cloud"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/online_provider_managed" />
-
-            <RadioButton
-                android:id="@+id/radio_online_user_api"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/online_provider_user_api" />
-        </RadioGroup>
-
-        <TextView
-            android:id="@+id/text_online_managed_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textAppearance="?android:attr/textAppearanceSmall"
-            android:textColor="?android:attr/textColorSecondary" />
-
         <LinearLayout
-            android:id="@+id/container_online_user_api"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">

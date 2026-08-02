@@ -2,8 +2,10 @@
 
 ## 结论
 
-Online edition 的项目托管云端固定采用 **Hy-MT2 1.8B Q4_K_M**，公开模型 ID
-为 `hymt2-1.8b-q4`。本轮同机、同运行时、同 80 条英中/日中套件显示：
+本报告记录曾评估的项目托管候选。模型对比中 **Hy-MT2 1.8B Q4_K_M** 综合优于
+TranslateGemma 4B Q4；但长期 GPU、公开网关与运营条件未落实，因此最终 Online
+Release 未采用任何项目托管模型，只保留用户 API（BYOK）。同机、同运行时、同 80 条
+英中/日中套件显示：
 
 - Hy-MT2 的英中 BLEU 比 TranslateGemma 高 `5.831`，日中高 `6.233`；
 - Hy-MT2 的关键检查分别多通过 `2` 和 `4` 项；
@@ -115,23 +117,88 @@ HTTP 载荷使用与客户端等价的 UTF-8 JSON 测得，不含 TCP/IP、HTTP/
 已明显高于正文负载。最终公网验收需分别测 Wi-Fi、5G/4G、首次 TLS 连接、连接复用、
 1% 丢包和并发排队。本轮 localhost 结果不替代这些测量。
 
-## 托管链路实现
+## 用户 API · DeepSeek V4-Flash
 
-Online APK 保留两个 provider：
+在暂缓项目托管链路后，使用临时测试 Key 对用户 API 模式做了主机网络验证。Key
+仅进入测试进程环境和 Bearer 请求头，结果文件与 Git 变更均不包含 Key。
 
-1. **项目托管云端**：固定 `hymt2-1.8b-q4`，无需用户 API Key，只支持译为
-   简体中文；公开 HTTPS Base URL 由 `managedCloudBaseUrl` Gradle 属性或
-   `SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL` 环境变量注入。
-2. **用户 API**：用户填写 Base URL/API Key，应用通过 `GET /models` 拉取模型并
-   选择，再调用 `/chat/completions`。切换到托管模式不会删除该配置或 Keystore 密钥。
+- Base URL：`https://api.deepseek.com`；
+- `GET /models`：HTTP 200，`304.9 ms`，返回 `deepseek-v4-flash` 与
+  `deepseek-v4-pro`；
+- Chat Completions：HTTP 200，响应模型与所选 `deepseek-v4-flash` 一致；
+- 请求提示、`temperature: 0`、消息分层与 Online 客户端保持一致。
 
-项目网关位于 `services/managed-cloud-gateway/`。它固定公共模型/提示/解码参数，
-从服务端环境读取私有上游 URL 与可选上游密钥，限制正文大小、每 IP 请求数与并发，
-且不记录 OCR 原文或译文。真实部署还需 TLS、区域/留存说明、DDoS/账单限额、监控和
-容量测试。
+DeepSeek V4 默认启用思考。10 条英中/日中代表性样例的 A/B 结果说明，纯翻译应
+显式关闭它：
 
-真实 Hy-MT2 GPU 服务 → 网关 → Android 等价 JSON 的桌面集成烟测已通过：英中
-`190.656 ms`，日中 `155.696 ms`，网关指标为 2 成功、0 失败、0 拒绝。
+| 模式 | 成功 | 中位延迟 | 平均延迟 | completion token | reasoning token |
+|---|---:|---:|---:|---:|---:|
+| 当前默认思考 | 10/10 | 2,300.8 ms | 2,436.0 ms | 1,794 | 1,646 |
+| `thinking: disabled` | 10/10 | **870.8 ms** | **896.3 ms** | **138** | **0** |
+
+关闭思考后中位延迟降低约 `62.1%`。逐句人审未发现由此引入的明显退化，文学长句、
+数字、否定逻辑、技术文本和日语歧义样例均保留核心语义。因此客户端只在官方
+`api.deepseek.com` 与 `deepseek-v4-*` 组合下增加该字段。
+
+完整 40 条英中、40 条日中套件均为 40/40 HTTP 成功：
+
+| 语言 | BLEU | chrF++ | 关键检查 | 中位 | P95 | 最大值 |
+|---|---:|---:|---:|---:|---:|---:|
+| 英→中 | **66.922** | **47.182** | **44/54** | 976.55 ms | 1,323.6 ms | 1,827.7 ms |
+| 日→中 | **59.327** | **40.070** | 40/52 | 954.55 ms | 1,599.3 ms | 66,490.4 ms |
+
+与同套件既有结果相比，DeepSeek V4-Flash 的英中 BLEU 比 Hy-MT2 Q4 高
+`15.037`，日中高 `13.784`；关键检查也分别高 `8` 与 `1` 项。它的质量明显领先，
+但网络中位延迟仍约一秒，而且日中出现一次 `66.49 s` 的无 HTTP 错误长尾。产品端
+仍需依赖取消、latest-wins、超时与有限重试，不能把平均延迟当作稳定上界。
+
+人工发现的主要质量弱项是日语谚语：`石の上にも三年` 被直译为“石上坐三年”，
+`雨降って地固まる` 被译为“雨过地皮干”。自动关键检查还会把日期从 ISO 写法改成
+中文日期视为失败，因此检查数需和人工语义审查一起使用。
+
+### 2026-08-02 Android 16 真机补充验收
+
+在 Xiaomi 15 Pro / Android 16 / HyperOS `OS3.0.304.0.WOBCNXM` 上，Online
+debug 候选通过真实 DeepSeek 用户 API 验收：
+
+- `GET /models` 返回 `deepseek-v4-flash` 与 `deepseek-v4-pro`，模型 ID 原样进入下拉
+  列表；
+- Base URL、所选模型和 Keystore 加密密钥状态在覆盖安装、强制停止与冷启动后保持；
+- 设置页真实翻译成功；
+- Chrome `example.com` 完成
+  `MediaProjection -> PP-OCRv6 -> DeepSeek V4-Flash -> 悬浮译文`，4 秒证据窗口内
+  已显示完整中文结果；
+- logcat 中临时密钥、OCR 原文和译文均为 0 命中，应用私有目录中临时密钥明文也为
+  0 命中；测试结束后已删除设备端密文和 Keystore 密钥。
+
+首次请求发现 OkHttp 连接池在主线程清理会触发 Android 16
+`NetworkOnMainThreadException`。清理切换到专用后台 executor 后，相同真机流程通过，
+PID 保持且运行时 fatal 为 0。完整记录见
+[`DEVICE_TEST.md`](DEVICE_TEST.md#2026-08-02-online-byok--api-真机验收)。
+
+本机忽略目录：
+
+```text
+app/build/api-tests/deepseek-v4-flash-full-2026-08-01
+```
+
+| 文件 | SHA-256 |
+|---|---|
+| `en-zh-diverse-v2.json` | `232bc2ceae4a993c09dd03bbfeb6175cd99d1aebd9b85f9d2baf36750a53bf87` |
+| `en-zh-diverse-v2.scores.json` | `fa66aecb71ca0dfbc7d352bd42cd7affdad727e2527d47a64e2617ffc90ceb95` |
+| `ja-zh-diverse-v1.json` | `1e7950bf77a7b9e91c94744ab56a9a1f6bc89720759bd8a5af3c101c36ce6ec9` |
+| `ja-zh-diverse-v1.scores.json` | `f0b4af51d90fb4c471427aeea26a208f4724776a6bf0c45c7632e2fb7d006029` |
+
+## 发布决策
+
+早期原型曾实现固定 `hymt2-1.8b-q4` 的本地网关，并通过真实 Hy-MT2 GPU → 网关 →
+Android 等价 JSON 的桌面烟测：英中 `190.656 ms`，日中 `155.696 ms`。该结果只证明
+协议原型可运行，不代表长期公网服务已具备发布条件。
+
+发布前已删除应用中的托管 provider、网关地址 BuildConfig、CI/Release 网关门禁和
+仓库内网关服务。Online APK 现在只有一条链路：用户填写 Base URL/API Key，应用经
+`GET /models` 拉取并选择模型，再调用 `/chat/completions`。本报告与忽略目录中的
+历史数据继续用于模型研究，不构成当前产品功能。
 
 ## 产物与复现证据
 
@@ -157,10 +224,8 @@ D:\DevCache\Benchmarks\cloud-model-prescreen-2026-08-01
 | `translategemma/traffic-raw-80.json` | `b65c439f682a5bd76609ea8fcaabeb9c2500e543c213b76dfb830e1765e4e6af` |
 | `managed-gateway/integration-smoke.json` | `e4215c5a20c046a796a30b1d39388af1837d7d49d9054e6b89a187b5804ab2f8` |
 
-## 尚待验收
+## 剩余验收
 
-- 未部署长期公网域名，因此公网 RTT、TLS、区域、云 GPU 账单与并发容量仍待最终
-  主机确定后测试；
-- 按用户要求，本轮暂停 Online 真机测试；未安装、启动或抓包 APK；
-- 真机恢复前必须先通知用户，再执行托管模式/用户 API 模式切换、Keystore 保留、
-  真实 HTTPS、latest-wins、日志脱敏和长时间运行验收。
+- DeepSeek 用户 API 的真机 HTTPS、Keystore、日志脱敏与单次识屏闭环已经完成；
+- 真机 latest-wins 压力、401/429/timeout UI、代理抓包、签名 Release 与长时间运行
+  继续作为独立验收项。

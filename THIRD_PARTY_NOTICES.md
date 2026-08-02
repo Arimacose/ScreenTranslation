@@ -34,19 +34,15 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 | Hy-MT2 1.8B Q4_K_M GGUF model | `1cd5208700acedef4ef93019b6cfc148b8522d45` | Apache License 2.0 |
 | llama.cpp Android runtime | `caa596ab3` (`b10181`) | MIT License |
 
-## Online / managed cloud and user API 依赖
+## Online / user API 依赖
 
-Online edition APK/AAB 不携带翻译模型或服务商 SDK；项目托管模式与用户 API
-模式共用以下 HTTP 运行时：
+Online edition APK/AAB 不携带翻译模型或服务商 SDK；BYOK 模式使用以下 HTTP
+运行时：
 
 | 组件 | 当前版本 | 上游条款 |
 |---|---:|---|
 | OkHttp / okhttp-android | 5.4.0 | Apache License 2.0 |
 | Okio / okio-jvm | 3.17.0 | Apache License 2.0 |
-
-`services/managed-cloud-gateway` 只使用 Go 标准库。部署该网关时，服务端加载的
-Hy-MT2 1.8B Q4_K_M 模型仍受 Apache License 2.0 约束，但模型文件不进入 Online
-APK/AAB。
 
 ## 模型基准依赖
 

@@ -7,6 +7,8 @@ import java.net.UnknownHostException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.CancellationException
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
@@ -72,7 +74,17 @@ internal object OnlineHttpPolicy {
         fallbackDelayMillis: Long = 500L,
     ): Long? {
         if (completedAttempts >= MAX_ATTEMPTS - 1) return null
-        if (error is SSLException || error is UnknownHostException) return null
+        // A timed-out generation request may already have been processed by
+        // the provider. Retrying it can duplicate usage and doubles the period
+        // before the user sees a useful error, so only other transient I/O
+        // failures receive the one bounded retry.
+        if (
+            error is SSLException ||
+            error is UnknownHostException ||
+            error is SocketTimeoutException
+        ) {
+            return null
+        }
         return fallbackDelayMillis.coerceIn(0L, MAX_RETRY_DELAY_MILLIS)
     }
 
@@ -110,13 +122,38 @@ internal object OnlineHttpPolicy {
 }
 
 internal object OnlineHttpClientFactory {
+    private val cleanupExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "online-http-cleanup").apply { isDaemon = true }
+    }
+
     fun create(): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10L, TimeUnit.SECONDS)
-        .writeTimeout(10L, TimeUnit.SECONDS)
-        .readTimeout(30L, TimeUnit.SECONDS)
-        .callTimeout(40L, TimeUnit.SECONDS)
+        .connectTimeout(ONLINE_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(ONLINE_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(ONLINE_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(ONLINE_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .followRedirects(false)
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)
         .build()
+
+    /**
+     * OkHttp can close a pooled TLS socket while evicting connections. Keep that work off
+     * Android's main thread so lifecycle cleanup remains compatible with StrictMode on API 36.
+     */
+    fun closeAsync(client: OkHttpClient) {
+        closeAsync(client, cleanupExecutor)
+    }
+
+    internal fun closeAsync(client: OkHttpClient, executor: Executor) {
+        executor.execute {
+            client.dispatcher.cancelAll()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
 }
+
+internal const val ONLINE_CONNECT_TIMEOUT_SECONDS = 15L
+internal const val ONLINE_WRITE_TIMEOUT_SECONDS = 30L
+internal const val ONLINE_READ_TIMEOUT_SECONDS = 75L
+internal const val ONLINE_CALL_TIMEOUT_SECONDS = 90L

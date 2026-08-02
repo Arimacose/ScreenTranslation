@@ -25,25 +25,15 @@ internal class OnlineChatClient(
     private val retryScheduler: ScheduledExecutorService,
     private val endpoint: OpenAiEndpoint,
     private val modelId: String,
-    private val apiKey: String?,
+    private val apiKey: String,
     private val sourceLanguage: String,
     private val targetLanguage: String,
-    private val requestMode: OnlineChatRequestMode = OnlineChatRequestMode.USER_API,
 ) {
     init {
         require(modelId.isNotBlank()) { "Model ID is blank" }
-        when (requestMode) {
-            OnlineChatRequestMode.USER_API -> {
-                require(!apiKey.isNullOrBlank()) { "API key is blank" }
-            }
-            OnlineChatRequestMode.MANAGED_HYMT2 -> {
-                require(apiKey == null) { "Managed requests must not receive an API key" }
-            }
-        }
-        apiKey?.let { value ->
-            require('\r' !in value && '\n' !in value) {
-                "API key contains invalid characters"
-            }
+        require(apiKey.isNotBlank()) { "API key is blank" }
+        require('\r' !in apiKey && '\n' !in apiKey) {
+            "API key contains invalid characters"
         }
     }
 
@@ -184,27 +174,19 @@ internal class OnlineChatClient(
     }
 
     private fun buildRequest(text: String): Request {
-        val json = when (requestMode) {
-            OnlineChatRequestMode.USER_API -> OpenAiChatProtocol.buildRequestJson(
-                modelId = modelId,
-                sourceLanguage = sourceLanguage,
-                targetLanguage = targetLanguage,
-                ocrText = text,
-            )
-            OnlineChatRequestMode.MANAGED_HYMT2 -> ManagedHyMt2ChatProtocol.buildRequestJson(
-                sourceLanguage = sourceLanguage,
-                targetLanguage = targetLanguage,
-                ocrText = text,
-            )
-        }
-        val builder = Request.Builder()
+        val json = OpenAiChatProtocol.buildRequestJson(
+            modelId = modelId,
+            sourceLanguage = sourceLanguage,
+            targetLanguage = targetLanguage,
+            ocrText = text,
+            providerHost = endpoint.host,
+        )
+        return Request.Builder()
             .url(endpoint.requestUrl)
             .header("Accept", "application/json")
+            .header("Authorization", "Bearer $apiKey")
             .post(json.toRequestBody(JSON_MEDIA_TYPE))
-        if (requestMode == OnlineChatRequestMode.USER_API) {
-            builder.header("Authorization", "Bearer ${requireNotNull(apiKey)}")
-        }
-        return builder.build()
+            .build()
     }
 
     private fun retryJitterMillis(): Long =
@@ -216,11 +198,6 @@ internal class OnlineChatClient(
         const val MIN_RETRY_JITTER_MILLIS = 300L
         const val MAX_RETRY_JITTER_MILLIS = 800L
     }
-}
-
-internal enum class OnlineChatRequestMode {
-    USER_API,
-    MANAGED_HYMT2,
 }
 
 internal class OnlineModelCatalogClient(

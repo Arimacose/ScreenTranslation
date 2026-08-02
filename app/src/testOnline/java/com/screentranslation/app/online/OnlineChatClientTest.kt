@@ -98,59 +98,6 @@ class OnlineChatClientTest {
         )
     }
 
-    @Test
-    fun `managed request omits bearer key and pins Hy-MT2 contract`() {
-        val factory = RecordingCallFactory()
-        val scheduler = Executors.newSingleThreadScheduledExecutor()
-        try {
-            val client = OnlineChatClient(
-                callFactory = factory,
-                retryScheduler = scheduler,
-                endpoint = OpenAiEndpoint.parse("https://managed.example.test/v1"),
-                modelId = ManagedCloudService.PUBLIC_MODEL_ID,
-                apiKey = null,
-                sourceLanguage = "ja",
-                targetLanguage = "zh",
-                requestMode = OnlineChatRequestMode.MANAGED_HYMT2,
-            )
-
-            client.translate("保存しますか？") {}
-
-            val request = factory.lastCall.request()
-            assertEquals(null, request.header("Authorization"))
-            val buffer = Buffer()
-            checkNotNull(request.body).writeTo(buffer)
-            val json = JSONObject(buffer.readUtf8())
-            assertEquals(ManagedCloudService.PUBLIC_MODEL_ID, json.getString("model"))
-            assertEquals(1, json.getJSONArray("messages").length())
-        } finally {
-            scheduler.shutdownNow()
-        }
-    }
-
-    @Test
-    fun `managed client rejects any supplied API key`() {
-        val scheduler = Executors.newSingleThreadScheduledExecutor()
-        try {
-            val result = runCatching {
-                OnlineChatClient(
-                    callFactory = RecordingCallFactory(),
-                    retryScheduler = scheduler,
-                    endpoint = OpenAiEndpoint.parse("https://managed.example.test/v1"),
-                    modelId = ManagedCloudService.PUBLIC_MODEL_ID,
-                    apiKey = "must-not-leave-device",
-                    sourceLanguage = "en",
-                    targetLanguage = "zh",
-                    requestMode = OnlineChatRequestMode.MANAGED_HYMT2,
-                )
-            }
-
-            assertTrue(result.isFailure)
-        } finally {
-            scheduler.shutdownNow()
-        }
-    }
-
     private fun client(
         factory: RecordingCallFactory,
         scheduler: java.util.concurrent.ScheduledExecutorService,

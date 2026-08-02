@@ -22,6 +22,42 @@ class OpenAiChatProtocolTest {
         assertEquals("user", messages.getJSONObject(1).getString("role"))
         assertEquals(ocr, messages.getJSONObject(1).getString("content"))
         assertFalse(messages.getJSONObject(0).getString("content").contains(ocr))
+        assertFalse(root.has("thinking"))
+    }
+
+    @Test
+    fun `disables thinking only for official DeepSeek V4 requests`() {
+        val deepSeek = JSONObject(
+            OpenAiChatProtocol.buildRequestJson(
+                modelId = "deepseek-v4-flash",
+                sourceLanguage = "en",
+                targetLanguage = "zh",
+                ocrText = "Text",
+                providerHost = "api.deepseek.com",
+            ),
+        )
+        val compatibleProxy = JSONObject(
+            OpenAiChatProtocol.buildRequestJson(
+                modelId = "deepseek-v4-flash",
+                sourceLanguage = "en",
+                targetLanguage = "zh",
+                ocrText = "Text",
+                providerHost = "api.example.test",
+            ),
+        )
+        val otherDeepSeekModel = JSONObject(
+            OpenAiChatProtocol.buildRequestJson(
+                modelId = "custom-model",
+                sourceLanguage = "en",
+                targetLanguage = "zh",
+                ocrText = "Text",
+                providerHost = "api.deepseek.com",
+            ),
+        )
+
+        assertEquals("disabled", deepSeek.getJSONObject("thinking").getString("type"))
+        assertFalse(compatibleProxy.has("thinking"))
+        assertFalse(otherDeepSeekModel.has("thinking"))
     }
 
     @Test

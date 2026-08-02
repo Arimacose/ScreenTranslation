@@ -10,6 +10,7 @@ internal object OpenAiChatProtocol {
         sourceLanguage: String,
         targetLanguage: String,
         ocrText: String,
+        providerHost: String? = null,
     ): String {
         val messages = JSONArray()
             .put(
@@ -32,8 +33,20 @@ internal object OpenAiChatProtocol {
             .put("stream", false)
             .put("temperature", 0)
             .put("messages", messages)
+            .apply {
+                if (usesDeepSeekV4TranslationMode(providerHost, modelId)) {
+                    put(
+                        "thinking",
+                        JSONObject().put("type", "disabled"),
+                    )
+                }
+            }
             .toString()
     }
+
+    private fun usesDeepSeekV4TranslationMode(providerHost: String?, modelId: String): Boolean =
+        providerHost.equals(DEEPSEEK_API_HOST, ignoreCase = true) &&
+            modelId.startsWith(DEEPSEEK_V4_MODEL_PREFIX)
 
     fun parseTranslation(responseJson: String): String {
         try {
@@ -101,4 +114,6 @@ internal object OpenAiChatProtocol {
             "breaks where possible."
 
     private const val MAX_MODEL_COUNT = 1_000
+    private const val DEEPSEEK_API_HOST = "api.deepseek.com"
+    private const val DEEPSEEK_V4_MODEL_PREFIX = "deepseek-v4-"
 }

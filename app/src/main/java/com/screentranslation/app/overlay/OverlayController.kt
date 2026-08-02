@@ -10,6 +10,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -18,7 +19,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import com.screentranslation.app.R
+import com.screentranslation.app.SelectionGestureGuardActivity
 
 /**
  * Keeps the translation panel visible in user-initiated screenshots and
@@ -30,6 +34,10 @@ internal fun overlayWindowFlags(): Int =
     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+internal fun selectionOverlayWindowFlags(): Int =
+    overlayWindowFlags() and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv() and
+        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
 
 /**
  * Owns exactly one TYPE_APPLICATION_OVERLAY window.
@@ -71,7 +79,6 @@ class OverlayController(
     private var attributionView: TextView? = null
     private var textScrollView: ScrollView? = null
     private var reselectButton: Button? = null
-    private var minimizeButton: Button? = null
     private var expandButton: Button? = null
     private var textExpanded = false
     private var layoutParams: WindowManager.LayoutParams? = null
@@ -79,6 +86,11 @@ class OverlayController(
     private var currentOriginal = ""
     private var currentTranslation = ""
     private var currentStatus = ""
+    private var selectionModeActive = false
+    private var registeredBackDispatcher: OnBackInvokedDispatcher? = null
+    private val selectionBackCallback = OnBackInvokedCallback {
+        cancelSelectionFromBack()
+    }
 
     val isShowing: Boolean
         get() = rootView?.isAttachedToWindow == true
@@ -104,6 +116,13 @@ class OverlayController(
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 dispatchOverlayBounds()
+                if (selectionModeActive) {
+                    systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
+                }
+            }
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, _ ->
+                selectionModeActive && keyCode == KeyEvent.KEYCODE_BACK
             }
         }
         val selector = RegionSelectionView(appContext).apply {
@@ -166,19 +185,13 @@ class OverlayController(
 
             selector.visibility = View.VISIBLE
             selector.startSelection()
+            selector.setGestureExclusionEnabled(true)
 
-            // The selector fills the display and consumes every touch, so the
-            // panel must stay on screen during selection: without it the only
-            // way out is to guess that a >=64dp drag is required, and taps,
-            // the back gesture and the notification shade are all swallowed.
-            // Only the controls are kept; results belong to compact mode.
-            panel.visibility = View.VISIBLE
-            setPanelGravity(panel, Gravity.BOTTOM)
-            textScrollView?.visibility = View.GONE
-            attributionView?.visibility = View.GONE
-            reselectButton?.visibility = View.GONE
-            expandButton?.visibility = View.GONE
-            minimizeButton?.visibility = View.VISIBLE
+            // Selection stays visually transparent: the selector itself draws
+            // one small instruction pill and the active rectangle. Hiding the
+            // result/control panel avoids duplicating the hint or covering the
+            // very subtitle the user is trying to locate.
+            panel.visibility = View.GONE
 
             currentStatus = appContext.getString(R.string.overlay_status_selecting)
             statusView?.text = currentStatus
@@ -191,7 +204,12 @@ class OverlayController(
             params.gravity = Gravity.TOP or Gravity.START
             params.x = 0
             params.y = 0
+            params.flags = selectionOverlayWindowFlags()
+            selectionModeActive = true
             safelyUpdateViewLayout(root, params)
+            root.requestFocus()
+            root.post { registerSelectionBackCallback(root) }
+            SelectionGestureGuardActivity.show(appContext, ::cancelSelectionFromBack)
         }
     }
 
@@ -260,6 +278,11 @@ class OverlayController(
         if (!showResults) clearExpanded()
 
         selector.visibility = View.GONE
+        selector.setGestureExclusionEnabled(false)
+        root.systemGestureExclusionRects = emptyList()
+        SelectionGestureGuardActivity.dismiss()
+        unregisterSelectionBackCallback()
+        selectionModeActive = false
         panel.visibility = View.VISIBLE
         setPanelGravity(panel, Gravity.TOP)
         applyTextExpansion()
@@ -267,7 +290,6 @@ class OverlayController(
         attributionView?.visibility = if (showResults) View.VISIBLE else View.GONE
         expandButton?.visibility = if (showResults) View.VISIBLE else View.GONE
         reselectButton?.visibility = View.VISIBLE
-        minimizeButton?.visibility = View.GONE
 
         if (!showResults) {
             selectedRegion = null
@@ -306,6 +328,7 @@ class OverlayController(
         params.gravity = Gravity.TOP or Gravity.START
         params.x = margin
         params.y = panelY
+        params.flags = overlayWindowFlags()
         safelyUpdateViewLayout(root, params)
         root.post { dispatchOverlayBounds() }
     }
@@ -440,15 +463,6 @@ class OverlayController(
             isAllCaps = false
             setOnClickListener { requestRegionSelection() }
         }
-        // Leaving selection mode without tearing down the session is what makes
-        // the app usable at all: the selector covers the display, so until it is
-        // dismissed the user cannot reach the app they actually want to
-        // translate, and there is no way to start selection from outside.
-        minimizeButton = Button(appContext).apply {
-            text = appContext.getString(R.string.overlay_minimize)
-            isAllCaps = false
-            setOnClickListener { collapseToPanel(showResults = false) }
-        }
         val stopButton = Button(appContext).apply {
             text = appContext.getString(R.string.overlay_stop)
             isAllCaps = false
@@ -463,13 +477,6 @@ class OverlayController(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
-        )
-        actionRow.addView(
-            minimizeButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { marginStart = dp(8) },
         )
         actionRow.addView(
             reselectButton,
@@ -572,6 +579,27 @@ class OverlayController(
         }
     }
 
+    private fun registerSelectionBackCallback(root: View) {
+        if (!selectionModeActive || registeredBackDispatcher != null) return
+        root.findOnBackInvokedDispatcher()?.let { dispatcher ->
+            dispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_OVERLAY,
+                selectionBackCallback,
+            )
+            registeredBackDispatcher = dispatcher
+        }
+    }
+
+    private fun unregisterSelectionBackCallback() {
+        registeredBackDispatcher?.unregisterOnBackInvokedCallback(selectionBackCallback)
+        registeredBackDispatcher = null
+    }
+
+    private fun cancelSelectionFromBack() {
+        if (!selectionModeActive) return
+        runOnMain { collapseToPanel(showResults = false) }
+    }
+
     private fun runOnMain(action: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             action()
@@ -581,6 +609,9 @@ class OverlayController(
     }
 
     private fun clearViewReferences() {
+        SelectionGestureGuardActivity.dismiss()
+        unregisterSelectionBackCallback()
+        selectionModeActive = false
         onOverlayBoundsChanged(null)
         rootView = null
         selectionView = null
@@ -591,7 +622,6 @@ class OverlayController(
         attributionView = null
         textScrollView = null
         reselectButton = null
-        minimizeButton = null
         expandButton = null
         textExpanded = false
         layoutParams = null

@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-02
+
 ### Added
 
 - 实现独立 `com.screentranslation.app.online` edition：PP-OCRv6 在设备端识别，
@@ -13,10 +15,9 @@
   750 ms 最小间隔、单活跃/单 latest pending 的可取消翻译协调器。
 - 将 Online 单元测试、Release Lint/R8、APK/AAB、后端隔离和许可证检查纳入
   CI 与签名发布工作流。
-- 为 Online 增加项目托管 Hy-MT2 Q4 / 用户 API 双 provider；切换模式保留用户
-  Base URL、已选模型与 Keystore 密钥，托管模式固定译为简体中文。
-- 增加无状态 Go 托管网关、固定请求契约、上游模型/密钥隔离、正文/频率/并发限制，
-  以及 TranslateGemma/Hy-MT2 的 80 条同 GPU 质量、性能与流量报告。
+- 增加 TranslateGemma/Hy-MT2 的 80 条同 GPU 质量、性能与流量报告；受长期托管
+  硬件条件限制，Online Release 最终只保留用户自带 API Key 的 BYOK 链路。
+- 停止识屏后保留常驻快捷通知，可在目标应用内重新请求屏幕共享并直接框选。
 
 ### Security
 
@@ -24,13 +25,19 @@
   后必须重新确认 OCR 文本数据流。
 - Online 仅接受无账号密码/query/fragment 的 HTTPS 地址，关闭重定向与 OkHttp
   隐式重试，不记录认证头、OCR 原文、请求正文或译文。
-- 托管云端公开 URL 由构建变量注入；云厂商/模型服务密钥仅存在网关服务器环境，
-  Release workflow 拒绝缺少 HTTPS 托管地址的发布。
 
 ### Fixed
 
 - 移除译文悬浮窗的 `FLAG_SECURE`，使用户发起的系统截图和录屏可以保留译文
   面板；MediaProjection 帧仍在 OCR 前按实际悬浮层坐标遮蔽，避免译文回灌。
+- 框选最小边长从 64dp 降为 32dp，移除全屏黑色遮罩，并在框选期间接管返回、
+  预测返回与系统边缘手势，避免目标应用被误返回；框选态只保留顶部单条提示，
+  不再显示底部重复说明或控制面板。
+- 读取 HyperOS 3 的 `MILLET_NO_RESTRICT_APP` 精确包名列表，区分已设/未设
+  「无限制」，不再只依赖 AOSP 电源白名单猜测厂商策略。
+- 针对在线翻译长尾，将 connect/write/read/call 超时调整为 `15/30/75/90 s`，
+  `SocketTimeoutException` 不再自动重试；网络等待期间先显示稳定 OCR 原文与
+  “正在请求在线翻译…”，避免把 OCR 等待误判为请求超时。
 
 ## [0.2.1] - 2026-07-31
 
@@ -120,7 +127,8 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Arimacose/ScreenTranslation/releases/tag/v0.1.0

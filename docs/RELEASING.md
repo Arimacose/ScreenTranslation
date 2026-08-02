@@ -10,7 +10,7 @@ ScreenTranslation 使用语义化版本、签名 Android 包和 GitHub tag workf
 Lite 保留 `com.screentranslation.app`，用于从 v0.1.0 覆盖升级；Full 使用
 `com.screentranslation.app.full`，Online 使用 `com.screentranslation.app.online`，
 三者可并存。Full 的应用标签、版本说明和发布说明均需明确标注
-`HY-MT2 Q4 Experimental`；Online 需明确 OCR 文本会发送到所选托管网关或用户 API。
+`HY-MT2 Q4 Experimental`；Online 需明确 OCR 文本会发送到用户选择的 API。
 
 ### 创建发布密钥
 
@@ -38,18 +38,6 @@ keystore.properties.example -> keystore.properties
 Base64 只用于让 GitHub secret 保存二进制 keystore，不是安全边界；机密性来自 GitHub secrets
 权限和离线原件保护。
 
-### GitHub Actions repository variable
-
-正式发布还必须配置公开变量：
-
-| Variable | 内容 |
-|---|---|
-| `MANAGED_CLOUD_BASE_URL` | 已完成公网验收的项目托管 HTTPS Base URL，例如 `https://PUBLIC_GATEWAY/v1` |
-
-它是 APK 可见的公开地址，不是上游密钥。Release workflow 会拒绝空值或非 HTTPS
-值；私有模型地址和 `UPSTREAM_API_KEY` 只配置在
-`services/managed-cloud-gateway` 的服务器环境中。
-
 ## 2. 准备版本
 
 1. 从最新 `main` 创建发布 PR。
@@ -70,7 +58,6 @@ Base64 只用于让 GitHub secret 保存二进制 keystore，不是安全边界�
 ## 3. 本地验证
 
 ```bash
-export SCREEN_TRANSLATION_MANAGED_CLOUD_BASE_URL=https://PUBLIC_GATEWAY/v1
 ./gradlew --no-daemon clean \
   testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest \
   lintLiteRelease lintFullRelease lintOnlineRelease \
@@ -108,8 +95,8 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/ap
 ```bash
 git switch main
 git pull --ff-only
-git tag -s v0.2.1 -m "ScreenTranslation v0.2.1"
-git push origin v0.2.1
+git tag -s v0.3.0 -m "ScreenTranslation v0.3.0"
+git push origin v0.3.0
 ```
 
 优先使用已验证签名的 annotated tag。Tag 必须与 Gradle `versionName` 完全匹配，否则 workflow
@@ -119,7 +106,7 @@ git push origin v0.2.1
 
 `.github/workflows/release.yml` 会：
 
-1. 验证四个签名 secrets 与托管网关 repository variable；
+1. 验证四个签名 secrets；
 2. 检查 tag 与 `versionName`；
 3. 以 recursive submodules 检出源码，并准备 Android 16、NDK r23b/r29 与 CMake 3.31.6；
 4. 对 Lite/Full/Online 分别运行单元测试、release Lint、APK 和 AAB 构建；
@@ -129,16 +116,16 @@ git push origin v0.2.1
 7. 归档完整第三方许可证、notices 与 MPL 对应源码坐标，自验 SHA-256 清单并分别
    保存三个 edition 的 R8 mapping Actions artifact；
 8. 生成 GitHub 自动变更记录，并在前置说明中标记 Full 为 `HY-MT2 Q4 Experimental`、
-   Online 为托管 Hy-MT2 / 用户 API 双链路；
+   Online 为 BYOK 用户 API 链路；
 9. 发布以下九项：
-   - `ScreenTranslation-0.2.1-lite-bergamot.apk`
-   - `ScreenTranslation-0.2.1-lite-bergamot.aab`
-   - `ScreenTranslation-0.2.1-full-hymt2-q4-experimental.apk`
-   - `ScreenTranslation-0.2.1-full-hymt2-q4-experimental.aab`
-   - `ScreenTranslation-0.2.1-online-llm.apk`
-   - `ScreenTranslation-0.2.1-online-llm.aab`
-   - `ScreenTranslation-0.2.1-LICENSE.txt`
-   - `ScreenTranslation-0.2.1-THIRD-PARTY.zip`
+   - `ScreenTranslation-0.3.0-lite-bergamot.apk`
+   - `ScreenTranslation-0.3.0-lite-bergamot.aab`
+   - `ScreenTranslation-0.3.0-full-hymt2-q4-experimental.apk`
+   - `ScreenTranslation-0.3.0-full-hymt2-q4-experimental.aab`
+   - `ScreenTranslation-0.3.0-online-llm.apk`
+   - `ScreenTranslation-0.3.0-online-llm.aab`
+   - `ScreenTranslation-0.3.0-LICENSE.txt`
+   - `ScreenTranslation-0.3.0-THIRD-PARTY.zip`
    - `SHA256SUMS`
 
 ## 6. 发布后核验
@@ -147,9 +134,9 @@ git push origin v0.2.1
 
 ```bash
 sha256sum -c SHA256SUMS
-apksigner verify --verbose --print-certs ScreenTranslation-0.2.1-lite-bergamot.apk
+apksigner verify --verbose --print-certs ScreenTranslation-0.3.0-lite-bergamot.apk
 apksigner verify --verbose --print-certs \
-  ScreenTranslation-0.2.1-full-hymt2-q4-experimental.apk
+  ScreenTranslation-0.3.0-full-hymt2-q4-experimental.apk
 ```
 
 随后安装到干净测试设备，确认版本、首次权限链、模型下载和基础翻译。检查 release notes、

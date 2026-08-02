@@ -24,6 +24,7 @@ class FrameProcessor(
     private val translationEngine: TranslationBackend,
     private val stableTextGate: StableTextGate = StableTextGate(),
     frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
+    private val onOriginalRecognized: (String) -> Unit = {},
     private val onTranslation: (FrameTranslation) -> Unit,
     private val onError: (Throwable) -> Unit = {},
     elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
@@ -138,6 +139,7 @@ class FrameProcessor(
                         // slot: newer stable OCR is allowed to replace an older
                         // in-flight request through the coordinator.
                         gate.release()
+                        onOriginalRecognized(stableText)
                         checkNotNull(wholeRegionCoordinator).submit(stableText)
                     } else {
                         translate(stableText, recognition.blocks, frameGeneration)

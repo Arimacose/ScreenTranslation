@@ -30,4 +30,5 @@
 }
 -keep class com.screentranslation.app.online.OnlineEditionBridge {
     public static java.lang.String configurationSummary(android.content.Context);
+    public static boolean isConfigurationReady(android.content.Context);
 }

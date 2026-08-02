@@ -2,17 +2,14 @@ package com.screentranslation.app.ml
 
 import android.content.Context
 import com.screentranslation.app.online.OnlineChatClient
-import com.screentranslation.app.online.OnlineChatRequestMode
 import com.screentranslation.app.online.OnlineHttpClientFactory
-import com.screentranslation.app.online.OnlineProviderMode
 import com.screentranslation.app.online.OnlineTranslationConfigRepository
-import com.screentranslation.app.online.ManagedCloudService
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Online backend for either the managed Hy-MT2 service or a user API. */
+/** Online backend for the user's OpenAI-compatible API. */
 class OnlineLlmTranslationEngine(
     context: Context,
     sourceLanguage: String,
@@ -107,13 +104,6 @@ class OnlineLlmTranslationEngine(
         checkOpen()
         chatClient?.let { return it }
         val ready = repository.requireReady()
-        val requestMode = when (ready.config.providerMode) {
-            OnlineProviderMode.MANAGED_CLOUD -> {
-                ManagedCloudService.requireSupportedTarget(targetLanguageCode)
-                OnlineChatRequestMode.MANAGED_HYMT2
-            }
-            OnlineProviderMode.USER_API -> OnlineChatRequestMode.USER_API
-        }
         return OnlineChatClient(
             callFactory = httpClient,
             retryScheduler = retryScheduler,
@@ -122,7 +112,6 @@ class OnlineLlmTranslationEngine(
             apiKey = ready.apiKey,
             sourceLanguage = sourceLanguageCode,
             targetLanguage = targetLanguageCode,
-            requestMode = requestMode,
         ).also { chatClient = it }
     }
 
@@ -136,7 +125,6 @@ class OnlineLlmTranslationEngine(
         activeCalls.clear()
         chatClient = null
         retryScheduler.shutdownNow()
-        httpClient.dispatcher.executorService.shutdown()
-        httpClient.connectionPool.evictAll()
+        OnlineHttpClientFactory.closeAsync(httpClient)
     }
 }
