@@ -47,25 +47,25 @@ class TranslationEngine(
         warmRuntime: Boolean,
         onProgress: (ModelPreparationProgress) -> Unit,
         onResult: (Result<Unit>) -> Unit,
-    ) {
+    ): TranslationCall {
         if (closed.get()) {
             onResult(Result.failure(IllegalStateException("Translation engine is closed")))
-            return
+            return TranslationCall.NONE
         }
         if (prepared) {
             onResult(Result.success(Unit))
-            return
+            return TranslationCall.NONE
         }
 
         var shouldStartDownload = false
         synchronized(preparationLock) {
             if (closed.get()) {
                 onResult(Result.failure(IllegalStateException("Translation engine is closed")))
-                return
+                return TranslationCall.NONE
             }
             if (prepared) {
                 onResult(Result.success(Unit))
-                return
+                return TranslationCall.NONE
             }
 
             preparationCallbacks += onResult
@@ -75,7 +75,7 @@ class TranslationEngine(
             }
         }
 
-        if (!shouldStartDownload) return
+        if (!shouldStartDownload) return TranslationCall.NONE
         onProgress(ModelPreparationProgress(ModelPreparationStage.PREPARING))
 
         val conditionsBuilder = DownloadConditions.Builder()
@@ -104,16 +104,20 @@ class TranslationEngine(
                 }
                 callbacks.forEach { it(result) }
             }
+        return TranslationCall.NONE
     }
 
-    override fun translate(text: String, onResult: (Result<String>) -> Unit) {
+    override fun translate(
+        text: String,
+        onResult: (Result<String>) -> Unit,
+    ): TranslationCall {
         if (closed.get()) {
             onResult(Result.failure(IllegalStateException("Translation engine is closed")))
-            return
+            return TranslationCall.NONE
         }
         if (text.isBlank() || passThrough) {
             onResult(Result.success(text))
-            return
+            return TranslationCall.NONE
         }
         if (!prepared) {
             prepare { preparation ->
@@ -122,10 +126,11 @@ class TranslationEngine(
                     onFailure = { onResult(Result.failure(it)) },
                 )
             }
-            return
+            return TranslationCall.NONE
         }
 
         translatePrepared(text, onResult)
+        return TranslationCall.NONE
     }
 
     private fun translatePrepared(text: String, onResult: (Result<String>) -> Unit) {

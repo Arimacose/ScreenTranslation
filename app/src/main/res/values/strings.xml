@@ -29,6 +29,8 @@
     <string name="model_failed">模型准备失败：%1$s</string>
     <string name="model_same_language">原文语言和目标语言需要不同</string>
     <string name="unknown_error">未知错误</string>
+    <string name="online_settings">配置 Online 翻译服务</string>
+    <string name="online_config_status_unavailable">Online 配置状态暂不可用</string>
 
     <string name="section_permissions">运行权限</string>
     <string name="notification_permission">通知</string>
@@ -47,6 +49,8 @@
     <string name="battery_policy_explanation">HyperOS / MIUI 会主动回收后台前台服务。请将本应用的省电策略设为「无限制」，否则长时间翻译可能被系统中断。</string>
     <string name="open_battery_policy">打开省电策略设置</string>
     <string name="battery_policy_background_restricted">系统后台限制：已开启（请在省电策略中选择「无限制」）</string>
+    <string name="battery_policy_hyperos_unrestricted">HyperOS 省电策略：已识别为「无限制」</string>
+    <string name="battery_policy_hyperos_not_unrestricted">HyperOS 省电策略：当前未设为「无限制」</string>
     <string name="battery_policy_aosp_allowlisted">系统后台限制：未检测到；AOSP 电源白名单：已加入</string>
     <string name="battery_policy_vendor_unverified">系统后台限制：未检测到；HyperOS「无限制」状态请以设置页为准</string>
 
@@ -63,17 +67,13 @@
     <string name="capture_denied">未获得屏幕共享授权</string>
     <string name="start_failed">启动失败：%1$s</string>
 
-    <string name="projection_stopped_notification_title">屏幕共享会话已结束</string>
-    <string name="projection_stopped_notification_text">解锁后点按此通知，重新授权即可继续识屏翻译。</string>
-    <string name="projection_stopped_notification_action">打开并重新授权</string>
 
     <string name="overlay_window_title">识屏翻译悬浮层</string>
     <string name="overlay_region_selector_description">拖动选择需要翻译的屏幕区域</string>
-    <string name="overlay_drag_instruction">拖动框选要识别的区域（最小 64dp）</string>
-    <string name="overlay_status_selecting">拖动画框选择区域；要先切换到别的应用，请点「稍后框选」</string>
-    <string name="overlay_selection_too_small">选区太小，请按住并拖动画出方框（至少 64dp）</string>
+    <string name="overlay_drag_instruction">拖动框选要识别的区域（最小 32dp）</string>
+    <string name="overlay_status_selecting">拖动画框选择区域；边缘返回手势可取消本次框选</string>
+    <string name="overlay_selection_too_small">选区太小，请按住并拖动画出方框（至少 32dp）</string>
     <string name="overlay_status_idle">已收起。切换到目标应用后，点「重选区域」开始识别</string>
-    <string name="overlay_minimize">稍后框选</string>
     <string name="overlay_expand">展开</string>
     <string name="overlay_collapse">收起</string>
     <string name="overlay_status_running">正在识别</string>
@@ -97,4 +97,15 @@
     <string name="capture_notification_title">识屏翻译正在运行</string>
     <string name="capture_notification_text">点按悬浮窗可重新框选，或在此停止</string>
     <string name="capture_notification_stop">停止</string>
+    <string name="capture_channel_name">识屏翻译</string>
+    <string name="capture_channel_description">保持屏幕捕获和翻译运行</string>
+    <string name="capture_shortcut_title">识屏翻译已就绪</string>
+    <string name="capture_shortcut_text">在目标应用点按此通知，授权后立即框选</string>
+    <string name="capture_shortcut_projection_stopped_title">屏幕共享会话已结束</string>
+    <string name="capture_shortcut_projection_stopped_text">解锁后点按，重新授权并在当前应用框选</string>
+    <string name="capture_shortcut_action">开始识屏</string>
+    <string name="quick_start_overlay_required">请先在主页面授予悬浮窗权限</string>
+    <string name="quick_start_online_setup_required">请先在主页面完成 Online API 配置</string>
+    <string name="quick_start_projection_failed">屏幕共享授权页启动失败，请从主页面重试</string>
+    <string name="quick_start_service_failed">识屏服务启动失败，请从主页面查看状态</string>
 </resources>

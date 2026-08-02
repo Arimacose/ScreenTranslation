@@ -150,6 +150,26 @@
             android:textColor="?android:attr/textColorSecondary" />
 
         <Button
+            android:id="@+id/button_online_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/online_settings"
+            android:textAllCaps="false"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/text_online_config_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:accessibilityLiveRegion="polite"
+            android:text="@string/online_config_status_unavailable"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="?android:attr/textColorSecondary"
+            android:visibility="gone" />
+
+        <Button
             android:id="@+id/button_experimental_smoke_test"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

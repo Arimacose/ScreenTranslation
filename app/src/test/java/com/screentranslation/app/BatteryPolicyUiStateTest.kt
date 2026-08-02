@@ -53,6 +53,41 @@ class BatteryPolicyUiStateTest {
     }
 
     @Test
+    fun `HyperOS unlimited setting has priority over the AOSP signal`() {
+        assertEquals(
+            BatteryPolicyUiState.HYPER_OS_UNRESTRICTED,
+            resolveBatteryPolicyUiState(
+                isBackgroundRestricted = false,
+                isAospPowerAllowlisted = false,
+                isHyperOsUnrestricted = true,
+            ),
+        )
+        assertEquals(
+            BatteryPolicyUiState.HYPER_OS_NOT_UNRESTRICTED,
+            resolveBatteryPolicyUiState(
+                isBackgroundRestricted = false,
+                isAospPowerAllowlisted = true,
+                isHyperOsUnrestricted = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `HyperOS package list uses trimmed exact package matches`() {
+        val raw = " com.example.first, com.screentranslation.app.online ,com.example.last "
+
+        assertEquals(
+            true,
+            isPackageHyperOsUnrestricted(raw, "com.screentranslation.app.online"),
+        )
+        assertEquals(
+            false,
+            isPackageHyperOsUnrestricted(raw, "com.screentranslation.app"),
+        )
+        assertEquals(null, isPackageHyperOsUnrestricted(null, "com.example"))
+    }
+
+    @Test
     fun `Bergamot Lite exposes only measured English and Japanese routes`() {
         assertEquals(
             listOf(LanguageOption.ENGLISH, LanguageOption.JAPANESE),

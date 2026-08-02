@@ -43,6 +43,10 @@ class HyMt2RunnerTest(unittest.TestCase):
             ["whole"],
         )
 
+    def test_default_runtime_scope_distinguishes_external_server(self) -> None:
+        self.assertIn("Android ARM64", MODULE.default_runtime_scope(True))
+        self.assertIn("Windows x86_64", MODULE.default_runtime_scope(False))
+
 
 if __name__ == "__main__":
     unittest.main()

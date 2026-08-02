@@ -1,6 +1,6 @@
 # ScreenTranslation
 
-面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面，只裁剪用户框选区域，执行本地 OCR 和本地翻译，并用悬浮窗显示结果。
+面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面，只裁剪用户框选区域，在本机执行 OCR，并按所选 edition 进行端侧或在线翻译后用悬浮窗显示结果。
 
 > 项目状态：`0.x` 实验阶段。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
@@ -15,9 +15,11 @@
   包名并支持签名升级。
 - **Full · HY-MT2 Q4 Experimental**：多语言直接译为简体中文，使用独立
   `.full` 包名，可与 Lite 并存安装。
-- 两个 edition 的翻译模型都按需下载、校验后在设备端推理；模型权重不进入
-  APK/AAB。
-- 两个 APK/AAB 都内嵌适用的完整第三方许可证与 notices；GitHub Release
+- **Online · BYOK API**：使用独立 `.online` 包名；填写 OpenAI-compatible
+  HTTPS Base URL 与 API Key，自动拉取模型后翻译，只发送稳定后的整段 OCR 文本。
+- Lite/Full 的翻译模型按需下载、校验后在设备端推理；Online 不携带翻译模型；
+  模型权重均不进入 APK/AAB。
+- 三个 APK/AAB 都内嵌适用的完整第三方许可证与 notices；GitHub Release
   另附统一 `THIRD-PARTY.zip`，包含 Bergamot MPL 对应源码坐标。
 - 文本稳定后才触发翻译，避免同一画面反复识别与闪烁。
 - 前台服务常驻通知明确显示捕获状态，可从应用或系统界面停止。
@@ -27,7 +29,7 @@
 
 | 项目 | 版本/配置 |
 |---|---|
-| Android Gradle Plugin | 9.3.0 |
+| Android Gradle Plugin | application 9.3.1 / library 9.3.0 |
 | Gradle Wrapper | 9.6.1 |
 | JDK | 17 |
 | Kotlin | AGP 9.3 内置 Kotlin（不应用 `org.jetbrains.kotlin.android`） |
@@ -37,6 +39,7 @@
 | OCR runtime | ONNX Runtime Android `1.26.0` |
 | Lite translation | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
 | Full translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181`，Experimental |
+| Online translation | OkHttp `5.4.0` + 用户配置的 OpenAI-compatible Chat Completions |
 | Benchmark baseline | ML Kit Translate `17.0.3` |
 | Low-bit translation PoC | Hy-MT2 1.8B STQ1_0 1.25-bit + llama.cpp PR `#22836` |
 
@@ -77,7 +80,8 @@ app/src/main/java/com/screentranslation/app/
 ├── MainActivity.kt                  # 权限、语言和采样设置
 ├── capture/
 │   ├── BitmapExtractor.kt           # Image -> Bitmap 与区域裁剪
-│   └── FrameProcessor.kt            # 单飞帧处理与调度
+│   ├── FrameProcessor.kt            # 单飞帧处理与 edition 分流
+│   └── TranslationCoordinator.kt    # Online latest-wins/取消/限流/内存缓存
 ├── ml/
 │   ├── OcrEngine.kt                 # OCR 生命周期与结果契约
 │   ├── PpOcrv6Engine.kt             # PP-OCRv6 + ONNX Runtime 生产实现
@@ -97,6 +101,11 @@ app/src/lite/
 app/src/full/
 └── java/.../HyMt2Q4TranslationEngine.kt  # Q4 下载、校验与本地推理
 
+app/src/online/
+├── java/.../OnlineLlmTranslationEngine.kt # 用户 API 在线翻译后端
+├── java/.../online/                       # Endpoint、Keystore、模型目录与设置页
+└── res/                                   # Online 标签与配置界面
+
 app/src/benchmark/
 └── java/.../TranslationEngine.kt     # ML Kit Translate 对照
 
@@ -113,6 +122,8 @@ Bergamot Android 核心 PoC 见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)，
 Hy-MT2 综合对比见
 [`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md)，
+云端 Hy-MT2/TranslateGemma 质量、GPU、流量与选型见
+[`docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md`](docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md)，
 Online edition 设计见
 [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。
 
@@ -157,24 +168,24 @@ git submodule update --init --recursive
 PP-OCRv6 small 资产。后续构建会复用校验通过的
 `app/build/generated/ppocrv6Assets`。
 
-### 双 edition 编译、测试与 Lint
+### 三 edition 编译、测试与 Lint
 
 Linux/macOS：
 
 ```bash
 ./gradlew --no-daemon clean \
-  testLiteDebugUnitTest testFullDebugUnitTest \
-  lintLiteRelease lintFullRelease \
-  assembleLiteRelease assembleFullRelease
+  testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest \
+  lintLiteRelease lintFullRelease lintOnlineRelease \
+  assembleLiteRelease assembleFullRelease assembleOnlineRelease
 ```
 
 Windows：
 
 ```powershell
 .\gradlew.bat --no-daemon clean `
-  testLiteDebugUnitTest testFullDebugUnitTest `
-  lintLiteRelease lintFullRelease `
-  assembleLiteRelease assembleFullRelease
+  testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest `
+  lintLiteRelease lintFullRelease lintOnlineRelease `
+  assembleLiteRelease assembleFullRelease assembleOnlineRelease
 ```
 
 APK 输出：
@@ -182,15 +193,16 @@ APK 输出：
 ```text
 app/build/outputs/apk/lite/release/app-lite-release-unsigned.apk
 app/build/outputs/apk/full/release/app-full-release-unsigned.apk
+app/build/outputs/apk/online/release/app-online-release-unsigned.apk
 ```
 
 配置 `keystore.properties` 或 `ANDROID_RELEASE_*` 环境变量后，文件名中的
-`-unsigned` 会变为已签名的 `app-lite-release.apk` /
-`app-full-release.apk`。签名流程见 [`docs/RELEASING.md`](docs/RELEASING.md)。
+`-unsigned` 会变为已签名的 `app-lite-release.apk`、`app-full-release.apk` 或
+`app-online-release.apk`。签名流程见 [`docs/RELEASING.md`](docs/RELEASING.md)。
 
 ### Lite · Bergamot
 
-Lite 使用 `com.screentranslation.app` 和 `0.2.1-lite`，可覆盖升级 v0.1.0。
+Lite 使用 `com.screentranslation.app` 和 `0.3.0-lite`，可覆盖升级 v0.1.0。
 APK 随包提供固定的 ARM64 Bergamot runner；构建时
 `verifyBergamotRunner` 校验其 8,416,304 bytes 与 SHA-256。英语→中文使用
 直模，日语→中文使用 `ja→en→zh` 级联。压缩模型和解压文件均校验长度与
@@ -202,7 +214,7 @@ SHA-256。
 
 ### Full · HY-MT2 Q4 Experimental
 
-Full 使用 `com.screentranslation.app.full` 和 `0.2.1-full`，可与 Lite
+Full 使用 `com.screentranslation.app.full` 和 `0.3.0-full`，可与 Lite
 并存。应用名称、标题、Banner、通知和 attribution 均包含
 `Full · HY-MT2 Q4 Experimental`。
 
@@ -213,15 +225,41 @@ Full 使用 `com.screentranslation.app.full` 和 `0.2.1-full`，可与 Lite
 再保存到应用内部 `no_backup/models/hymt2-q4`。Full 当前只输出简体中文；
 内置固定英文长句自检会实际加载 JNI/llama.cpp 并显示原文、译文和总耗时。
 
+### Online · BYOK API
+
+Online 使用 `com.screentranslation.app.online` 和 `0.3.0-online`，可与 Lite/Full
+并存。设置页只保留用户自带密钥（BYOK）链路：填写 HTTPS Base URL 与 API Key、
+确认数据流，再点击“获取可用模型”；应用通过 `GET /models` 获取并展示模型 ID，
+无需手工输入。根地址会自动补充 `/models` 和 `/chat/completions`。API Key 由
+Android Keystore 加密，截图不会上传。稳定 OCR 以整段单请求发送；协调器采用 600 ms
+去抖、750 ms 最小间隔、单活跃请求和单 latest pending，停止、重选区域或息屏会
+取消请求。网络客户端使用 connect/write/read/call `15/30/75/90 s` 的有界超时；
+生成请求超时不会自动重试，避免重复用量。稳定 OCR 会先显示，再进入在线翻译状态，
+便于区分本机识别等待与网络等待。
+
+DeepSeek 官方 API 可直接填写 `https://api.deepseek.com`，获取模型后选择
+`deepseek-v4-flash`。针对该官方主机的 DeepSeek V4 请求，应用会显式关闭思考模式，
+避免纯翻译任务产生额外推理 token 和延迟；该兼容字段不会发送给其他
+OpenAI-compatible 服务。2026-08-01 的 40 条英中与 40 条日中主机网络实测见
+[`docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md`](docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md#用户-api--deepseek-v4-flash)。
+2026-08-02 又在 Xiaomi 15 Pro / Android 16 / HyperOS 上完成 `/models`、配置加密
+保存、真实 Chat Completions，以及
+`MediaProjection -> PP-OCRv6 -> DeepSeek -> 悬浮译文` 的跨应用闭环；详情见
+[`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md#2026-08-02-online-byok--api-真机验收)。
+
+受硬件和长期运营条件限制，Online Release 不内置项目托管模型、公共 API Key 或
+维护者网关；所有网络请求只发往用户在设备上确认的服务主机。
+
 ### 安装
 
 启用 Android 16 设备的开发者选项和 USB 调试后：
 
 ```bash
 adb devices -l
-./gradlew :app:installLiteDebug :app:installFullDebug
+./gradlew :app:installLiteDebug :app:installFullDebug :app:installOnlineDebug
 adb shell am start -n com.screentranslation.app/.MainActivity
 adb shell am start -n com.screentranslation.app.full/.MainActivity
+adb shell am start -n com.screentranslation.app.online/.MainActivity
 ```
 
 Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
@@ -229,20 +267,24 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 ## 首次使用顺序
 
 1. 打开应用，选择源语言和采样间隔。Lite 提供英语/日语→简体中文；Full
-   提供界面列出的非中文源语言→简体中文。PP-OCRv6 使用同一套多语言权重。
+   提供界面列出的非中文源语言→简体中文；Online 可使用界面列出的源/目标语言，
+   先在 Online 设置页填写自己的 API 并确认数据流。PP-OCRv6 使用同一套多语言权重。
 2. 点击悬浮窗授权；HyperOS 会打开本应用权限编辑页，进入“其他权限 → 显示悬浮窗 → 始终允许”。
 3. Android 13+ 首次运行时允许通知；拒绝后，系统仍可能在任务管理界面显示前台服务，但用户体验不完整。
 4. 点击开始，接受 Android 系统的“共享/录制屏幕”提示。每个捕获会话都必须使用新的授权结果。
-5. 拖动框选需要识别的屏幕区域，确认后切到目标应用。
+5. 在目标应用拖动框选需要识别的屏幕区域；最小边长 32dp。框选画面保持透明，
+   只显示顶部单条提示；边缘返回手势会取消本次框选，而不会让目标应用返回上一页。
 6. 首次使用语言路线时保持联网，等待模型下载与哈希校验。后续可断网测试设备端
    翻译。
-7. 回到应用点击停止，或使用前台服务通知提供的停止入口。
+7. 使用悬浮窗或运行通知停止；停止后通知栏保留“开始识屏”，可在目标应用直接重启。
 
 ## HyperOS 注意事项
 
 - `SYSTEM_ALERT_WINDOW` 是特殊权限，不能用普通运行时权限弹窗授权；必须由用户在系统设置页开启。
 - Android 15 QPR1+ 会在锁屏时结束当前 `MediaProjection`。应用会立即释放采集资源并发布“屏幕共享会话已结束”通知；解锁后点按通知，再次通过系统授权即可继续。
-- 若亮屏长时间运行时服务被 HyperOS 提前回收，可在应用详情的“省电策略”中选择“无限制”后复测；该设置不会保留锁屏后已失效的投影令牌。
+- 若亮屏长时间运行时服务被 HyperOS 提前回收，可在应用详情的“省电策略”中选择
+  “无限制”后复测；应用会读取目标 ROM 的精确包名列表显示识别结果。该设置不会
+  保留锁屏后已失效的投影令牌。
 - 不需要“自启动”、无障碍服务、读取相册、麦克风或联系人权限。
 - Android 16 的每个新捕获会话都使用新的屏幕共享授权结果。
 - 目标 HyperOS 版本会把应用悬浮层混入 MediaProjection 帧；本应用会在
@@ -254,15 +296,16 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 ## 隐私边界
 
 - 屏幕帧只在进程内存中处理，不落盘。
-- OCR 与翻译推理在设备端进行；翻译模型按需联网下载。
+- OCR 始终在设备端进行。Lite/Full 翻译在设备端推理；Online 只把稳定后的 OCR
+  文本、语言、模型 ID 和固定提示发送到用户选择的 API。
 - Lite 的 Firefox Translations 模型与 Full 的 Hy-MT2 Q4 模型均保存在各自
   应用内部 `no_backup` 目录，不进入系统备份。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。
 - 停止服务时释放 `VirtualDisplay`、`MediaProjection`、`ImageReader`、OCR/翻译客户端和悬浮窗。
-- 项目代码不上传屏幕图像、OCR 原文或译文。
-- v0.2.1 Lite / Full APK 不携带 ML Kit Translate；该组件只保留在
+- 项目代码不上传屏幕图像；Online 之外的生产 edition 不上传 OCR 原文或译文。
+- v0.3.0 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
   `benchmark` build type。完整数据流见 [`PRIVACY.md`](PRIVACY.md)。
-- 规划中的 Online edition 具有单独的数据发送确认与密钥存储设计，见
+- Online edition 的数据发送确认、密钥存储和请求边界见
   [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。
 
 ## 已知边界
@@ -282,6 +325,12 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
   因而明确标记 Experimental，并优先用于静止画面和翻译质量验证。1.25-bit 仍为 standalone
   PoC，并依赖开放中的专用 kernel PR；当前官方 GGUF 与 PR 重排后的类型号
   需要可审计的 header 兼容处理。
+- Online 的翻译质量、延迟、配额、日志留存和可用语言由用户选择的服务与模型决定；
+  `/models` 返回的是账号可见模型，不保证每个模型都接受 Chat Completions，需使用
+  “保存并测试翻译”验证所选模型；
+  当前已覆盖 DeepSeek V4-Flash 的真实 API、长句真机持续识屏闭环、长响应超时策略
+  与正常网络回归；401/429、latest-wins 压力和长时间运行仍按
+  `docs/ONLINE_TRANSLATION_DESIGN.md` 的验收矩阵继续执行。
 ## 开源维护
 
 - 贡献流程：[`CONTRIBUTING.md`](CONTRIBUTING.md)

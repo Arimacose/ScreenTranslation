@@ -59,19 +59,23 @@ class HyMt2Q4TranslationEngine(
         warmRuntime: Boolean,
         onProgress: (ModelPreparationProgress) -> Unit,
         onResult: (Result<Unit>) -> Unit,
-    ) {
+    ): TranslationCall {
         submit(onResult) {
             val model = modelStore.ensureModel(onProgress)
             if (warmRuntime) {
                 ensureRuntime(model, onProgress)
             }
         }
+        return TranslationCall.NONE
     }
 
-    override fun translate(text: String, onResult: (Result<String>) -> Unit) {
+    override fun translate(
+        text: String,
+        onResult: (Result<String>) -> Unit,
+    ): TranslationCall {
         if (text.isBlank()) {
             onResult(Result.success(text))
-            return
+            return TranslationCall.NONE
         }
         submit(onResult) {
             val model = modelStore.ensureModel()
@@ -79,6 +83,7 @@ class HyMt2Q4TranslationEngine(
             val prompt = HyMt2Q4Prompt.build(text)
             HyMt2Q4Prompt.clean(activeRuntime.complete(prompt))
         }
+        return TranslationCall.NONE
     }
 
     private fun ensureRuntime(

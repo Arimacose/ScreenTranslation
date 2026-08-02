@@ -17,16 +17,39 @@ data class ModelPreparationProgress(
     val totalBytes: Long? = null,
 )
 
-/** Common asynchronous contract shared by ML Kit and experimental backends. */
+enum class TranslationInputMode {
+    CLAUSE_PLAN,
+    WHOLE_REGION,
+}
+
+fun interface TranslationCall {
+    fun cancel()
+
+    companion object {
+        val NONE = TranslationCall {}
+    }
+}
+
+/** Common asynchronous contract shared by local and online backends. */
 interface TranslationBackend : AutoCloseable {
+    val inputMode: TranslationInputMode
+        get() = TranslationInputMode.CLAUSE_PLAN
+
+    /** Separates in-memory cache entries when endpoint/model settings change. */
+    val cacheIdentity: String
+        get() = javaClass.name
+
     fun prepare(
         requireWifi: Boolean = false,
         warmRuntime: Boolean = true,
         onProgress: (ModelPreparationProgress) -> Unit = {},
         onResult: (Result<Unit>) -> Unit,
-    )
+    ): TranslationCall
 
-    fun translate(text: String, onResult: (Result<String>) -> Unit)
+    fun translate(
+        text: String,
+        onResult: (Result<String>) -> Unit,
+    ): TranslationCall
 }
 
 /**
@@ -40,6 +63,7 @@ object TranslationBackendFactory {
         targetLanguage: String,
     ): TranslationBackend {
         val backendClassName = when {
+            BuildConfig.ONLINE_LLM -> ONLINE_BACKEND_CLASS
             BuildConfig.HYMT2_Q4_EXPERIMENTAL -> HYMT2_BACKEND_CLASS
             BuildConfig.BERGAMOT_LITE -> BERGAMOT_BACKEND_CLASS
             else -> error("No translation backend is configured for this edition")
@@ -71,4 +95,6 @@ object TranslationBackendFactory {
         "com.screentranslation.app.ml.HyMt2Q4TranslationEngine"
     private const val BERGAMOT_BACKEND_CLASS =
         "com.screentranslation.app.ml.BergamotTranslationEngine"
+    private const val ONLINE_BACKEND_CLASS =
+        "com.screentranslation.app.ml.OnlineLlmTranslationEngine"
 }

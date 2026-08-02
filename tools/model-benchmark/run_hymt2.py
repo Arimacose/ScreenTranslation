@@ -73,6 +73,20 @@ def pipeline_parts(case: dict[str, Any]) -> list[str]:
     return [str(case["source_text"])]
 
 
+def default_runtime_scope(external_server: bool) -> str:
+    if external_server:
+        return (
+            "Android ARM64 standalone llama-server quality and latency "
+            "benchmark over an ADB-forwarded loopback connection. "
+            "The STQ 1.25-bit runtime remains a separate deployment gate."
+        )
+    return (
+        "Windows x86_64 CPU quality and host-resource benchmark. "
+        "Android ARM64 latency, thermal behavior, and the STQ "
+        "1.25-bit runtime remain separate deployment gates."
+    )
+
+
 def memory_snapshot(process: subprocess.Popen[bytes]) -> dict[str, Any] | None:
     if psutil is None:
         return None
@@ -221,9 +235,14 @@ class LlamaServer:
             "max_tokens": max_tokens,
             "stream": False,
         }
+        request_body = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
+            data=request_body,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -233,7 +252,8 @@ class LlamaServer:
                 request,
                 timeout=timeout_seconds,
             ) as response:
-                result = json.loads(response.read().decode("utf-8"))
+                response_body = response.read()
+                result = json.loads(response_body.decode("utf-8"))
         except urllib.error.HTTPError as error:
             body = error.read().decode("utf-8", "replace")
             raise RuntimeError(f"llama-server HTTP {error.code}: {body}") from error
@@ -242,6 +262,14 @@ class LlamaServer:
         return output, latency_ms, {
             "usage": result.get("usage"),
             "timings": result.get("timings"),
+            "network_body_bytes": {
+                "request": len(request_body),
+                "response": len(response_body),
+                "scope": (
+                    "HTTP bodies only; headers, TLS, and transport "
+                    "overhead excluded"
+                ),
+            },
         }
 
     def close(self) -> None:
@@ -306,6 +334,14 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=256)
     parser.add_argument("--request-timeout", type=float, default=300.0)
     parser.add_argument("--target-language-name", default="Chinese")
+    parser.add_argument(
+        "--runtime-scope",
+        default="",
+        help=(
+            "Override the recorded runtime scope, for example when an "
+            "external server is a desktop GPU rather than Android."
+        ),
+    )
     parser.add_argument("--log-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -542,18 +578,13 @@ def main() -> None:
                     else None
                 ),
             },
+            "network_measurement": (
+                "Per-request UTF-8 HTTP body bytes; headers, TLS, and "
+                "transport overhead are excluded."
+            ),
             "runtime_scope": (
-                (
-                    "Android ARM64 standalone llama-server quality and latency "
-                    "benchmark over an ADB-forwarded loopback connection. "
-                    "The STQ 1.25-bit runtime remains a separate deployment gate."
-                )
-                if args.external_server_url
-                else (
-                    "Windows x86_64 CPU quality and host-resource benchmark. "
-                    "Android ARM64 latency, thermal behavior, and the STQ "
-                    "1.25-bit runtime remain separate deployment gates."
-                )
+                args.runtime_scope.strip()
+                or default_runtime_scope(args.external_server_url is not None)
             ),
         },
         "cases": output_cases,

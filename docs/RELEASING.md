@@ -8,8 +8,9 @@ ScreenTranslation 使用语义化版本、签名 Android 包和 GitHub tag workf
 
 第一次公开发布前，仓库所有者应确认 `applicationId`、应用名称和签名证书身份。
 Lite 保留 `com.screentranslation.app`，用于从 v0.1.0 覆盖升级；Full 使用
-`com.screentranslation.app.full`，可与 Lite 并存。Full 的应用标签、版本说明和发布说明均需明确
-标注 `HY-MT2 Q4 Experimental`。
+`com.screentranslation.app.full`，Online 使用 `com.screentranslation.app.online`，
+三者可并存。Full 的应用标签、版本说明和发布说明均需明确标注
+`HY-MT2 Q4 Experimental`；Online 需明确 OCR 文本会发送到用户选择的 API。
 
 ### 创建发布密钥
 
@@ -43,7 +44,7 @@ Base64 只用于让 GitHub secret 保存二进制 keystore，不是安全边界�
 2. 在 `app/build.gradle.kts` 提高：
    - `versionCode`：严格递增整数；
    - 基础 `versionName`：`MAJOR.MINOR.PATCH`；
-   - Lite/Full flavor 后缀分别为 `-lite` 和 `-full`。
+   - Lite/Full/Online flavor 后缀分别为 `-lite`、`-full` 和 `-online`。
 3. 将 `CHANGELOG.md` 的 `Unreleased` 内容移动到带日期的版本标题。
 4. 更新 README、隐私说明、第三方条款、设备测试和迁移说明。
 5. 冻结新的非必要功能，集中修复发布阻断问题。
@@ -58,10 +59,10 @@ Base64 只用于让 GitHub secret 保存二进制 keystore，不是安全边界�
 
 ```bash
 ./gradlew --no-daemon clean \
-  testLiteDebugUnitTest testFullDebugUnitTest \
-  lintLiteRelease lintFullRelease \
-  assembleLiteRelease assembleFullRelease \
-  bundleLiteRelease bundleFullRelease
+  testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest \
+  lintLiteRelease lintFullRelease lintOnlineRelease \
+  assembleLiteRelease assembleFullRelease assembleOnlineRelease \
+  bundleLiteRelease bundleFullRelease bundleOnlineRelease
 ```
 
 配置 `keystore.properties` 后，验证 APK：
@@ -71,9 +72,11 @@ zipalign -c -P 16 -v 4 app/build/outputs/apk/lite/release/app-lite-release.apk
 zipalign -c -P 16 -v 4 app/build/outputs/apk/full/release/app-full-release.apk
 apksigner verify --verbose --print-certs app/build/outputs/apk/lite/release/app-lite-release.apk
 apksigner verify --verbose --print-certs app/build/outputs/apk/full/release/app-full-release.apk
+zipalign -c -P 16 -v 4 app/build/outputs/apk/online/release/app-online-release.apk
+apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/app-online-release.apk
 ```
 
-两份 APK 的预期签名证书 SHA-256 均为
+三份 APK 的预期签名证书 SHA-256 均为
 `b58712578045532158d45b847ab7ed1be041236b5a7a0bd1a1db5480fbe0439f`。
 同时核验 PP-OCRv6-small 三个资产存在、每份 APK 只含对应翻译后端，且翻译模型权重由运行时下载。
 
@@ -92,8 +95,8 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/full/release/app-
 ```bash
 git switch main
 git pull --ff-only
-git tag -s v0.2.1 -m "ScreenTranslation v0.2.1"
-git push origin v0.2.1
+git tag -s v0.3.0 -m "ScreenTranslation v0.3.0"
+git push origin v0.3.0
 ```
 
 优先使用已验证签名的 annotated tag。Tag 必须与 Gradle `versionName` 完全匹配，否则 workflow
@@ -106,20 +109,23 @@ git push origin v0.2.1
 1. 验证四个签名 secrets；
 2. 检查 tag 与 `versionName`；
 3. 以 recursive submodules 检出源码，并准备 Android 16、NDK r23b/r29 与 CMake 3.31.6；
-4. 对 Lite/Full 分别运行单元测试、release Lint、APK 和 AAB 构建；
+4. 对 Lite/Full/Online 分别运行单元测试、release Lint、APK 和 AAB 构建；
 5. 执行 16 KiB 对齐、APK v2 签名和既有证书摘要验证；
 6. 断言包名、versionCode/versionName、应用标签、PP-OCRv6-small 资产、后端隔离、
    权重分发策略和 edition-specific `assets/licenses/`；
 7. 归档完整第三方许可证、notices 与 MPL 对应源码坐标，自验 SHA-256 清单并分别
-   保存 Lite/Full R8 mapping Actions artifact；
-8. 生成 GitHub 自动变更记录，并在前置说明中标记 Full 为 `HY-MT2 Q4 Experimental`；
-9. 发布以下七项：
-   - `ScreenTranslation-0.2.1-lite-bergamot.apk`
-   - `ScreenTranslation-0.2.1-lite-bergamot.aab`
-   - `ScreenTranslation-0.2.1-full-hymt2-q4-experimental.apk`
-   - `ScreenTranslation-0.2.1-full-hymt2-q4-experimental.aab`
-   - `ScreenTranslation-0.2.1-LICENSE.txt`
-   - `ScreenTranslation-0.2.1-THIRD-PARTY.zip`
+   保存三个 edition 的 R8 mapping Actions artifact；
+8. 生成 GitHub 自动变更记录，并在前置说明中标记 Full 为 `HY-MT2 Q4 Experimental`、
+   Online 为 BYOK 用户 API 链路；
+9. 发布以下九项：
+   - `ScreenTranslation-0.3.0-lite-bergamot.apk`
+   - `ScreenTranslation-0.3.0-lite-bergamot.aab`
+   - `ScreenTranslation-0.3.0-full-hymt2-q4-experimental.apk`
+   - `ScreenTranslation-0.3.0-full-hymt2-q4-experimental.aab`
+   - `ScreenTranslation-0.3.0-online-llm.apk`
+   - `ScreenTranslation-0.3.0-online-llm.aab`
+   - `ScreenTranslation-0.3.0-LICENSE.txt`
+   - `ScreenTranslation-0.3.0-THIRD-PARTY.zip`
    - `SHA256SUMS`
 
 ## 6. 发布后核验
@@ -128,9 +134,9 @@ git push origin v0.2.1
 
 ```bash
 sha256sum -c SHA256SUMS
-apksigner verify --verbose --print-certs ScreenTranslation-0.2.1-lite-bergamot.apk
+apksigner verify --verbose --print-certs ScreenTranslation-0.3.0-lite-bergamot.apk
 apksigner verify --verbose --print-certs \
-  ScreenTranslation-0.2.1-full-hymt2-q4-experimental.apk
+  ScreenTranslation-0.3.0-full-hymt2-q4-experimental.apk
 ```
 
 随后安装到干净测试设备，确认版本、首次权限链、模型下载和基础翻译。检查 release notes、

@@ -25,3 +25,10 @@
 -keep class com.screentranslation.app.ml.HyMt2Q4TranslationEngine {
     public <init>(android.content.Context, java.lang.String, java.lang.String);
 }
+-keep class com.screentranslation.app.ml.OnlineLlmTranslationEngine {
+    public <init>(android.content.Context, java.lang.String, java.lang.String);
+}
+-keep class com.screentranslation.app.online.OnlineEditionBridge {
+    public static java.lang.String configurationSummary(android.content.Context);
+    public static boolean isConfigurationReady(android.content.Context);
+}

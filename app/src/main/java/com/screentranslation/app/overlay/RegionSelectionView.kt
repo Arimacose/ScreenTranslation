@@ -13,6 +13,11 @@ import com.screentranslation.app.R
 import kotlin.math.max
 import kotlin.math.min
 
+internal const val MIN_SELECTION_SIZE_DP = 32f
+
+internal fun isSelectionSizeAccepted(widthPx: Int, heightPx: Int, minSizePx: Float): Boolean =
+    widthPx >= minSizePx && heightPx >= minSizePx
+
 /**
  * Full-screen drag selector used only while the overlay window is in selection mode.
  *
@@ -40,27 +45,40 @@ class RegionSelectionView @JvmOverloads constructor(
         get() = selectedRegion?.let(::Rect)
 
     private val density = resources.displayMetrics.density
-    private val minSelectionSizePx = dp(64f)
-    private val handleRadiusPx = dp(5f)
+    private val minSelectionSizePx = dp(MIN_SELECTION_SIZE_DP)
+    private val handleOuterRadiusPx = dp(7f)
+    private val handleInnerRadiusPx = dp(4f)
 
-    private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(150, 0, 0, 0)
+    private val selectionFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(28, 59, 130, 246)
         style = Paint.Style.FILL
     }
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val outerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        strokeWidth = dp(6f)
+        style = Paint.Style.STROKE
+    }
+    private val innerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(59, 130, 246)
         strokeWidth = dp(3f)
         style = Paint.Style.STROKE
     }
-    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val handleOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+    private val handleInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(37, 99, 235)
+        style = Paint.Style.FILL
+    }
+    private val instructionBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(190, 17, 24, 39)
         style = Paint.Style.FILL
     }
     private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
-        textSize = sp(16f)
-        setShadowLayer(dp(3f), 0f, dp(1f), Color.BLACK)
+        textSize = sp(14f)
     }
 
     private var startX = 0f
@@ -82,6 +100,14 @@ class RegionSelectionView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setGestureExclusionEnabled(enabled: Boolean) {
+        systemGestureExclusionRects = if (enabled && width > 0 && height > 0) {
+            listOf(Rect(0, 0, width, height))
+        } else {
+            emptyList()
+        }
+    }
+
     fun setRegion(region: Rect?) {
         selectedRegion = region?.let(::Rect)
         clampSelectionToBounds()
@@ -91,34 +117,44 @@ class RegionSelectionView @JvmOverloads constructor(
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         clampSelectionToBounds()
+        if (visibility == VISIBLE) setGestureExclusionEnabled(true)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val selection = currentSelectionRect()
 
-        if (selection == null || selection.isEmpty) {
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), shadePaint)
-        } else {
+        if (selection != null && !selection.isEmpty) {
             val left = selection.left.toFloat()
             val top = selection.top.toFloat()
             val right = selection.right.toFloat()
             val bottom = selection.bottom.toFloat()
 
-            canvas.drawRect(0f, 0f, width.toFloat(), top, shadePaint)
-            canvas.drawRect(0f, bottom, width.toFloat(), height.toFloat(), shadePaint)
-            canvas.drawRect(0f, top, left, bottom, shadePaint)
-            canvas.drawRect(right, top, width.toFloat(), bottom, shadePaint)
-            canvas.drawRect(left, top, right, bottom, borderPaint)
+            canvas.drawRect(left, top, right, bottom, selectionFillPaint)
+            canvas.drawRect(left, top, right, bottom, outerBorderPaint)
+            canvas.drawRect(left, top, right, bottom, innerBorderPaint)
 
-            canvas.drawCircle(left, top, handleRadiusPx, handlePaint)
-            canvas.drawCircle(right, top, handleRadiusPx, handlePaint)
-            canvas.drawCircle(left, bottom, handleRadiusPx, handlePaint)
-            canvas.drawCircle(right, bottom, handleRadiusPx, handlePaint)
+            listOf(left to top, right to top, left to bottom, right to bottom).forEach { point ->
+                canvas.drawCircle(point.first, point.second, handleOuterRadiusPx, handleOuterPaint)
+                canvas.drawCircle(point.first, point.second, handleInnerRadiusPx, handleInnerPaint)
+            }
         }
 
         val instruction = context.getString(R.string.overlay_drag_instruction)
-        val baseline = dp(44f) - (instructionPaint.ascent() + instructionPaint.descent()) / 2f
+        val horizontalPadding = dp(14f)
+        val pillCenterY = dp(50f)
+        val pillHalfHeight = dp(18f)
+        val pillHalfWidth = instructionPaint.measureText(instruction) / 2f + horizontalPadding
+        canvas.drawRoundRect(
+            width / 2f - pillHalfWidth,
+            pillCenterY - pillHalfHeight,
+            width / 2f + pillHalfWidth,
+            pillCenterY + pillHalfHeight,
+            pillHalfHeight,
+            pillHalfHeight,
+            instructionBackgroundPaint,
+        )
+        val baseline = pillCenterY - (instructionPaint.ascent() + instructionPaint.descent()) / 2f
         canvas.drawText(instruction, width / 2f, baseline, instructionPaint)
     }
 
@@ -156,8 +192,7 @@ class RegionSelectionView @JvmOverloads constructor(
 
                 val result = normalizedRect(startX, startY, currentX, currentY)
                 selectedRegion = if (
-                    result.width() >= minSelectionSizePx &&
-                    result.height() >= minSelectionSizePx
+                    isSelectionSizeAccepted(result.width(), result.height(), minSelectionSizePx)
                 ) {
                     result
                 } else {

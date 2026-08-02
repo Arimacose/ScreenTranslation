@@ -65,23 +65,28 @@ class BergamotTranslationEngine(
         warmRuntime: Boolean,
         onProgress: (ModelPreparationProgress) -> Unit,
         onResult: (Result<Unit>) -> Unit,
-    ) {
+    ): TranslationCall {
         submit(onResult) {
             if (requireWifi) requireWifiTransport()
             val configs = ensureModels(onProgress)
             if (warmRuntime) ensureRuntime(configs, onProgress)
         }
+        return TranslationCall.NONE
     }
 
-    override fun translate(text: String, onResult: (Result<String>) -> Unit) {
+    override fun translate(
+        text: String,
+        onResult: (Result<String>) -> Unit,
+    ): TranslationCall {
         if (text.isBlank()) {
             onResult(Result.success(text))
-            return
+            return TranslationCall.NONE
         }
         submit(onResult) {
             val configs = ensureModels()
             ensureRuntime(configs).translate(text)
         }
+        return TranslationCall.NONE
     }
 
     private fun ensureModels(

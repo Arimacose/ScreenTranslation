@@ -3,6 +3,7 @@ package com.screentranslation.app
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
@@ -31,10 +32,13 @@ import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.prefs.AppPreferences
+import com.screentranslation.app.service.CaptureShortcutNotification
 import com.screentranslation.app.service.ScreenTranslationService
 
 internal enum class BatteryPolicyUiState {
     BACKGROUND_RESTRICTED,
+    HYPER_OS_UNRESTRICTED,
+    HYPER_OS_NOT_UNRESTRICTED,
     AOSP_POWER_ALLOWLISTED,
     VENDOR_POLICY_UNVERIFIED,
 }
@@ -47,10 +51,23 @@ internal enum class BatteryPolicyUiState {
 internal fun resolveBatteryPolicyUiState(
     isBackgroundRestricted: Boolean?,
     isAospPowerAllowlisted: Boolean?,
+    isHyperOsUnrestricted: Boolean? = null,
 ): BatteryPolicyUiState = when {
     isBackgroundRestricted == true -> BatteryPolicyUiState.BACKGROUND_RESTRICTED
+    isHyperOsUnrestricted == true -> BatteryPolicyUiState.HYPER_OS_UNRESTRICTED
+    isHyperOsUnrestricted == false -> BatteryPolicyUiState.HYPER_OS_NOT_UNRESTRICTED
     isAospPowerAllowlisted == true -> BatteryPolicyUiState.AOSP_POWER_ALLOWLISTED
     else -> BatteryPolicyUiState.VENDOR_POLICY_UNVERIFIED
+}
+
+/**
+ * HyperOS 3 stores exact package names selected as “无限制” in a comma-separated
+ * Settings.System value. A null value means the ROM does not expose this signal;
+ * an empty or non-matching value is a confirmed “not selected” state.
+ */
+internal fun isPackageHyperOsUnrestricted(rawPackages: String?, packageName: String): Boolean? {
+    if (rawPackages == null) return null
+    return rawPackages.split(',').any { it.trim() == packageName }
 }
 
 internal fun sourceOptionsForEdition(
@@ -88,6 +105,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var intervalValueView: TextView
     private lateinit var prepareModelsButton: Button
     private lateinit var modelStatusView: TextView
+    private lateinit var onlineSettingsButton: Button
+    private lateinit var onlineConfigStatusView: TextView
     private lateinit var experimentalSmokeTestButton: Button
     private lateinit var experimentalSmokeTestResultView: TextView
     private lateinit var notificationPermissionButton: Button
@@ -119,7 +138,6 @@ class MainActivity : AppCompatActivity() {
     private var pendingStartAfterNotificationPermission = false
     private var pendingStartAfterOverlayPermission = false
     private var projectionRequestInFlight = false
-    private var projectionStoppedNotice = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -136,6 +154,13 @@ class MainActivity : AppCompatActivity() {
     ) {
         refreshPermissionState()
         maybeContinueAfterOverlayPermission()
+    }
+
+    private val onlineSettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        invalidatePreparedModel()
+        refreshOnlineConfigurationStatus()
     }
 
     private val projectionLauncher = registerForActivityResult(
@@ -187,14 +212,13 @@ class MainActivity : AppCompatActivity() {
         configureFrameInterval()
         configureActions()
         refreshPermissionState()
-        handleLaunchIntent(intent)
         setServiceRunningUi(false)
+        refreshOnlineConfigurationStatus()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleLaunchIntent(intent)
         refreshServiceStatus()
     }
 
@@ -204,6 +228,7 @@ class MainActivity : AppCompatActivity() {
             refreshPermissionState()
             maybeContinueAfterOverlayPermission()
             refreshServiceStatus()
+            refreshOnlineConfigurationStatus()
         }
     }
 
@@ -219,7 +244,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindViews() {
         experimentalBannerView = findViewById(R.id.text_experimental_banner)
-        experimentalBannerView.visibility = if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+        experimentalBannerView.visibility = if (
+            BuildConfig.HYMT2_Q4_EXPERIMENTAL || BuildConfig.ONLINE_LLM
+        ) {
             View.VISIBLE
         } else {
             View.GONE
@@ -230,6 +257,8 @@ class MainActivity : AppCompatActivity() {
         intervalValueView = findViewById(R.id.text_frame_interval)
         prepareModelsButton = findViewById(R.id.button_prepare_models)
         modelStatusView = findViewById(R.id.text_model_status)
+        onlineSettingsButton = findViewById(R.id.button_online_settings)
+        onlineConfigStatusView = findViewById(R.id.text_online_config_status)
         experimentalSmokeTestButton = findViewById(R.id.button_experimental_smoke_test)
         experimentalSmokeTestResultView =
             findViewById(R.id.text_experimental_smoke_test_result)
@@ -240,6 +269,9 @@ class MainActivity : AppCompatActivity() {
         }
         experimentalSmokeTestButton.visibility = experimentalVisibility
         experimentalSmokeTestResultView.visibility = experimentalVisibility
+        val onlineVisibility = if (BuildConfig.ONLINE_LLM) View.VISIBLE else View.GONE
+        onlineSettingsButton.visibility = onlineVisibility
+        onlineConfigStatusView.visibility = onlineVisibility
         notificationPermissionButton = findViewById(R.id.button_notification_permission)
         notificationPermissionStatusView =
             findViewById(R.id.text_notification_permission_status)
@@ -355,6 +387,13 @@ class MainActivity : AppCompatActivity() {
         }
         experimentalSmokeTestButton.setOnClickListener {
             runExperimentalSmokeTest()
+        }
+        onlineSettingsButton.setOnClickListener {
+            if (BuildConfig.ONLINE_LLM) {
+                onlineSettingsLauncher.launch(
+                    Intent().setClassName(this, ONLINE_SETTINGS_ACTIVITY_CLASS),
+                )
+            }
         }
         notificationPermissionButton.setOnClickListener {
             requestNotificationPermission()
@@ -627,7 +666,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestProjectionPermission() {
         if (projectionRequestInFlight) return
-        projectionStoppedNotice = false
         projectionRequestInFlight = true
         serviceStatusView.setText(R.string.service_requesting_capture)
 
@@ -735,6 +773,13 @@ class MainActivity : AppCompatActivity() {
             isAospPowerAllowlisted =
                 getSystemService(PowerManager::class.java)
                     ?.isIgnoringBatteryOptimizations(packageName),
+            isHyperOsUnrestricted = isPackageHyperOsUnrestricted(
+                rawPackages = Settings.System.getString(
+                    contentResolver,
+                    HYPER_OS_NO_RESTRICT_SETTING,
+                ),
+                packageName = packageName,
+            ),
         )
 
     private fun maybeContinueAfterOverlayPermission() {
@@ -775,19 +820,27 @@ class MainActivity : AppCompatActivity() {
         )
         overlayPermissionButton.isEnabled = !overlayGranted
 
-        // Keep the button enabled: Android does not expose HyperOS' vendor
-        // policy, so the app must not equate absence from the AOSP allowlist
-        // with the vendor setting being restricted.
+        // Keep this enabled so users can change or review the vendor policy even
+        // after the current HyperOS value has been recognized.
         batteryPolicyStatusView.setText(
             when (batteryPolicyUiState()) {
                 BatteryPolicyUiState.BACKGROUND_RESTRICTED ->
                     R.string.battery_policy_background_restricted
+                BatteryPolicyUiState.HYPER_OS_UNRESTRICTED ->
+                    R.string.battery_policy_hyperos_unrestricted
+                BatteryPolicyUiState.HYPER_OS_NOT_UNRESTRICTED ->
+                    R.string.battery_policy_hyperos_not_unrestricted
                 BatteryPolicyUiState.AOSP_POWER_ALLOWLISTED ->
                     R.string.battery_policy_aosp_allowlisted
                 BatteryPolicyUiState.VENDOR_POLICY_UNVERIFIED ->
                     R.string.battery_policy_vendor_unverified
             },
         )
+        if (ScreenTranslationService.isRunning) {
+            CaptureShortcutNotification.cancel(this)
+        } else {
+            CaptureShortcutNotification.show(this)
+        }
     }
 
     private fun invalidatePreparedModel() {
@@ -858,6 +911,8 @@ class MainActivity : AppCompatActivity() {
         startButton.isEnabled = !running && operationIdle
         stopButton.isEnabled = running
         prepareModelsButton.isEnabled = !running && operationIdle
+        onlineSettingsButton.isEnabled =
+            !running && operationIdle && BuildConfig.ONLINE_LLM
         experimentalSmokeTestButton.isEnabled =
             !running && operationIdle && BuildConfig.HYMT2_Q4_EXPERIMENTAL
         if (running && serviceStatusView.text == getString(R.string.service_idle)) {
@@ -865,10 +920,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleLaunchIntent(launchIntent: Intent?) {
-        if (launchIntent?.getBooleanExtra(EXTRA_PROJECTION_STOPPED, false) == true) {
-            projectionStoppedNotice = true
-            launchIntent.removeExtra(EXTRA_PROJECTION_STOPPED)
+    private fun refreshOnlineConfigurationStatus() {
+        if (!BuildConfig.ONLINE_LLM || !::onlineConfigStatusView.isInitialized) return
+        onlineConfigStatusView.text = runCatching {
+            val bridge = Class.forName(ONLINE_EDITION_BRIDGE_CLASS)
+            val method = bridge.getMethod("configurationSummary", Context::class.java)
+            method.invoke(null, this) as String
+        }.getOrElse {
+            getString(R.string.online_config_status_unavailable)
         }
     }
 
@@ -880,8 +939,7 @@ class MainActivity : AppCompatActivity() {
         serviceStatusView.setText(
             when {
                 serviceRunning -> R.string.service_running
-                projectionStoppedNotice ||
-                    ScreenTranslationService.needsProjectionRestart ->
+                ScreenTranslationService.needsProjectionRestart ->
                     R.string.service_projection_stopped
 
                 else -> R.string.service_idle
@@ -890,9 +948,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        const val EXTRA_PROJECTION_STOPPED =
-            "com.screentranslation.app.extra.PROJECTION_STOPPED"
-
         private val FRAME_INTERVAL_OPTIONS_MS = longArrayOf(
             250L,
             500L,
@@ -913,7 +968,12 @@ class MainActivity : AppCompatActivity() {
         private const val HYPER_OS_APP_DETAILS_ACTIVITY =
             "com.miui.appmanager.ApplicationsDetailsActivity"
         private const val HYPER_OS_APP_DETAILS_PACKAGE_EXTRA = "package_name"
+        private const val HYPER_OS_NO_RESTRICT_SETTING = "MILLET_NO_RESTRICT_APP"
         private const val EXPERIMENTAL_SMOKE_LOG_TAG = "HyMt2Q4Smoke"
+        private const val ONLINE_SETTINGS_ACTIVITY_CLASS =
+            "com.screentranslation.app.online.OnlineSettingsActivity"
+        private const val ONLINE_EDITION_BRIDGE_CLASS =
+            "com.screentranslation.app.online.OnlineEditionBridge"
         private const val EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE = "en"
         private const val EXPERIMENTAL_SMOKE_TARGET_LANGUAGE = "zh"
         private const val EXPERIMENTAL_SMOKE_SOURCE_TEXT =
