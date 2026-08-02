@@ -12,7 +12,7 @@
 | 系统 / ROM | Android 16 / API 36；HyperOS `OS3.0.304.0.WOBCNXM` |
 | 包名 / 版本 | `com.screentranslation.app.online` / versionCode `4` / `0.3.0-online` |
 | R8 QA APK | `app/build/outputs/qa/ScreenTranslation-0.3.0-online-r8-qa.apk` |
-| 大小 / SHA-256 | 43,282,686 B / `25B3D23943BA79DF6EFF7E3BB08787F863EA6BA8A8C2DE65C8BC677C15C27E55` |
+| 大小 / SHA-256 | 43,282,570 B / `A31EEB724331A0CE7AFB8A5BBD585D2CAA3CD46968F24A58E48FE21A10A3D9F4` |
 | QA 签名 / 对齐 | 本机 debug 证书，仅用于真机验收；APK Signature Scheme v2；16 KiB zipalign 通过 |
 | 自动检查 | Lite `83/83`、Full `82/82`、Online `94/94`；三套 Release Lint 均为 0 error |
 | 发布边界 | 产品、构建与仓库均已移除 managed Hy-MT2/项目网关，只保留用户 API Key（BYOK） |
