@@ -4,9 +4,24 @@
     <string name="screen_title">实时识屏翻译</string>
     <string name="screen_subtitle">面向 Android 16 · 默认显示器局部识别与端侧翻译</string>
 
+    <string name="section_appearance">外观</string>
+    <string name="ui_style_label">界面风格</string>
+    <string name="ui_style_hint">立即应用到主页面、模型管理、Online 设置和下一次启动的悬浮翻译层。</string>
+    <string name="ui_style_apple">Apple</string>
+    <string name="ui_style_miuix">MIUIX</string>
+    <string name="ui_style_material3">Material 3</string>
+    <string name="material_monet_label">莫奈动态取色</string>
+    <string name="material_monet_hint">仅用于 Material 3：系统支持时从 Android 16 壁纸色板生成界面配色；关闭后使用项目固定色板。</string>
+    <string name="material_monet_unavailable">当前系统未向 Material Components 提供动态色板，将使用项目固定色板。</string>
+
     <string name="section_translation">翻译设置</string>
     <string name="source_language">屏幕原文语言</string>
     <string name="target_language">翻译目标语言</string>
+    <string name="capture_mode">识别模式</string>
+    <string name="capture_mode_region">框选区域（默认）</string>
+    <string name="capture_mode_full_screen">全屏增量覆盖（Experimental）</string>
+    <string name="capture_mode_region_hint">授权后拖动选择区域，结果显示在可展开面板中。</string>
+    <string name="capture_mode_full_screen_hint">实验功能：只重识别变化分块，并把译文直接覆盖在对应原文上方；本轮尚未完成 HyperOS 真机验收。</string>
     <string name="frame_interval">识别帧间隔</string>
     <string name="frame_interval_value">%1$d 毫秒</string>
     <string name="frame_interval_hint">间隔越短响应越快，但耗电和发热也会增加。</string>
@@ -20,14 +35,38 @@
     <string name="language_spanish">西班牙语</string>
     <string name="language_russian">俄语</string>
 
-    <string name="section_model">离线模型</string>
-    <string name="model_explanation">首次使用一组语言时需要下载翻译模型。准备完成后可在本机处理文本。</string>
+    <string name="section_model">翻译模型</string>
+    <string name="model_explanation">Lite/Full 首次使用语言组合时下载端侧模型；Online 会校验当前 API 配置。准备成功后即可开始识屏。</string>
     <string name="prepare_models">准备当前语言模型</string>
+    <string name="model_prepare_ready">已就绪</string>
     <string name="model_not_prepared">尚未准备当前语言模型</string>
     <string name="model_preparing">正在准备 %1$s → %2$s 模型…</string>
     <string name="model_ready">模型已就绪：%1$s → %2$s</string>
     <string name="model_failed">模型准备失败：%1$s</string>
     <string name="model_same_language">原文语言和目标语言需要不同</string>
+    <string name="model_manage_downloads">管理已下载模型</string>
+    <string name="model_management_title">模型管理</string>
+    <string name="model_management_subtitle">查看固定版本、校验状态与磁盘占用；删除只影响当前 edition 的可下载翻译模型。</string>
+    <string name="model_inventory_loading">正在读取模型状态…</string>
+    <string name="model_inventory_ocr_bundled">PP-OCRv6-small：已随 APK 提供，不占用可删除的下载空间。</string>
+    <string name="model_inventory_online_only">Online 版不下载本地翻译权重；API 模型由所选服务提供。</string>
+    <string name="model_inventory_state">状态：%1$s</string>
+    <string name="model_inventory_size">当前大小：%1$s / 预期：%2$s</string>
+    <string name="model_inventory_size_variable">按已选语对变化</string>
+    <string name="model_inventory_revision">固定版本：%1$s</string>
+    <string name="model_state_not_downloaded">未下载</string>
+    <string name="model_state_partial">下载未完成或待校验</string>
+    <string name="model_state_ready">已准备</string>
+    <string name="model_refresh">刷新状态</string>
+    <string name="model_prepare_current_download">下载或准备当前语言模型</string>
+    <string name="model_delete_downloads">删除已下载翻译模型</string>
+    <string name="model_delete_title">释放模型空间</string>
+    <string name="model_delete_message">将删除当前 edition 的翻译模型和未完成下载；下次使用时需要重新下载。</string>
+    <string name="model_delete_confirm">删除</string>
+    <string name="model_delete_service_running">识屏服务运行中，停止服务后可删除模型。</string>
+    <string name="model_deleting">正在删除模型文件…</string>
+    <string name="model_delete_success">已释放 %1$s。</string>
+    <string name="model_delete_failed">删除失败：%1$s</string>
     <string name="unknown_error">未知错误</string>
     <string name="online_settings">配置 Online 翻译服务</string>
     <string name="online_config_status_unavailable">Online 配置状态暂不可用</string>
@@ -55,7 +94,7 @@
     <string name="battery_policy_vendor_unverified">系统后台限制：未检测到；HyperOS「无限制」状态请以设置页为准</string>
 
     <string name="section_capture">开始识别</string>
-    <string name="capture_explanation">系统将只共享默认显示器。授权后，请拖动蓝框选择要持续识别的区域。</string>
+    <string name="capture_explanation">系统只共享默认显示器；实际交互由上方所选识别模式决定。</string>
     <string name="start_translation">开始识屏翻译</string>
     <string name="stop_translation">停止</string>
     <string name="service_idle">未运行</string>
@@ -76,12 +115,20 @@
     <string name="overlay_status_idle">已收起。切换到目标应用后，点「重选区域」开始识别</string>
     <string name="overlay_expand">展开</string>
     <string name="overlay_collapse">收起</string>
+    <string name="overlay_copy_original">复制原文</string>
+    <string name="overlay_copy_translation">复制译文</string>
+    <string name="overlay_clipboard_original_label">识屏翻译原文</string>
+    <string name="overlay_clipboard_translation_label">识屏翻译译文</string>
+    <string name="overlay_copy_success">已复制到剪贴板</string>
     <string name="overlay_status_running">正在识别</string>
     <string name="overlay_waiting_for_text">等待识别原文…</string>
     <string name="overlay_waiting_for_translation">等待翻译结果…</string>
-    <string name="translation_attribution">Powered by Google Translate</string>
+    <string name="translation_attribution">译文由当前 edition 所选后端生成</string>
     <string name="overlay_reselect">重选区域</string>
     <string name="overlay_stop">停止</string>
+    <string name="full_screen_overlay_starting">全屏增量翻译准备中</string>
+    <string name="full_screen_overlay_window_title">全屏增量译文层</string>
+    <string name="full_screen_control_window_title">全屏增量翻译控制条</string>
 
     <string name="experimental_banner">EXPERIMENTAL build</string>
     <string name="model_progress_preparing">正在准备离线翻译模型…</string>
@@ -96,6 +143,7 @@
     <string name="experimental_smoke_test_failed">集成自检失败（%1$d ms）：%2$s</string>
     <string name="capture_notification_title">识屏翻译正在运行</string>
     <string name="capture_notification_text">点按悬浮窗可重新框选，或在此停止</string>
+    <string name="capture_notification_text_full_screen">全屏增量覆盖运行中；可在通知或顶部控制条停止</string>
     <string name="capture_notification_stop">停止</string>
     <string name="capture_channel_name">识屏翻译</string>
     <string name="capture_channel_description">保持屏幕捕获和翻译运行</string>

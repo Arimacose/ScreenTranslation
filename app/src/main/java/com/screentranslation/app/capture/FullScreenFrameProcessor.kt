@@ -1,0 +1,484 @@
+package com.screentranslation.app.capture
+
+import android.graphics.Bitmap
+import android.graphics.RectF
+import android.media.ImageReader
+import android.os.SystemClock
+import com.screentranslation.app.ml.OcrEngine
+import com.screentranslation.app.ml.TranslationBackend
+import com.screentranslation.app.ml.TranslationCall
+import com.screentranslation.app.util.ProtectedTextCodec
+import java.util.concurrent.CancellationException
+import kotlin.math.max
+
+/**
+ * Experimental full-screen pipeline.
+ *
+ * A low-resolution luminance pass identifies changed tiles before OCR. Dirty
+ * tiles receive one forced verification pass, block identity is preserved by
+ * geometry/text matching, and only stable changed blocks enter a single-flight
+ * translation queue. Results retain normalized screen geometry for overlays.
+ */
+class FullScreenFrameProcessor(
+    private val ocrEngine: OcrEngine,
+    private val translationEngine: TranslationBackend,
+    frameIntervalMs: Long,
+    private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
+    private val onError: (Throwable) -> Unit = {},
+    elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
+) : FramePipeline {
+    data class TranslatedScreenBlock(
+        val id: Long,
+        val originalText: String,
+        val translatedText: String,
+        val bounds: NormalizedBounds,
+    )
+
+    private data class TranslationValue(val sourceText: String, val translatedText: String)
+
+    private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
+    private val adaptiveInterval = AdaptiveFrameInterval(frameIntervalMs)
+    private val signatureDiffer = TileSignatureDiffer()
+    private val blockTracker = IncrementalBlockTracker()
+    private val tileBlocks = mutableMapOf<Int, List<ScreenTextBlock>>()
+    private val translations = mutableMapOf<Long, TranslationValue>()
+    private var verificationTiles = emptySet<Int>()
+    private var enabled = true
+    @Volatile
+    private var currentBlocks = emptyList<TrackedScreenTextBlock>()
+    private val translationQueue = BlockTranslationQueue(
+        backend = translationEngine,
+        onTranslation = { id, source, translation ->
+            synchronized(translations) {
+                translations[id] = TranslationValue(source, translation)
+            }
+            publishBlocks()
+        },
+        onError = onError,
+    )
+
+    override fun setEnabled(value: Boolean) {
+        if (enabled == value) return
+        enabled = value
+        gate.setEnabled(value)
+        if (value) {
+            translationQueue.resume()
+        } else {
+            translationQueue.pause()
+            clearTrackingState()
+        }
+    }
+
+    override fun resetStability() {
+        gate.invalidate()
+        clearTrackingState()
+    }
+
+    private fun clearTrackingState() {
+        signatureDiffer.reset()
+        blockTracker.reset()
+        adaptiveInterval.reset()
+        gate.setFrameIntervalMs(adaptiveInterval.currentIntervalMs)
+        tileBlocks.clear()
+        verificationTiles = emptySet()
+        currentBlocks = emptyList()
+        translationQueue.reset()
+        synchronized(translations) { translations.clear() }
+        onBlocks(emptyList())
+    }
+
+    override fun onImageAvailable(
+        reader: ImageReader,
+        normalizedRegion: RectF,
+        normalizedExclusion: RectF?,
+    ) {
+        val image = try {
+            reader.acquireLatestImage()
+        } catch (error: IllegalStateException) {
+            if (!gate.isClosed) onError(error)
+            return
+        } ?: return
+
+        val generation = gate.tryAcquire()
+        if (generation == null) {
+            image.close()
+            return
+        }
+
+        val bitmap = try {
+            image.use { BitmapExtractor.extract(it) }
+        } catch (error: Throwable) {
+            gate.release()
+            onError(error)
+            return
+        }
+
+        val tiles = ScreenTileGrid.create(bitmap.width, bitmap.height)
+        val signatures = tileSignatures(bitmap, tiles)
+        val changes = signatureDiffer.compare(signatures, verificationTiles)
+        gate.setFrameIntervalMs(
+            adaptiveInterval.recordChanged(changes.natural.isNotEmpty()),
+        )
+        if (changes.all.isEmpty()) {
+            bitmap.recycleSafely()
+            gate.release()
+            return
+        }
+
+        val tileIndices = changes.all.sorted()
+        if (tileIndices.size >= FULL_FRAME_OCR_TILE_THRESHOLD) {
+            recognizeWholeFrame(bitmap, tiles, naturallyChanged = changes.natural, generation)
+        } else {
+            recognizeTiles(
+                bitmap = bitmap,
+                tiles = tiles,
+                tileIndices = tileIndices,
+                naturallyChanged = changes.natural,
+                generation = generation,
+            )
+        }
+    }
+
+    /** A single full-frame inference is cheaper than starting many independent tile runs. */
+    private fun recognizeWholeFrame(
+        bitmap: Bitmap,
+        tiles: List<PixelTile>,
+        naturallyChanged: Set<Int>,
+        generation: Long,
+    ) {
+        ocrEngine.recognize(bitmap) { result ->
+            if (!gate.isCurrent(generation)) {
+                bitmap.recycleSafely()
+                gate.release()
+                return@recognize
+            }
+            result.fold(
+                onSuccess = { recognition ->
+                    val grouped = tiles.associate { it.index to mutableListOf<ScreenTextBlock>() }
+                    recognition.regions.forEach { region ->
+                        val bounds = NormalizedBounds(
+                            left = region.left,
+                            top = region.top,
+                            right = region.right,
+                            bottom = region.bottom,
+                        )
+                        val centerX = bounds.centerX * bitmap.width
+                        val centerY = bounds.centerY * bitmap.height
+                        val owner = tiles.firstOrNull { it.contains(centerX, centerY) }
+                        if (owner != null) {
+                            grouped.getValue(owner.index) += ScreenTextBlock(
+                                region.text,
+                                bounds,
+                                region.confidence,
+                            )
+                        }
+                    }
+                    grouped.forEach { (index, blocks) -> tileBlocks[index] = blocks }
+                    bitmap.recycleSafely()
+                    finishRecognition(naturallyChanged, generation)
+                },
+                onFailure = { error ->
+                    bitmap.recycleSafely()
+                    gate.release()
+                    onError(error)
+                },
+            )
+        }
+    }
+
+    private fun recognizeTiles(
+        bitmap: Bitmap,
+        tiles: List<PixelTile>,
+        tileIndices: List<Int>,
+        naturallyChanged: Set<Int>,
+        generation: Long,
+        position: Int = 0,
+    ) {
+        if (!gate.isCurrent(generation)) {
+            bitmap.recycleSafely()
+            gate.release()
+            return
+        }
+        if (position >= tileIndices.size) {
+            bitmap.recycleSafely()
+            finishRecognition(naturallyChanged, generation)
+            return
+        }
+
+        val baseTile = tiles[tileIndices[position]]
+        val cropTile = expandedTile(baseTile, bitmap.width, bitmap.height)
+        val crop = Bitmap.createBitmap(
+            bitmap,
+            cropTile.left,
+            cropTile.top,
+            cropTile.width,
+            cropTile.height,
+        )
+        ocrEngine.recognize(crop) { result ->
+            crop.recycleSafely()
+            if (!gate.isCurrent(generation)) {
+                bitmap.recycleSafely()
+                gate.release()
+                return@recognize
+            }
+            result.fold(
+                onSuccess = { recognition ->
+                    tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
+                        val bounds = mapTileRegionToScreen(
+                            tileCrop = cropTile,
+                            frameWidth = bitmap.width,
+                            frameHeight = bitmap.height,
+                            left = region.left,
+                            top = region.top,
+                            right = region.right,
+                            bottom = region.bottom,
+                        )
+                        val centerX = bounds.centerX * bitmap.width
+                        val centerY = bounds.centerY * bitmap.height
+                        if (!baseTile.contains(centerX, centerY)) {
+                            null
+                        } else {
+                            ScreenTextBlock(region.text, bounds, region.confidence)
+                        }
+                    }
+                    recognizeTiles(
+                        bitmap,
+                        tiles,
+                        tileIndices,
+                        naturallyChanged,
+                        generation,
+                        position + 1,
+                    )
+                },
+                onFailure = { error ->
+                    bitmap.recycleSafely()
+                    gate.release()
+                    onError(error)
+                },
+            )
+        }
+    }
+
+    private fun finishRecognition(naturallyChanged: Set<Int>, generation: Long) {
+        if (!gate.isCurrent(generation)) {
+            gate.release()
+            return
+        }
+        currentBlocks = blockTracker.update(tileBlocks.values.flatten())
+        verificationTiles = verificationTileIndices(naturallyChanged, currentBlocks)
+        val activeIds = currentBlocks.mapTo(linkedSetOf()) { it.id }
+        synchronized(translations) { translations.keys.retainAll(activeIds) }
+        translationQueue.synchronize(activeIds)
+        publishBlocks()
+
+        currentBlocks.asSequence()
+            .filter { it.isStable && it.text.isNotBlank() }
+            .filter { block ->
+                synchronized(translations) { translations[block.id]?.sourceText != block.text }
+            }
+            .take(MAX_CHANGED_BLOCKS_PER_SCAN)
+            .forEach { block -> translationQueue.submit(block.id, block.text) }
+        gate.release()
+    }
+
+    private fun publishBlocks() {
+        if (gate.isClosed) return
+        val snapshot = synchronized(translations) { translations.toMap() }
+        onBlocks(
+            currentBlocks.mapNotNull { block ->
+                val translation = snapshot[block.id]
+                    ?.takeIf { it.sourceText == block.text }
+                    ?: return@mapNotNull null
+                TranslatedScreenBlock(
+                    id = block.id,
+                    originalText = block.text,
+                    translatedText = translation.translatedText,
+                    bounds = block.bounds,
+                )
+            },
+        )
+    }
+
+    private fun tileSignatures(bitmap: Bitmap, tiles: List<PixelTile>): List<IntArray> {
+        val thumbnailWidth = max(1, bitmap.width / SIGNATURE_SCALE_DIVISOR)
+        val thumbnailHeight = max(1, bitmap.height / SIGNATURE_SCALE_DIVISOR)
+        val thumbnail = Bitmap.createScaledBitmap(bitmap, thumbnailWidth, thumbnailHeight, true)
+        return try {
+            val pixels = IntArray(thumbnailWidth * thumbnailHeight)
+            thumbnail.getPixels(pixels, 0, thumbnailWidth, 0, 0, thumbnailWidth, thumbnailHeight)
+            tiles.map { tile ->
+                val left = tile.left * thumbnailWidth / bitmap.width
+                val top = tile.top * thumbnailHeight / bitmap.height
+                val right = max(left + 1, tile.right * thumbnailWidth / bitmap.width)
+                val bottom = max(top + 1, tile.bottom * thumbnailHeight / bitmap.height)
+                IntArray((right - left) * (bottom - top)).also { signature ->
+                    var output = 0
+                    for (y in top until bottom) {
+                        for (x in left until right) {
+                            val color = pixels[y * thumbnailWidth + x]
+                            val red = (color ushr 16) and 0xFF
+                            val green = (color ushr 8) and 0xFF
+                            val blue = color and 0xFF
+                            signature[output++] = (red * 77 + green * 150 + blue * 29) ushr 8
+                        }
+                    }
+                }
+            }
+        } finally {
+            if (thumbnail !== bitmap) thumbnail.recycleSafely()
+        }
+    }
+
+    private fun expandedTile(tile: PixelTile, width: Int, height: Int): PixelTile {
+        val margin = max(MIN_TILE_OVERLAP_PX, minOf(width, height) / 80)
+        return tile.copy(
+            left = (tile.left - margin).coerceAtLeast(0),
+            top = (tile.top - margin).coerceAtLeast(0),
+            right = (tile.right + margin).coerceAtMost(width),
+            bottom = (tile.bottom + margin).coerceAtMost(height),
+        )
+    }
+
+    override fun close() {
+        if (gate.isClosed) return
+        gate.close()
+        translationQueue.close()
+        blockTracker.reset()
+        tileBlocks.clear()
+        synchronized(translations) { translations.clear() }
+    }
+
+    private fun Bitmap.recycleSafely() {
+        if (!isRecycled) recycle()
+    }
+
+    private companion object {
+        private const val SIGNATURE_SCALE_DIVISOR = 4
+        private const val MIN_TILE_OVERLAP_PX = 16
+        private const val MAX_CHANGED_BLOCKS_PER_SCAN = 12
+        private const val FULL_FRAME_OCR_TILE_THRESHOLD = 6
+    }
+}
+
+internal class BlockTranslationQueue(
+    private val backend: TranslationBackend,
+    private val onTranslation: (Long, String, String) -> Unit,
+    private val onError: (Throwable) -> Unit,
+) : AutoCloseable {
+    private data class Work(val id: Long, val text: String)
+    private data class Active(val token: Long, val work: Work, var call: TranslationCall)
+
+    private val pending = linkedMapOf<Long, Work>()
+    private val cache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =
+            size > 64
+    }
+    private var active: Active? = null
+    private var nextToken = 1L
+    private var paused = false
+    private var closed = false
+
+    fun submit(id: Long, text: String) {
+        var callToCancel: TranslationCall? = null
+        synchronized(this) {
+            if (closed) return
+            val current = active
+            if (current?.work?.id == id) {
+                if (current.work.text == text) return
+                active = null
+                callToCancel = current.call
+            }
+            pending[id] = Work(id, text)
+        }
+        callToCancel?.cancel()
+        pump()
+    }
+
+    fun synchronize(activeIds: Set<Long>) {
+        var callToCancel: TranslationCall? = null
+        synchronized(this) {
+            pending.keys.retainAll(activeIds)
+            val current = active
+            if (current != null && current.work.id !in activeIds) {
+                active = null
+                callToCancel = current.call
+            }
+        }
+        callToCancel?.cancel()
+        pump()
+    }
+
+    fun pause() {
+        synchronized(this) { paused = true }
+    }
+
+    fun resume() {
+        synchronized(this) {
+            if (closed) return
+            paused = false
+        }
+        pump()
+    }
+
+    fun reset() {
+        val call = synchronized(this) {
+            pending.clear()
+            active?.call.also { active = null }
+        }
+        call?.cancel()
+    }
+
+    private fun pump() {
+        val activeWork = synchronized(this) {
+            if (closed || paused || active != null || pending.isEmpty()) return
+            val work = pending.entries.first().also { pending.remove(it.key) }.value
+            Active(nextToken++, work, TranslationCall.NONE).also { active = it }
+        }
+        val cached = synchronized(cache) { cache[activeWork.work.text] }
+        if (cached != null) {
+            complete(activeWork.token, Result.success(cached))
+            return
+        }
+
+        val protected = ProtectedTextCodec.protect(activeWork.work.text)
+        val call = backend.translate(protected.encoded) { result ->
+            complete(activeWork.token, result.map(protected::restore))
+        }
+        synchronized(this) {
+            if (active?.token == activeWork.token) {
+                active?.call = call
+            } else {
+                call.cancel()
+            }
+        }
+    }
+
+    private fun complete(token: Long, result: Result<String>) {
+        val work = synchronized(this) {
+            val current = active?.takeIf { it.token == token } ?: return
+            active = null
+            current.work
+        }
+        result.fold(
+            onSuccess = { translated ->
+                synchronized(cache) { cache[work.text] = translated }
+                onTranslation(work.id, work.text, translated)
+            },
+            onFailure = { error ->
+                if (error !is CancellationException) onError(error)
+            },
+        )
+        pump()
+    }
+
+    override fun close() {
+        val call = synchronized(this) {
+            if (closed) return
+            closed = true
+            pending.clear()
+            active?.call.also { active = null }
+        }
+        call?.cancel()
+        synchronized(cache) { cache.clear() }
+    }
+}

@@ -28,6 +28,15 @@
 -keep class com.screentranslation.app.ml.OnlineLlmTranslationEngine {
     public <init>(android.content.Context, java.lang.String, java.lang.String);
 }
+-keep class com.screentranslation.app.model.BergamotModelStorageManager {
+    public <init>(android.content.Context);
+}
+-keep class com.screentranslation.app.model.HyMt2ModelStorageManager {
+    public <init>(android.content.Context);
+}
+-keep class com.screentranslation.app.model.OnlineModelStorageManager {
+    public <init>(android.content.Context);
+}
 -keep class com.screentranslation.app.online.OnlineEditionBridge {
     public static java.lang.String configurationSummary(android.content.Context);
     public static boolean isConfigurationReady(android.content.Context);

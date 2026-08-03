@@ -2,155 +2,221 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="20dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="40dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/online_settings_title"
-            android:textAppearance="?android:attr/textAppearanceLarge"
-            android:textStyle="bold" />
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.PageTitle" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:text="@string/online_settings_explanation"
-            android:textColor="?android:attr/textColorSecondary" />
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
 
-        <LinearLayout
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="4dp"
+            android:text="@string/online_section_connection"
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Section" />
 
-            <EditText
-                android:id="@+id/edit_online_base_url"
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.ScreenTranslation.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:hint="@string/online_base_url_hint"
-                android:importantForAutofill="no"
-                android:inputType="textUri"
-                android:maxLines="2" />
+                android:orientation="vertical"
+                android:padding="16dp">
 
-            <EditText
-                android:id="@+id/edit_online_api_key"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:autofillHints="password"
-                android:hint="@string/online_api_key_hint"
-                android:importantForAutofill="no"
-                android:inputType="textPassword"
-                android:maxLines="1" />
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.ScreenTranslation.Input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/online_base_url_hint">
 
-            <TextView
-                android:id="@+id/text_online_key_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textAppearance="?android:attr/textAppearanceSmall"
-                android:textColor="?android:attr/textColorSecondary" />
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/edit_online_base_url"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:importantForAutofill="no"
+                        android:inputType="textUri"
+                        android:maxLines="2" />
+                </com.google.android.material.textfield.TextInputLayout>
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/online_endpoint_path_help"
-                android:textAppearance="?android:attr/textAppearanceSmall"
-                android:textColor="?android:attr/textColorSecondary" />
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.ScreenTranslation.Input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:hint="@string/online_api_key_hint">
 
-            <Button
-                android:id="@+id/button_online_fetch_models"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/online_fetch_models"
-                android:textAllCaps="false" />
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/edit_online_api_key"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:autofillHints="password"
+                        android:importantForAutofill="no"
+                        android:inputType="textPassword"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:labelFor="@id/spinner_online_model"
-                android:text="@string/online_model_selection_label"
-                android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/text_online_key_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
 
-            <Spinner
-                android:id="@+id/spinner_online_model"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:enabled="false"
-                android:minHeight="48dp"
-                android:spinnerMode="dropdown" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/online_endpoint_path_help"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
 
-            <TextView
-                android:id="@+id/text_online_model_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:accessibilityLiveRegion="polite"
-                android:text="@string/online_models_not_loaded"
-                android:textAppearance="?android:attr/textAppearanceSmall"
-                android:textColor="?android:attr/textColorSecondary" />
-        </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_online_fetch_models"
+                    style="@style/Widget.ScreenTranslation.Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/online_fetch_models" />
 
-        <CheckBox
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="14dp"
+                    android:background="?attr/colorOutlineVariant" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@id/spinner_online_model"
+                    android:text="@string/online_model_selection_label"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                    android:textStyle="bold" />
+
+                <Spinner
+                    android:id="@+id/spinner_online_model"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:enabled="false"
+                    android:spinnerMode="dropdown" />
+
+                <TextView
+                    android:id="@+id/text_online_model_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:text="@string/online_models_not_loaded"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.checkbox.MaterialCheckBox
             android:id="@+id/check_online_consent"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="12dp"
+            android:minHeight="48dp"
             android:text="@string/online_user_data_flow_consent" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/button_online_save"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/online_save"
-            android:textAllCaps="false" />
-
-        <EditText
-            android:id="@+id/edit_online_test_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:gravity="top|start"
-            android:hint="@string/online_test_text_hint"
-            android:importantForAutofill="no"
-            android:inputType="textMultiLine"
-            android:minLines="3" />
-
-        <Button
-            android:id="@+id/button_online_save_test"
+            style="@style/Widget.ScreenTranslation.Button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="@string/online_save_and_test"
-            android:textAllCaps="false" />
-
-        <Button
-            android:id="@+id/button_online_delete_key"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/online_delete_key"
-            android:textAllCaps="false" />
+            android:text="@string/online_save" />
 
         <TextView
-            android:id="@+id/text_online_result"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="4dp"
+            android:text="@string/online_section_test"
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Section" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.ScreenTranslation.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.ScreenTranslation.Input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/online_test_text_hint">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/edit_online_test_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="top|start"
+                        android:importantForAutofill="no"
+                        android:inputType="textMultiLine"
+                        android:minLines="3" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_online_save_test"
+                    style="@style/Widget.ScreenTranslation.Button.Outlined"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/online_save_and_test" />
+
+                <TextView
+                    android:id="@+id/text_online_result"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:background="@drawable/bg_status_pill"
+                    android:padding="10dp"
+                    android:text="@string/online_not_tested"
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:textColor="?attr/colorOnPrimaryContainer"
+                    android:textIsSelectable="true" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_online_delete_key"
+            style="@style/Widget.ScreenTranslation.Button.Danger"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:accessibilityLiveRegion="polite"
-            android:text="@string/online_not_tested"
-            android:textIsSelectable="true" />
+            android:text="@string/online_delete_key" />
     </LinearLayout>
 </ScrollView>

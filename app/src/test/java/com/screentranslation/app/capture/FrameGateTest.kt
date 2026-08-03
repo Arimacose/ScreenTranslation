@@ -76,6 +76,19 @@ class FrameGateTest {
     }
 
     @Test
+    fun `adaptive interval changes affect the next admission`() {
+        val gate = gate(intervalMs = 100L)
+        assertNotNull(gate.tryAcquire())
+        gate.release()
+
+        gate.setFrameIntervalMs(500L)
+        now += 499L
+        assertNull(gate.tryAcquire())
+        now += 1L
+        assertNotNull(gate.tryAcquire())
+    }
+
+    @Test
     fun `drops frames while disabled and resumes when re-enabled`() {
         val gate = gate(intervalMs = 0L)
 
@@ -96,6 +109,18 @@ class FrameGateTest {
 
         gate.setEnabled(true)
         assertNotNull("release while disabled must still free the slot", gate.tryAcquire())
+    }
+
+    @Test
+    fun `disable invalidates in-flight work even after a later resume`() {
+        val gate = gate(intervalMs = 0L)
+        val stale = gate.tryAcquire()
+        assertNotNull(stale)
+
+        gate.setEnabled(false)
+        gate.setEnabled(true)
+
+        assertFalse(gate.isCurrent(stale!!))
     }
 
     @Test

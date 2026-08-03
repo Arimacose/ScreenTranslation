@@ -3,6 +3,8 @@ package com.screentranslation.app.prefs
 import android.content.Context
 import androidx.core.content.edit
 import com.screentranslation.app.model.LanguageOption
+import com.screentranslation.app.model.CaptureMode
+import com.screentranslation.app.model.UiStyle
 
 /**
  * Small, process-safe configuration surface shared by the activity and service.
@@ -43,10 +45,33 @@ class AppPreferences(context: Context) {
             }
         }
 
+    var captureMode: CaptureMode
+        get() = CaptureMode.fromPersisted(
+            preferences.getString(KEY_CAPTURE_MODE, CaptureMode.REGION.persistedValue),
+        )
+        set(value) {
+            preferences.edit { putString(KEY_CAPTURE_MODE, value.persistedValue) }
+        }
+
+    var uiStyle: UiStyle
+        get() = UiStyle.fromPersisted(
+            preferences.getString(KEY_UI_STYLE, UiStyle.DEFAULT.persistedValue),
+        )
+        set(value) {
+            preferences.edit { putString(KEY_UI_STYLE, value.persistedValue) }
+        }
+
+    var materialMonetEnabled: Boolean
+        get() = preferences.getBoolean(KEY_MATERIAL_MONET_ENABLED, true)
+        set(value) {
+            preferences.edit { putBoolean(KEY_MATERIAL_MONET_ENABLED, value) }
+        }
+
     fun save(
         sourceLanguage: String,
         targetLanguage: String,
         frameIntervalMs: Long,
+        captureMode: CaptureMode,
     ) {
         preferences.edit {
             putString(KEY_SOURCE_LANGUAGE, sourceLanguage)
@@ -55,6 +80,7 @@ class AppPreferences(context: Context) {
                 KEY_FRAME_INTERVAL_MS,
                 frameIntervalMs.coerceIn(MIN_FRAME_INTERVAL_MS, MAX_FRAME_INTERVAL_MS),
             )
+            putString(KEY_CAPTURE_MODE, captureMode.persistedValue)
         }
     }
 
@@ -67,5 +93,8 @@ class AppPreferences(context: Context) {
         private const val KEY_SOURCE_LANGUAGE = "source_language"
         private const val KEY_TARGET_LANGUAGE = "target_language"
         private const val KEY_FRAME_INTERVAL_MS = "frame_interval_ms"
+        private const val KEY_CAPTURE_MODE = "capture_mode"
+        private const val KEY_UI_STYLE = "ui_style"
+        private const val KEY_MATERIAL_MONET_ENABLED = "material_monet_enabled"
     }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="screenCardCornerRadius" format="dimension" />
+    <attr name="screenControlCornerRadius" format="dimension" />
+    <attr name="screenCardElevation" format="dimension" />
+    <attr name="screenCardStrokeWidth" format="dimension" />
+    <attr name="screenControlMinHeight" format="dimension" />
+    <attr name="screenHeroColor" format="color" />
+</resources>

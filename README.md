@@ -1,22 +1,43 @@
 # ScreenTranslation
 
-面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面，只裁剪用户框选区域，在本机执行 OCR，并按所选 edition 进行端侧或在线翻译后用悬浮窗显示结果。
+**简体中文** | [English](README.en.md)
+
+> 下一版本已加入三套可切换界面：Apple 风格默认候选、MIUIX，以及支持可关闭
+> Monet 动态取色的 Material 3。参见 [UI 风格设计与边界](docs/UI_STYLES.md)。
+
+![Apple、MIUIX 与 Material 3 静态设计预览](docs/assets/ui-style-comparison.png)
+
+面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面；默认只裁剪用户框选区域，Experimental 模式则对全屏变化分块增量识别。在本机完成 OCR 后，应用按所选 edition 进行端侧或在线翻译并用悬浮层显示结果。
 
 > 项目状态：`0.x` 实验阶段。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
+## 30 秒工作流预览
+
+![ScreenTranslation 工作流预览](docs/assets/demo-preview.gif)
+
+该动画由 [`scripts/generate_demo_preview.py`](scripts/generate_demo_preview.py)
+从仓库当前 UI 规则确定性生成，用于展示交互目标，**不是真机录屏**。全屏增量覆盖模式
+仍需在目标 HyperOS 签名 Release 上完成后续真机验收。
+
 ## 功能
 
 - 用系统 `MediaProjection` 授权捕获屏幕，不使用无障碍服务。
 - 可拖拽框选识别区域，并可调节采样间隔。
+- 保留“框选区域”为默认模式；新增 **全屏增量覆盖（Experimental）**：按 `3×6`
+  分块检测画面变化，只对脏块 OCR，跨帧跟踪文字框，并把译文直接覆盖在对应原文上方。
+- 静态画面自动降低采样频率，检测到变化后恢复用户设置的活跃频率。
+- 翻译前保护 URL、邮箱、日期、金额和版本号，翻译后恢复原值。
+- 结果面板可分别复制原文和译文；模型管理页可查看状态、大小、固定版本，直接发起当前语言模型准备，并删除下载权重。准备成功后主页面按钮变为灰色不可点击的“已就绪”，切换语言对或配置后恢复。
 - 内置 PP-OCRv6 small 多语言检测/识别模型，通过 ONNX Runtime 在设备端运行。
 - **Lite · Bergamot**：英语直译中文、日语经英语级联译中文；保留 v0.1.0
   包名并支持签名升级。
 - **Full · HY-MT2 Q4 Experimental**：多语言直接译为简体中文，使用独立
   `.full` 包名，可与 Lite 并存安装。
 - **Online · BYOK API**：使用独立 `.online` 包名；填写 OpenAI-compatible
-  HTTPS Base URL 与 API Key，自动拉取模型后翻译，只发送稳定后的整段 OCR 文本。
+  HTTPS Base URL 与 API Key，自动拉取模型后翻译；区域模式发送稳定整段文字，
+  全屏模式只发送稳定的变化文字块，不发送截图或坐标。
 - Lite/Full 的翻译模型按需下载、校验后在设备端推理；Online 不携带翻译模型；
   模型权重均不进入 APK/AAB。
 - 三个 APK/AAB 都内嵌适用的完整第三方许可证与 notices；GitHub Release
@@ -24,6 +45,9 @@
 - 文本稳定后才触发翻译，避免同一画面反复识别与闪烁。
 - 前台服务常驻通知明确显示捕获状态，可从应用或系统界面停止。
 - 明暗主题、Android 16 edge-to-edge 及 HyperOS 悬浮窗权限流程。
+- Online 对 401/403、429、超时、DNS/TLS、端点/模型和响应格式给出可执行提示；
+  HTTP 408/429/502/503/504 与可恢复的一般 I/O 失败做一次有界重试，生成超时、
+  DNS 和 TLS 错误不重试。
 
 ## 技术基线
 
@@ -113,7 +137,8 @@ llama-android/                        # JNI/Kotlin Android 推理封装
 third_party/llama.cpp/                # 固定提交的 Git submodule
 ```
 
-设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，真机验收见
+设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，全屏增量算法与未验收
+门禁见 [`docs/FULL_SCREEN_INCREMENTAL_DESIGN.md`](docs/FULL_SCREEN_INCREMENTAL_DESIGN.md)，真机验收见
 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)，PP-OCRv6 与候选翻译模型的可复现
 数据见 [`docs/MODEL_BENCHMARK_2026-07-28.md`](docs/MODEL_BENCHMARK_2026-07-28.md)，
 Bergamot Android 核心 PoC 见
@@ -329,7 +354,8 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
   `/models` 返回的是账号可见模型，不保证每个模型都接受 Chat Completions，需使用
   “保存并测试翻译”验证所选模型；
   当前已覆盖 DeepSeek V4-Flash 的真实 API、长句真机持续识屏闭环、长响应超时策略
-  与正常网络回归；401/429、latest-wins 压力和长时间运行仍按
+  与正常网络回归；localhost HTTPS 契约测试已覆盖 401/429/超时，真实服务限流、
+  latest-wins 压力和长时间运行仍按
   `docs/ONLINE_TRANSLATION_DESIGN.md` 的验收矩阵继续执行。
 ## 开源维护
 

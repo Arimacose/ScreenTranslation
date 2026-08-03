@@ -1,6 +1,9 @@
 package com.screentranslation.app.overlay
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -19,8 +22,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import com.google.android.material.button.MaterialButton
 import com.screentranslation.app.R
 import com.screentranslation.app.SelectionGestureGuardActivity
 
@@ -69,6 +74,7 @@ class OverlayController(
     private val windowManager =
         appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val visualStyle = resolveOverlayVisualStyle(appContext)
 
     private var rootView: FrameLayout? = null
     private var selectionView: RegionSelectionView? = null
@@ -80,6 +86,8 @@ class OverlayController(
     private var textScrollView: ScrollView? = null
     private var reselectButton: Button? = null
     private var expandButton: Button? = null
+    private var copyOriginalButton: Button? = null
+    private var copyTranslationButton: Button? = null
     private var textExpanded = false
     private var layoutParams: WindowManager.LayoutParams? = null
     private var selectedRegion: Rect? = null
@@ -223,6 +231,8 @@ class OverlayController(
             translationView?.text = translation.ifBlank {
                 appContext.getString(R.string.overlay_waiting_for_translation)
             }
+            copyOriginalButton?.isEnabled = original.isNotBlank()
+            copyTranslationButton?.isEnabled = translation.isNotBlank()
             rootView?.post { dispatchOverlayBounds() }
         }
     }
@@ -288,6 +298,8 @@ class OverlayController(
         applyTextExpansion()
         textScrollView?.visibility = if (showResults) View.VISIBLE else View.GONE
         attributionView?.visibility = if (showResults) View.VISIBLE else View.GONE
+        copyOriginalButton?.visibility = if (showResults) View.VISIBLE else View.GONE
+        copyTranslationButton?.visibility = if (showResults) View.VISIBLE else View.GONE
         expandButton?.visibility = if (showResults) View.VISIBLE else View.GONE
         reselectButton?.visibility = View.VISIBLE
 
@@ -380,9 +392,9 @@ class OverlayController(
     private fun createControlPanel(): LinearLayout {
         val panelBackground = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(18).toFloat()
-            setColor(Color.argb(242, 24, 24, 27))
-            setStroke(dp(1), Color.argb(150, 82, 82, 91))
+            cornerRadius = dp(visualStyle.panelCornerDp).toFloat()
+            setColor(visualStyle.panelColor)
+            setStroke(dp(1), visualStyle.panelStrokeColor)
         }
 
         val panel = LinearLayout(appContext).apply {
@@ -398,20 +410,20 @@ class OverlayController(
 
         statusView = TextView(appContext).apply {
             text = appContext.getString(R.string.overlay_status_running)
-            setTextColor(Color.rgb(147, 197, 253))
+            setTextColor(visualStyle.statusTextColor)
             textSize = 12f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
         originalView = TextView(appContext).apply {
             text = appContext.getString(R.string.overlay_waiting_for_text)
-            setTextColor(Color.rgb(212, 212, 216))
+            setTextColor(visualStyle.originalTextColor)
             textSize = 14f
             setPadding(0, dp(6), 0, 0)
         }
         translationView = TextView(appContext).apply {
             text = appContext.getString(R.string.overlay_waiting_for_translation)
-            setTextColor(Color.rgb(167, 243, 208))
+            setTextColor(visualStyle.translationTextColor)
             textSize = 17f
             setPadding(0, dp(4), 0, dp(8))
         }
@@ -437,17 +449,53 @@ class OverlayController(
         }
         attributionView = TextView(appContext).apply {
             text = appContext.getString(R.string.translation_attribution)
-            setTextColor(Color.rgb(161, 161, 170))
+            setTextColor(visualStyle.attributionTextColor)
             textSize = 10f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
 
+        val copyRow = LinearLayout(appContext).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        copyOriginalButton = createOverlayButton().apply {
+            text = appContext.getString(R.string.overlay_copy_original)
+            isAllCaps = false
+            isEnabled = false
+            setOnClickListener {
+                copyToClipboard(
+                    label = appContext.getString(R.string.overlay_clipboard_original_label),
+                    text = currentOriginal,
+                )
+            }
+        }
+        copyTranslationButton = createOverlayButton().apply {
+            text = appContext.getString(R.string.overlay_copy_translation)
+            isAllCaps = false
+            isEnabled = false
+            setOnClickListener {
+                copyToClipboard(
+                    label = appContext.getString(R.string.overlay_clipboard_translation_label),
+                    text = currentTranslation,
+                )
+            }
+        }
+        copyRow.addView(
+            copyOriginalButton,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        copyRow.addView(
+            copyTranslationButton,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(8)
+            },
+        )
+
         val actionRow = LinearLayout(appContext).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        expandButton = Button(appContext).apply {
+        expandButton = createOverlayButton().apply {
             isAllCaps = false
             setOnClickListener {
                 textExpanded = !textExpanded
@@ -458,12 +506,12 @@ class OverlayController(
                 collapseToPanel(showResults = true)
             }
         }
-        reselectButton = Button(appContext).apply {
+        reselectButton = createOverlayButton().apply {
             text = appContext.getString(R.string.overlay_reselect)
             isAllCaps = false
             setOnClickListener { requestRegionSelection() }
         }
-        val stopButton = Button(appContext).apply {
+        val stopButton = createOverlayButton(destructive = true).apply {
             text = appContext.getString(R.string.overlay_stop)
             isAllCaps = false
             setOnClickListener {
@@ -496,10 +544,58 @@ class OverlayController(
         panel.addView(statusView)
         panel.addView(textScrollView)
         panel.addView(attributionView)
+        panel.addView(copyRow)
         panel.addView(actionRow)
         applyTextExpansion()
         return panel
     }
+
+    private fun createOverlayButton(destructive: Boolean = false): MaterialButton {
+        val activeColor = if (destructive) Color.rgb(255, 69, 58) else visualStyle.accentColor
+        val states = arrayOf(
+            intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf(android.R.attr.state_pressed),
+            intArrayOf(),
+        )
+        return MaterialButton(appContext).apply {
+            isAllCaps = false
+            minHeight = dp(40)
+            cornerRadius = dp(visualStyle.controlCornerDp)
+            insetTop = 0
+            insetBottom = 0
+            setPadding(dp(12), 0, dp(12), 0)
+            backgroundTintList = ColorStateList(
+                states,
+                intArrayOf(
+                    Color.argb(24, 142, 142, 147),
+                    withAlpha(activeColor, 82),
+                    withAlpha(activeColor, 42),
+                ),
+            )
+            setTextColor(
+                ColorStateList(
+                    states,
+                    intArrayOf(
+                        Color.rgb(142, 142, 147),
+                        activeColor,
+                        activeColor,
+                    ),
+                ),
+            )
+            strokeWidth = dp(1)
+            strokeColor = ColorStateList(
+                states,
+                intArrayOf(
+                    Color.argb(70, 142, 142, 147),
+                    activeColor,
+                    withAlpha(activeColor, 170),
+                ),
+            )
+        }
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
 
     /**
      * Applies the collapsed/expanded presentation of the result text.
@@ -608,6 +704,13 @@ class OverlayController(
         }
     }
 
+    private fun copyToClipboard(label: String, text: String) {
+        if (text.isBlank()) return
+        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(appContext, R.string.overlay_copy_success, Toast.LENGTH_SHORT).show()
+    }
+
     private fun clearViewReferences() {
         SelectionGestureGuardActivity.dismiss()
         unregisterSelectionBackCallback()
@@ -623,6 +726,8 @@ class OverlayController(
         textScrollView = null
         reselectButton = null
         expandButton = null
+        copyOriginalButton = null
+        copyTranslationButton = null
         textExpanded = false
         layoutParams = null
         selectedRegion = null

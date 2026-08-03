@@ -13,12 +13,15 @@ import java.util.concurrent.atomic.AtomicLong
  * testable on a plain JVM with a fake clock rather than needing an emulator.
  */
 class FrameGate(
-    private val frameIntervalMs: Long,
+    frameIntervalMs: Long,
     private val elapsedRealtime: () -> Long,
 ) {
     private val processing = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
     private val generation = AtomicLong(0L)
+
+    @Volatile
+    private var frameIntervalMs = frameIntervalMs
 
     @Volatile
     private var enabled = true
@@ -45,7 +48,17 @@ class FrameGate(
         get() = closed.get()
 
     fun setEnabled(value: Boolean) {
+        if (enabled && !value) {
+            // A frame admitted while content was visible must never publish
+            // after a screen-off/content-hidden transition and later resume.
+            generation.incrementAndGet()
+        }
         enabled = value
+    }
+
+    fun setFrameIntervalMs(value: Long) {
+        require(value >= 0L) { "frameIntervalMs cannot be negative" }
+        frameIntervalMs = value
     }
 
     /**

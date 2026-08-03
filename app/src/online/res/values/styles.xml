@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Widget.ScreenTranslation.Input" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">?attr/screenControlCornerRadius</item>
+        <item name="boxCornerRadiusTopEnd">?attr/screenControlCornerRadius</item>
+        <item name="boxCornerRadiusBottomStart">?attr/screenControlCornerRadius</item>
+        <item name="boxCornerRadiusBottomEnd">?attr/screenControlCornerRadius</item>
+    </style>
+</resources>

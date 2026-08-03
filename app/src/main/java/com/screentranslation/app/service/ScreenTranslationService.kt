@@ -29,7 +29,10 @@ import android.util.Log
 import android.view.WindowManager
 import com.screentranslation.app.MainActivity
 import com.screentranslation.app.R
+import com.screentranslation.app.model.CaptureMode
 import com.screentranslation.app.capture.FrameProcessor
+import com.screentranslation.app.capture.FramePipeline
+import com.screentranslation.app.capture.FullScreenFrameProcessor
 import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.PpOcrv6Engine
 import com.screentranslation.app.ml.ModelPreparationProgress
@@ -37,6 +40,7 @@ import com.screentranslation.app.ml.ModelPreparationStage
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.overlay.OverlayController
+import com.screentranslation.app.overlay.FullScreenOverlayController
 import com.screentranslation.app.util.StableTextGate
 
 /**
@@ -55,9 +59,11 @@ class ScreenTranslationService : Service() {
     private var projectionCallback: MediaProjection.Callback? = null
 
     private var overlayController: OverlayController? = null
+    private var fullScreenOverlayController: FullScreenOverlayController? = null
     private var ocrEngine: OcrEngine? = null
     private var translationEngine: TranslationBackend? = null
-    private var frameProcessor: FrameProcessor? = null
+    private var frameProcessor: FramePipeline? = null
+    private var captureMode = CaptureMode.REGION
 
     @Volatile
     private var captureWidth = 0
@@ -137,6 +143,7 @@ class ScreenTranslationService : Service() {
         val frameIntervalMs = intent
             .getLongExtra(EXTRA_FRAME_INTERVAL_MS, FrameProcessor.DEFAULT_FRAME_INTERVAL_MS)
             .coerceAtLeast(0L)
+        val captureMode = CaptureMode.fromPersisted(intent.getStringExtra(EXTRA_CAPTURE_MODE))
 
         if (resultCode != Activity.RESULT_OK ||
             projectionData == null ||
@@ -159,6 +166,7 @@ class ScreenTranslationService : Service() {
                 sourceLanguage = sourceLanguage,
                 targetLanguage = targetLanguage,
                 frameIntervalMs = frameIntervalMs,
+                captureMode = captureMode,
             )
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to start the capture session", error)
@@ -191,18 +199,28 @@ class ScreenTranslationService : Service() {
         sourceLanguage: String,
         targetLanguage: String,
         frameIntervalMs: Long,
+        captureMode: CaptureMode,
     ) {
-        val overlay = OverlayController(
-            context = this,
-            onRegionChanged = ::onPixelRegionChanged,
-            onOverlayBoundsChanged = ::onOverlayBoundsChanged,
-            onStop = ::stopSelf,
-            onRegionCleared = ::onRegionCleared,
-            onExpandedChanged = ::onResultsExpandedChanged,
-        )
-        check(overlay.show()) { "Overlay permission is required" }
-        overlay.updateStatus(STATUS_SELECT_REGION)
-        overlayController = overlay
+        this.captureMode = captureMode
+        if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
+            val overlay = FullScreenOverlayController(this, ::stopSelf)
+            check(overlay.show()) { "Overlay permission is required" }
+            overlay.updateStatus(STATUS_PREPARING_MODEL)
+            fullScreenOverlayController = overlay
+            regionReady = true
+        } else {
+            val overlay = OverlayController(
+                context = this,
+                onRegionChanged = ::onPixelRegionChanged,
+                onOverlayBoundsChanged = ::onOverlayBoundsChanged,
+                onStop = ::stopSelf,
+                onRegionCleared = ::onRegionCleared,
+                onExpandedChanged = ::onResultsExpandedChanged,
+            )
+            check(overlay.show()) { "Overlay permission is required" }
+            overlay.updateStatus(STATUS_SELECT_REGION)
+            overlayController = overlay
+        }
 
         registerScreenStateReceiver()
 
@@ -217,50 +235,63 @@ class ScreenTranslationService : Service() {
             sourceLanguage = sourceLanguage,
             targetLanguage = targetLanguage,
         )
-        val processor = FrameProcessor(
-            ocrEngine = ocr,
-            translationEngine = translator,
-            stableTextGate = StableTextGate(),
-            frameIntervalMs = frameIntervalMs,
-            onOriginalRecognized = { text ->
-                mainHandler.post {
-                    if (!closing) {
-                        val controller = overlayController
-                        if (controller != null && !controller.hasOverlayPermission()) {
-                            stopSelf()
-                        } else {
-                            controller?.updateContent(text, "")
-                            controller?.updateStatus(STATUS_TRANSLATING)
+        val processor: FramePipeline = if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
+            FullScreenFrameProcessor(
+                ocrEngine = ocr,
+                translationEngine = translator,
+                frameIntervalMs = frameIntervalMs,
+                onBlocks = { blocks ->
+                    mainHandler.post {
+                        if (!closing) {
+                            val controller = fullScreenOverlayController
+                            if (controller != null && !controller.hasOverlayPermission()) {
+                                stopSelf()
+                            } else {
+                                controller?.updateBlocks(blocks)
+                            }
                         }
                     }
-                }
-            },
-            onTranslation = { result ->
-                mainHandler.post {
-                    if (!closing) {
-                        val controller = overlayController
-                        if (controller != null && !controller.hasOverlayPermission()) {
-                            stopSelf()
-                        } else {
-                            controller?.updateContent(
-                                result.originalText,
-                                result.translatedText,
-                            )
-                            controller?.updateStatus(STATUS_RUNNING)
+                },
+                onError = ::reportProcessingError,
+            )
+        } else {
+            FrameProcessor(
+                ocrEngine = ocr,
+                translationEngine = translator,
+                stableTextGate = StableTextGate(),
+                frameIntervalMs = frameIntervalMs,
+                onOriginalRecognized = { text ->
+                    mainHandler.post {
+                        if (!closing) {
+                            val controller = overlayController
+                            if (controller != null && !controller.hasOverlayPermission()) {
+                                stopSelf()
+                            } else {
+                                controller?.updateContent(text, "")
+                                controller?.updateStatus(STATUS_TRANSLATING)
+                            }
                         }
                     }
-                }
-            },
-            onError = { error ->
-                mainHandler.post {
-                    if (!closing) {
-                        overlayController?.updateStatus(
-                            "处理失败：${error.message ?: error.javaClass.simpleName}",
-                        )
+                },
+                onTranslation = { result ->
+                    mainHandler.post {
+                        if (!closing) {
+                            val controller = overlayController
+                            if (controller != null && !controller.hasOverlayPermission()) {
+                                stopSelf()
+                            } else {
+                                controller?.updateContent(
+                                    result.originalText,
+                                    result.translatedText,
+                                )
+                                controller?.updateStatus(STATUS_RUNNING)
+                            }
+                        }
                     }
-                }
-            },
-        ).apply {
+                },
+                onError = ::reportProcessingError,
+            )
+        }.apply {
             setEnabled(false)
         }
         ocrEngine = ocr
@@ -326,14 +357,14 @@ class ScreenTranslationService : Service() {
         sessionStarted = true
         isRunning = true
         needsProjectionRestart = false
-        overlay.updateStatus(STATUS_PREPARING_MODEL)
+        updateOverlayStatus(STATUS_PREPARING_MODEL)
         translator.prepare(
             requireWifi = false,
             warmRuntime = true,
             onProgress = { progress ->
                 mainHandler.post {
                     if (!closing) {
-                        overlayController?.updateStatus(modelPreparationStatus(progress))
+                        updateOverlayStatus(modelPreparationStatus(progress))
                     }
                 }
             },
@@ -348,13 +379,28 @@ class ScreenTranslationService : Service() {
                     onFailure = { error ->
                         modelReady = false
                         processor.setEnabled(false)
-                        overlayController?.updateStatus(
+                        updateOverlayStatus(
                             "模型准备失败：${error.message ?: error.javaClass.simpleName}",
                         )
                     },
                 )
             }
         }
+    }
+
+    private fun reportProcessingError(error: Throwable) {
+        mainHandler.post {
+            if (!closing) {
+                updateOverlayStatus(
+                    "处理失败：${error.message ?: error.javaClass.simpleName}",
+                )
+            }
+        }
+    }
+
+    private fun updateOverlayStatus(status: String) {
+        overlayController?.updateStatus(status)
+        fullScreenOverlayController?.updateStatus(status)
     }
 
     /**
@@ -494,13 +540,14 @@ class ScreenTranslationService : Service() {
         if (closing) return
         val ready = modelReady && regionReady && contentVisible && screenOn && !resultsExpanded
         frameProcessor?.setEnabled(ready)
-        overlayController?.updateStatus(
+        updateOverlayStatus(
             when {
                 !modelReady -> STATUS_PREPARING_MODEL
                 !regionReady -> STATUS_SELECT_REGION
                 !screenOn -> STATUS_SCREEN_OFF
                 !contentVisible -> STATUS_CONTENT_HIDDEN
                 resultsExpanded -> STATUS_EXPANDED_PAUSED
+                captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL -> STATUS_FULL_SCREEN_RUNNING
                 else -> STATUS_RUNNING
             },
         )
@@ -538,7 +585,7 @@ class ScreenTranslationService : Service() {
             Log.e(TAG, "Could not allocate an ImageReader for ${spec.width}x${spec.height}", error)
             mainHandler.post {
                 if (!closing) {
-                    overlayController?.updateStatus(STATUS_RESIZE_FAILED)
+                    updateOverlayStatus(STATUS_RESIZE_FAILED)
                 }
             }
             return
@@ -560,14 +607,18 @@ class ScreenTranslationService : Service() {
             // physical rectangle, so the selection is no longer meaningful. Drop it
             // and ask for a new one instead of silently recognizing the wrong area
             // while the overlay still reports "running".
-            regionReady = false
+            regionReady = captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL
             normalizedRegion = NormalizedRegion.FULL
             normalizedOverlayBounds = null
             frameProcessor?.setEnabled(false)
             frameProcessor?.resetStability()
             mainHandler.post {
                 if (!closing) {
-                    overlayController?.requestRegionSelection()
+                    if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
+                        fullScreenOverlayController?.updateBlocks(emptyList())
+                    } else {
+                        overlayController?.requestRegionSelection()
+                    }
                     refreshProcessorState()
                 }
             }
@@ -637,6 +688,7 @@ class ScreenTranslationService : Service() {
         translationEngine?.close()
         ocrEngine?.close()
         overlayController?.close()
+        fullScreenOverlayController?.close()
         captureThread?.quitSafely()
 
         frameProcessor = null
@@ -647,6 +699,7 @@ class ScreenTranslationService : Service() {
         translationEngine = null
         ocrEngine = null
         overlayController = null
+        fullScreenOverlayController = null
         normalizedOverlayBounds = null
         captureHandler = null
         captureThread = null
@@ -669,7 +722,15 @@ class ScreenTranslationService : Service() {
         return Notification.Builder(this, CaptureShortcutNotification.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.capture_notification_title))
-            .setContentText(getString(R.string.capture_notification_text))
+            .setContentText(
+                getString(
+                    if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
+                        R.string.capture_notification_text_full_screen
+                    } else {
+                        R.string.capture_notification_text
+                    },
+                ),
+            )
             .setCategory(Notification.CATEGORY_SERVICE)
             .setContentIntent(contentPendingIntent)
             .setOngoing(true)
@@ -729,6 +790,7 @@ class ScreenTranslationService : Service() {
         private const val EXTRA_SOURCE_LANGUAGE = "source_language"
         private const val EXTRA_TARGET_LANGUAGE = "target_language"
         private const val EXTRA_FRAME_INTERVAL_MS = "frame_interval_ms"
+        private const val EXTRA_CAPTURE_MODE = "capture_mode"
 
         private const val NOTIFICATION_ID = 1101
         private const val STOP_REQUEST_CODE = 1102
@@ -740,6 +802,7 @@ class ScreenTranslationService : Service() {
         private const val STATUS_SELECT_REGION = "请框选需要翻译的屏幕区域"
         private const val STATUS_PREPARING_MODEL = "正在准备离线翻译模型…"
         private const val STATUS_RUNNING = "实时翻译中"
+        private const val STATUS_FULL_SCREEN_RUNNING = "全屏增量识别中 · 译文覆盖原文上方"
         private const val STATUS_TRANSLATING = "正在请求在线翻译…"
         private const val STATUS_CONTENT_HIDDEN = "投屏内容暂不可见，处理已暂停"
         private const val STATUS_SCREEN_OFF = "屏幕已熄灭，处理已暂停"
@@ -766,6 +829,7 @@ class ScreenTranslationService : Service() {
             sourceLanguage: String,
             targetLanguage: String,
             frameIntervalMs: Long = FrameProcessor.DEFAULT_FRAME_INTERVAL_MS,
+            captureMode: CaptureMode = CaptureMode.REGION,
         ): Intent = Intent(context, ScreenTranslationService::class.java)
             .setAction(ACTION_START)
             .putExtra(EXTRA_PROJECTION_RESULT_CODE, resultCode)
@@ -773,6 +837,7 @@ class ScreenTranslationService : Service() {
             .putExtra(EXTRA_SOURCE_LANGUAGE, sourceLanguage)
             .putExtra(EXTRA_TARGET_LANGUAGE, targetLanguage)
             .putExtra(EXTRA_FRAME_INTERVAL_MS, frameIntervalMs.coerceAtLeast(0L))
+            .putExtra(EXTRA_CAPTURE_MODE, captureMode.persistedValue)
 
         fun stopIntent(context: Context): Intent =
             Intent(context, ScreenTranslationService::class.java)

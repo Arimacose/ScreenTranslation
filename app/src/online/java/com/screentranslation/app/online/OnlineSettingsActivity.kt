@@ -3,6 +3,7 @@ package com.screentranslation.app.online
 import android.app.Activity
 import android.os.Bundle
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -18,6 +19,7 @@ import com.screentranslation.app.ml.OnlineLlmTranslationEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
 import com.screentranslation.app.prefs.AppPreferences
+import com.screentranslation.app.ui.UiStyleController
 import okhttp3.OkHttpClient
 
 class OnlineSettingsActivity : AppCompatActivity() {
@@ -51,6 +53,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private var savedUserConsentHost = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        UiStyleController.apply(this)
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_online_settings)
@@ -58,6 +61,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
         preferences = AppPreferences(this)
         modelHttpClient = OnlineHttpClientFactory.create()
         bindViews()
+        applySystemBarInsets()
         loadConfiguration()
         configureActions()
     }
@@ -429,5 +433,17 @@ class OnlineSettingsActivity : AppCompatActivity() {
             R.string.online_test_failed,
             error.localizedMessage ?: error.javaClass.simpleName,
         )
+    }
+
+    private fun applySystemBarInsets() {
+        val content = findViewById<View>(android.R.id.content)
+        content.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
+            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        content.requestApplyInsets()
     }
 }

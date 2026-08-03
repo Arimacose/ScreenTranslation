@@ -22,6 +22,10 @@ class OpenAiChatProtocolTest {
         assertEquals("user", messages.getJSONObject(1).getString("role"))
         assertEquals(ocr, messages.getJSONObject(1).getString("content"))
         assertFalse(messages.getJSONObject(0).getString("content").contains(ocr))
+        assertTrue(
+            messages.getJSONObject(0).getString("content")
+                .contains("⟦STP_deadbeef_0000⟧"),
+        )
         assertFalse(root.has("thinking"))
     }
 

@@ -38,6 +38,10 @@
         </activity>
 
         <activity
+            android:name=".ModelManagementActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ProjectionPermissionActivity"
             android:excludeFromRecents="true"
             android:exported="false"

@@ -87,6 +87,7 @@ class ProjectionPermissionActivity : ComponentActivity() {
             sourceLanguage = preferences.sourceLanguage,
             targetLanguage = preferences.targetLanguage,
             frameIntervalMs = preferences.frameIntervalMs,
+            captureMode = preferences.captureMode,
         )
         runCatching {
             ContextCompat.startForegroundService(this, startIntent)

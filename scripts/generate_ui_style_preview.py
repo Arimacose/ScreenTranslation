@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Generate a deterministic, code-owned preview of the three Android UI styles."""
+
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+
+
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / "docs" / "assets" / "ui-style-comparison.png"
+WIDTH, HEIGHT = 2400, 1500
+
+
+def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    candidates = [
+        Path(r"C:\Windows\Fonts\msyhbd.ttc" if bold else r"C:\Windows\Fonts\msyh.ttc"),
+        Path(r"C:\Windows\Fonts\segoeuib.ttf" if bold else r"C:\Windows\Fonts\segoeui.ttf"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return ImageFont.truetype(str(candidate), size=size)
+    return ImageFont.load_default(size=size)
+
+
+TITLE = font(48, True)
+SUBTITLE = font(25)
+PHONE_TITLE = font(36, True)
+SECTION = font(22, True)
+BODY = font(21)
+SMALL = font(17)
+BUTTON = font(19, True)
+
+
+STYLES = [
+    {
+        "name": "Apple（默认候选）",
+        "bg": "#F2F2F7",
+        "surface": "#FFFFFF",
+        "hero": "#EAF4FF",
+        "primary": "#007AFF",
+        "primary_container": "#E5F1FF",
+        "on": "#1C1C1E",
+        "muted": "#636366",
+        "outline": "#E5E5EA",
+        "radius": 24,
+        "control_radius": 16,
+        "monet": False,
+    },
+    {
+        "name": "MIUIX",
+        "bg": "#F5F5F7",
+        "surface": "#FFFFFF",
+        "hero": "#EDF5FF",
+        "primary": "#3482FF",
+        "primary_container": "#E9F2FF",
+        "on": "#17171A",
+        "muted": "#6F7380",
+        "outline": "#EBEDF1",
+        "radius": 32,
+        "control_radius": 22,
+        "monet": False,
+    },
+    {
+        "name": "Material 3 + Monet",
+        "bg": "#FBF8FF",
+        "surface": "#FFFFFF",
+        "hero": "#E7F6EE",
+        "primary": "#386A53",
+        "primary_container": "#BBF0D4",
+        "on": "#191C1A",
+        "muted": "#414942",
+        "outline": "#DDE5DE",
+        "radius": 28,
+        "control_radius": 28,
+        "monet": True,
+    },
+]
+
+
+def rounded(draw: ImageDraw.ImageDraw, box, radius, fill, outline=None, width=1):
+    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+
+
+def text(draw, xy, value, style, fill, anchor=None):
+    draw.text(xy, value, font=style, fill=fill, anchor=anchor)
+
+
+def line(draw, x1, y, x2, color):
+    draw.line((x1, y, x2, y), fill=color, width=2)
+
+
+def draw_segmented(draw, x, y, width, selected, spec):
+    labels = ["Apple", "MIUIX", "Material 3"]
+    item = width / 3
+    rounded(draw, (x, y, x + width, y + 62), spec["control_radius"], spec["bg"], spec["outline"], 2)
+    sx = x + selected * item
+    rounded(draw, (sx + 3, y + 3, sx + item - 3, y + 59), spec["control_radius"] - 3, spec["primary_container"])
+    for index, label in enumerate(labels):
+        color = spec["primary"] if index == selected else spec["muted"]
+        text(draw, (x + item * (index + 0.5), y + 31), label, SMALL, color, "mm")
+
+
+def draw_button(draw, box, label, spec, ready=False):
+    if ready:
+        fill, color = spec["outline"], spec["muted"]
+    else:
+        fill, color = spec["primary"], "#FFFFFF"
+    rounded(draw, box, spec["control_radius"], fill)
+    text(draw, ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), label, BUTTON, color, "mm")
+
+
+def draw_phone(canvas: Image.Image, left: int, top: int, spec: dict, index: int):
+    draw = ImageDraw.Draw(canvas)
+    phone_w, phone_h = 700, 1260
+    rounded(draw, (left, top, left + phone_w, top + phone_h), 56, "#111114")
+    rounded(draw, (left + 10, top + 10, left + phone_w - 10, top + phone_h - 10), 48, spec["bg"])
+    rounded(draw, (left + 270, top + 22, left + 430, top + 48), 16, "#111114")
+
+    x, y, content_w = left + 40, top + 74, phone_w - 80
+    text(draw, (x, y), spec["name"], PHONE_TITLE, spec["on"])
+    text(draw, (x, y + 52), "实时识屏翻译 · Android 16", SMALL, spec["muted"])
+
+    y += 96
+    rounded(draw, (x, y, x + content_w, y + 210), spec["radius"], spec["surface"], spec["outline"], 2)
+    text(draw, (x + 22, y + 18), "外观", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 54), "界面风格", BODY, spec["on"])
+    draw_segmented(draw, x + 22, y + 88, content_w - 44, index, spec)
+    if spec["monet"]:
+        text(draw, (x + 22, y + 172), "莫奈动态取色", SMALL, spec["on"])
+        rounded(draw, (x + content_w - 80, y + 165, x + content_w - 24, y + 197), 16, spec["primary"])
+        draw.ellipse((x + content_w - 54, y + 169, x + content_w - 28, y + 195), fill="#FFFFFF")
+
+    y += 232
+    rounded(draw, (x, y, x + content_w, y + 320), spec["radius"], spec["surface"], spec["outline"], 2)
+    text(draw, (x + 22, y + 18), "翻译设置", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 58), "屏幕原文语言", SMALL, spec["muted"])
+    text(draw, (x + content_w - 22, y + 58), "英语  ›", BODY, spec["on"], "ra")
+    line(draw, x + 22, y + 94, x + content_w - 22, spec["outline"])
+    text(draw, (x + 22, y + 116), "翻译目标语言", SMALL, spec["muted"])
+    text(draw, (x + content_w - 22, y + 116), "简体中文  ›", BODY, spec["on"], "ra")
+    line(draw, x + 22, y + 154, x + content_w - 22, spec["outline"])
+    text(draw, (x + 22, y + 178), "识别模式", SMALL, spec["muted"])
+    text(draw, (x + content_w - 22, y + 178), "框选区域  ›", BODY, spec["on"], "ra")
+    line(draw, x + 22, y + 216, x + content_w - 22, spec["outline"])
+    text(draw, (x + 22, y + 242), "识别帧间隔", SMALL, spec["muted"])
+    text(draw, (x + content_w - 22, y + 242), "750 ms", BODY, spec["primary"], "ra")
+    draw.line((x + 22, y + 286, x + content_w - 22, y + 286), fill=spec["outline"], width=8)
+    draw.line((x + 22, y + 286, x + 290, y + 286), fill=spec["primary"], width=8)
+    draw.ellipse((x + 280, y + 274, x + 304, y + 298), fill=spec["primary"])
+
+    y += 342
+    rounded(draw, (x, y, x + content_w, y + 270), spec["radius"], spec["surface"], spec["outline"], 2)
+    text(draw, (x + 22, y + 18), "翻译模型", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 58), "当前语言模型已通过完整性校验并加载。", SMALL, spec["muted"])
+    draw_button(draw, (x + 22, y + 94, x + content_w - 22, y + 154), "已就绪", spec, ready=True)
+    rounded(draw, (x + 22, y + 170, x + content_w - 22, y + 222), 14, spec["primary_container"])
+    text(draw, (x + 38, y + 196), "模型已就绪：英语 → 简体中文", SMALL, spec["primary"], "lm")
+    text(draw, (x + 22, y + 246), "管理已下载模型  ›", SMALL, spec["primary"])
+
+    y += 292
+    rounded(draw, (x, y, x + content_w, y + 136), spec["radius"], spec["hero"])
+    text(draw, (x + 22, y + 20), "开始识别", SECTION, spec["primary"])
+    draw_button(draw, (x + 22, y + 58, x + content_w - 22, y + 116), "开始识屏翻译", spec)
+
+
+def main():
+    image = Image.new("RGB", (WIDTH, HEIGHT), "#EEF0F4")
+    draw = ImageDraw.Draw(image)
+    text(draw, (80, 45), "ScreenTranslation 三套 UI 风格", TITLE, "#17171A")
+    text(draw, (80, 108), "静态设计预览 · 非真机截图 · Apple 风格作为默认候选", SUBTITLE, "#626772")
+    for index, spec in enumerate(STYLES):
+        draw_phone(image, 60 + index * 780, 170, spec, index)
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    image.save(OUTPUT, format="PNG", optimize=True)
+    print(OUTPUT)
+
+
+if __name__ == "__main__":
+    main()
