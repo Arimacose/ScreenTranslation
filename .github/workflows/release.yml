@@ -41,6 +41,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          ort_version="$(
+            sed -n \
+              's/.*com\.microsoft\.onnxruntime:onnxruntime-android:\([^"]*\)".*/\1/p' \
+              app/build.gradle.kts
+          )"
+          [[ "$ort_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test -d \
+            "third_party/licenses/common/licenses/onnxruntime-$ort_version"
+          grep -Fq \
+            "| ONNX Runtime for Android | $ort_version |" \
+            THIRD_PARTY_NOTICES.md
+          grep -Fq \
+            "ONNX Runtime Android \`$ort_version\`" \
+            README.md
           (
             cd third_party/licenses
             sha256sum -c SHA256SUMS
@@ -225,9 +239,9 @@ jobs:
             assert_entry "$listing" \
               "assets/licenses/models/PP-OCRv6.md"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.26.0/LICENSE.txt"
+              "assets/licenses/onnxruntime-1.28.0/LICENSE.txt"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+              "assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
             assert_entry "$listing" "$required_backend"
             reject_entry "$listing" "$forbidden_backend"
             reject_entry "$listing" "lib/arm64-v8a/libtranslate_jni.so"
@@ -304,15 +318,15 @@ jobs:
           assert_entry "$lite_aab_listing" \
             "base/assets/licenses/bergamot-9271618/SOURCE-CODE.md"
           assert_entry "$lite_aab_listing" \
-            "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+            "base/assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
           assert_entry "$full_aab_listing" \
             "base/assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
           assert_entry "$full_aab_listing" \
-            "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+            "base/assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
           assert_entry "$online_aab_listing" \
             "base/assets/licenses/ONLINE.md"
           assert_entry "$online_aab_listing" \
-            "base/assets/licenses/onnxruntime-1.26.0/ThirdPartyNotices.txt"
+            "base/assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
 
           mkdir -p dist
           cp "$lite_apk" "dist/ScreenTranslation-$version-lite-bergamot.apk"

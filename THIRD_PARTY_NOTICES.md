@@ -11,7 +11,7 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 | AndroidX Activity KTX | 1.13.0 | Apache License 2.0 |
 | AndroidX AppCompat | 1.7.1 | Apache License 2.0 |
 | Material Components for Android | 1.14.0 | Apache License 2.0 |
-| ONNX Runtime for Android | 1.26.0 | MIT License |
+| ONNX Runtime for Android | 1.28.0 | MIT License |
 | PP-OCRv6 small detection ONNX | `28fe5895c24fd108c19eb3e8479f4ab385fbfc62` | Apache License 2.0 |
 | PP-OCRv6 small recognition ONNX | `b8f84f0b80c529de40b4fbb3544b84fa7233a513` | Apache License 2.0 |
 
@@ -67,8 +67,8 @@ Online edition APK/AAB 不携带翻译模型或服务商 SDK；BYOK 模式使用
 - [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms)
 - [ML Kit usage guidelines and attribution](https://developers.google.com/ml-kit/terms)
 - [JUnit 4](https://github.com/junit-team/junit4)
-- [ONNX Runtime 1.26.0](https://github.com/microsoft/onnxruntime/tree/v1.26.0)
-- [ONNX Runtime 1.26.0 third-party notices](https://github.com/microsoft/onnxruntime/blob/v1.26.0/ThirdPartyNotices.txt)
+- [ONNX Runtime 1.28.0](https://github.com/microsoft/onnxruntime/tree/v1.28.0)
+- [ONNX Runtime 1.28.0 third-party notices](https://github.com/microsoft/onnxruntime/blob/v1.28.0/ThirdPartyNotices.txt)
 - [PP-OCRv6 small detection ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_det_onnx)
 - [PP-OCRv6 small recognition ONNX](https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx)
 - [Bergamot Translator exact source](https://github.com/browsermt/bergamot-translator/tree/9271618ebbdc5d21ac4dc4df9e72beb7ce644774)
@@ -107,8 +107,8 @@ copyright 与 Apache-2.0 原文也在 Full license bundle 中。Full 的界面�
 三个 edition 共同把以下材料打入 `assets/licenses/`：
 
 - 项目与 PP-OCRv6 使用的 Apache License 2.0 全文；
-- ONNX Runtime 1.26.0 MIT 全文；
-- ONNX Runtime 1.26.0 官方 `ThirdPartyNotices.txt`；
+- ONNX Runtime 1.28.0 MIT 全文；
+- ONNX Runtime 1.28.0 官方 `ThirdPartyNotices.txt`；
 - PP-OCRv6-small 固定 revision、下载文件和 SHA-256 坐标。
 
 GitHub Release 的统一 `THIRD-PARTY.zip` 是

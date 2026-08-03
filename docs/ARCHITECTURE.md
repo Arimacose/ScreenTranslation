@@ -96,7 +96,7 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 - 区域选择使用屏幕坐标，裁剪前按当前捕获帧尺寸映射并夹紧边界。
 - Debug/Release 使用 PP-OCRv6 small 检测与识别 ONNX 模型。模型和字符表固定
   到明确上游提交，构建时校验 SHA-256，随 APK/AAB 打包；运行时不下载 OCR 权重。
-- `PpOcrv6Engine` 使用 ONNX Runtime Android 1.26.0、CPU execution provider、
+- `PpOcrv6Engine` 使用 ONNX Runtime Android 1.28.0、CPU execution provider、
   4 个 intra-op 线程、batch 1、检测最长边 640，并关闭 memory pattern 与 CPU arena。
   XNNPACK 在目标 HyperOS 上连续触发原生崩溃，因此生产配置保留已验收的 CPU 路径。
 - 权重复制、字符表读取和 ORT session 创建在 OCR 工作线程首次使用时完成，
@@ -230,7 +230,7 @@ androidx.core:core-ktx                   1.19.0
 androidx.activity:activity-ktx           1.13.0
 androidx.appcompat:appcompat             1.7.1
 com.google.android.material:material     1.14.0
-com.microsoft.onnxruntime:android        1.26.0
+com.microsoft.onnxruntime:android        1.28.0
 PP-OCRv6 small det/rec ONNX              pinned + SHA-256 verified
 Lite: Bergamot native runner             pinned + SHA-256 verified
 Lite: Bergamot en-zh / ja-en / en-zh     runtime download + SHA-256 verified

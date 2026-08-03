@@ -27,8 +27,9 @@ import kotlin.math.roundToInt
  * Model materialization, session creation, and inference stay serialized on
  * one worker so service startup never performs model I/O on the main thread.
  * ORT's CPU execution provider owns the four compute threads used inside each
- * invocation. XNNPACK 1.26 crashed reproducibly during recognition on the
- * target HyperOS build, so production retains the measured CPU configuration.
+ * invocation. XNNPACK crashed reproducibly during the ORT 1.26 qualification
+ * on the target HyperOS build, so runtime upgrades retain the measured CPU
+ * configuration until that provider is qualified separately.
  */
 internal class PpOcrv6Engine(context: Context) : OcrEngine {
     private val appContext = context.applicationContext
@@ -412,8 +413,10 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
     }
 
     companion object {
-        const val ENGINE_LABEL =
-            "PP-OCRv6 small ONNX + ORT 1.26 CPU4 batch1 det640 arena-off"
+        val ENGINE_LABEL: String
+            get() =
+                "PP-OCRv6 small ONNX + ORT ${OrtEnvironment.getEnvironment().version} " +
+                    "CPU4 batch1 det640 arena-off"
 
         private const val INPUT_NAME = "x"
         private const val DETECTION_MODEL_ASSET = "ppocrv6_small/det.onnx"

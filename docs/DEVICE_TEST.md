@@ -2,6 +2,52 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
+## 2026-08-03 ONNX Runtime Android 1.28.0 升级验收
+
+### 范围与方法
+
+- 基线：`main` / ONNX Runtime Android `1.26.0`；
+- 候选：PR #33 / ONNX Runtime Android `1.28.0`；
+- 设备：Xiaomi 15 Pro `2410DPN6CC`，Android 16 / API 36，HyperOS
+  `OS3.0.304.0.WOBCNXM`；
+- 两版均构建隔离的 `com.screentranslation.app.benchmark`，不替换正式
+  `com.screentranslation.app.online`；
+- 交替执行三轮 A/B，每轮包含 10 个固定英文屏幕夹具、每夹具 3 次 PP-OCRv6
+  推理，即每版 90 个延迟样本。测试期间温度为 `31.6–32.1°C`。
+
+首次基线运行时屏幕按系统超时熄灭，HyperOS 冻结了前置 ML Kit benchmark；该样本
+未计入结果。随后记录原值并临时启用 USB 亮屏，所有有效样本均在亮屏、前台条件下
+完成；验收结束后恢复原值。
+
+### 结果
+
+| 指标 | ORT 1.26.0 | ORT 1.28.0 | 变化 |
+|---|---:|---:|---:|
+| 有效运行 | 3 | 3 | — |
+| OCR 输出 | CER `0.0617%` / WER `0.2809%` | 完全相同 | 无回归 |
+| 精确夹具 | 9/10 | 9/10 | 相同 |
+| 整轮壁钟中位数 | `23.597 s` | `21.471 s` | `-9.01%` |
+| OCR 中位延迟 | `374.698 ms` | `364.311 ms` | `-2.77%` |
+| OCR P95 | `1678.412 ms` | `1666.251 ms` | `-0.72%` |
+| 进程 VmHWM 中位数 | `437,488 KiB` | `442,236 KiB` | `+4,748 KiB` |
+| Online Release APK | `43,274,362 B` | `43,806,950 B` | `+532,588 B` |
+
+两版均通过 Lite `83/83`、Full `82/82`、Online `94/94` 单元测试，三套 Release
+Lint/R8、16 KiB ZIP 对齐及 ORT ELF `0x4000` LOAD 段对齐。六次有效运行中
+`FATAL EXCEPTION`、ANR 和 ORT error 命中均为 0。
+
+补齐版本标签与许可证路径后，重构建候选版又执行了一轮隔离真机回归：运行时标签
+正确报告 `ORT 1.28.0`，10 个夹具的 30 次 OCR 输出与补丁前候选版逐项一致；OCR
+中位延迟为 `380.698 ms`、P95 为 `1705.446 ms`、VmHWM 为 `434,160 KiB`，
+崩溃、ANR 和 ORT error 仍均为 0。测试包已卸载，USB 亮屏设置恢复为原值 `0`，
+正式 Online `0.3.0` 安装未被替换。
+
+### 验收决定
+
+性能、准确率、稳定性和 Android 16 对齐通过。原 Dependabot 提交遗漏了 benchmark
+版本标签、架构文档和第三方许可证路径；这些项目已在同一 PR 中修正并通过重新构建
+及真机复测，PR #33 可合并。
+
 ## 2026-08-02 v0.3.0 Online Release 候选验收
 
 ### 候选产物与设备
