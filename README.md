@@ -29,7 +29,7 @@
 
 | 项目 | 版本/配置 |
 |---|---|
-| Android Gradle Plugin | application 9.3.1 / library 9.3.0 |
+| Android Gradle Plugin | application 9.3.1 / library 9.3.1 |
 | Gradle Wrapper | 9.6.1 |
 | JDK | 17 |
 | Kotlin | AGP 9.3 内置 Kotlin（不应用 `org.jetbrains.kotlin.android`） |
@@ -202,7 +202,7 @@ app/build/outputs/apk/online/release/app-online-release-unsigned.apk
 
 ### Lite · Bergamot
 
-Lite 使用 `com.screentranslation.app` 和 `0.3.0-lite`，可覆盖升级 v0.1.0。
+Lite 使用 `com.screentranslation.app` 和 `0.3.1-lite`，可覆盖升级 v0.1.0。
 APK 随包提供固定的 ARM64 Bergamot runner；构建时
 `verifyBergamotRunner` 校验其 8,416,304 bytes 与 SHA-256。英语→中文使用
 直模，日语→中文使用 `ja→en→zh` 级联。压缩模型和解压文件均校验长度与
@@ -214,7 +214,7 @@ SHA-256。
 
 ### Full · HY-MT2 Q4 Experimental
 
-Full 使用 `com.screentranslation.app.full` 和 `0.3.0-full`，可与 Lite
+Full 使用 `com.screentranslation.app.full` 和 `0.3.1-full`，可与 Lite
 并存。应用名称、标题、Banner、通知和 attribution 均包含
 `Full · HY-MT2 Q4 Experimental`。
 
@@ -227,7 +227,7 @@ Full 使用 `com.screentranslation.app.full` 和 `0.3.0-full`，可与 Lite
 
 ### Online · BYOK API
 
-Online 使用 `com.screentranslation.app.online` 和 `0.3.0-online`，可与 Lite/Full
+Online 使用 `com.screentranslation.app.online` 和 `0.3.1-online`，可与 Lite/Full
 并存。设置页只保留用户自带密钥（BYOK）链路：填写 HTTPS Base URL 与 API Key、
 确认数据流，再点击“获取可用模型”；应用通过 `GET /models` 获取并展示模型 ID，
 无需手工输入。根地址会自动补充 `/models` 和 `/chat/completions`。API Key 由
@@ -303,7 +303,7 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。
 - 停止服务时释放 `VirtualDisplay`、`MediaProjection`、`ImageReader`、OCR/翻译客户端和悬浮窗。
 - 项目代码不上传屏幕图像；Online 之外的生产 edition 不上传 OCR 原文或译文。
-- v0.3.0 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
+- v0.3.1 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
   `benchmark` build type。完整数据流见 [`PRIVACY.md`](PRIVACY.md)。
 - Online edition 的数据发送确认、密钥存储和请求边界见
   [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。

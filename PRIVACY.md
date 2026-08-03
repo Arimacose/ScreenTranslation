@@ -55,7 +55,7 @@ Firefox Translations 固定 HTTPS 地址。Full edition 的 Hy-MT2 Q4 模型来�
 Hugging Face revision。应用逐文件校验发布清单中的长度和 SHA-256；校验通过后，
 翻译推理全部在设备端执行。
 
-v0.3.0 的 Lite、Full 与 Online APK 不使用 ML Kit Translate。仓库中的 `benchmark`
+v0.3.1 的 Lite、Full 与 Online APK 不使用 ML Kit Translate。仓库中的 `benchmark`
 build type 仍保留 ML Kit Translate 作为可复现实验对照，但该对照不属于三份
 GitHub Release APK。
 
