@@ -95,8 +95,9 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/ap
 ```bash
 git switch main
 git pull --ff-only
-git tag -s v0.3.0 -m "ScreenTranslation v0.3.0"
-git push origin v0.3.0
+VERSION=0.3.1
+git tag -s "v$VERSION" -m "ScreenTranslation v$VERSION"
+git push origin "v$VERSION"
 ```
 
 优先使用已验证签名的 annotated tag。Tag 必须与 Gradle `versionName` 完全匹配，否则 workflow
@@ -118,14 +119,14 @@ git push origin v0.3.0
 8. 生成 GitHub 自动变更记录，并在前置说明中标记 Full 为 `HY-MT2 Q4 Experimental`、
    Online 为 BYOK 用户 API 链路；
 9. 发布以下九项：
-   - `ScreenTranslation-0.3.0-lite-bergamot.apk`
-   - `ScreenTranslation-0.3.0-lite-bergamot.aab`
-   - `ScreenTranslation-0.3.0-full-hymt2-q4-experimental.apk`
-   - `ScreenTranslation-0.3.0-full-hymt2-q4-experimental.aab`
-   - `ScreenTranslation-0.3.0-online-llm.apk`
-   - `ScreenTranslation-0.3.0-online-llm.aab`
-   - `ScreenTranslation-0.3.0-LICENSE.txt`
-   - `ScreenTranslation-0.3.0-THIRD-PARTY.zip`
+   - `ScreenTranslation-$VERSION-lite-bergamot.apk`
+   - `ScreenTranslation-$VERSION-lite-bergamot.aab`
+   - `ScreenTranslation-$VERSION-full-hymt2-q4-experimental.apk`
+   - `ScreenTranslation-$VERSION-full-hymt2-q4-experimental.aab`
+   - `ScreenTranslation-$VERSION-online-llm.apk`
+   - `ScreenTranslation-$VERSION-online-llm.aab`
+   - `ScreenTranslation-$VERSION-LICENSE.txt`
+   - `ScreenTranslation-$VERSION-THIRD-PARTY.zip`
    - `SHA256SUMS`
 
 ## 6. 发布后核验
@@ -133,10 +134,11 @@ git push origin v0.3.0
 维护者从 GitHub release 重新下载产物：
 
 ```bash
+VERSION=0.3.1
 sha256sum -c SHA256SUMS
-apksigner verify --verbose --print-certs ScreenTranslation-0.3.0-lite-bergamot.apk
+apksigner verify --verbose --print-certs "ScreenTranslation-$VERSION-lite-bergamot.apk"
 apksigner verify --verbose --print-certs \
-  ScreenTranslation-0.3.0-full-hymt2-q4-experimental.apk
+  "ScreenTranslation-$VERSION-full-hymt2-q4-experimental.apk"
 ```
 
 随后安装到干净测试设备，确认版本、首次权限链、模型下载和基础翻译。检查 release notes、

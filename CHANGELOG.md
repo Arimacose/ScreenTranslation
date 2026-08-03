@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-03
+
 ### Changed
 
 - 将 ONNX Runtime Android 从 1.26.0 更新到 1.28.0；小米 15 Pro / Android 16
