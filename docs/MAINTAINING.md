@@ -117,10 +117,10 @@ Dependabot 每周检查 Gradle 和 GitHub Actions。合并前：
 每次新增或更新 SDK 时，复核其官方数据披露。发布前核对：
 
 - Manifest 权限与 README/PRIVACY 表格一致；
-- 数据安全表包含 ML Kit 的设备、应用、安装标识、语言对和诊断信息；
+- 数据安全表按 edition 覆盖实际启用后端；benchmark-only ML Kit 不作为生产数据流申报；
 - 应用未记录屏幕原文或译文；
 - Release 包与源码对应，没有调试探针或测试服务器；
-- Google Translate 归属说明仍可见。
+- 当前 edition 所选翻译后端的归属与 Online 文字数据流说明仍可见。
 
 ## 8. 发布密钥与 Secrets
 

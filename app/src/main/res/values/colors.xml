@@ -1,24 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="screen_primary">#0B57D0</color>
-    <color name="screen_on_primary">#FFFFFF</color>
-    <color name="screen_primary_container">#D8E2FF</color>
-    <color name="screen_on_primary_container">#001A41</color>
-    <color name="screen_secondary">#006A67</color>
-    <color name="screen_on_secondary">#FFFFFF</color>
-    <color name="screen_background">#F9F9FF</color>
-    <color name="screen_surface">#F9F9FF</color>
-    <color name="screen_on_surface">#191C20</color>
-    <color name="screen_outline">#74777F</color>
+    <!-- Apple-style default candidate. -->
+    <color name="apple_primary">#007AFF</color>
+    <color name="apple_on_primary">#FFFFFF</color>
+    <color name="apple_primary_container">#E5F1FF</color>
+    <color name="apple_on_primary_container">#003A73</color>
+    <color name="apple_secondary">#5856D6</color>
+    <color name="apple_on_secondary">#FFFFFF</color>
+    <color name="apple_background">#F2F2F7</color>
+    <color name="apple_surface">#FFFFFF</color>
+    <color name="apple_surface_variant">#E5E5EA</color>
+    <color name="apple_on_surface">#1C1C1E</color>
+    <color name="apple_on_surface_variant">#636366</color>
+    <color name="apple_outline">#C6C6C8</color>
+    <color name="apple_outline_variant">#E5E5EA</color>
+    <color name="apple_error">#FF3B30</color>
+    <color name="apple_error_container">#FFE9E7</color>
+    <color name="apple_on_error_container">#7D0A05</color>
 
-    <color name="screen_primary_night">#ADC6FF</color>
-    <color name="screen_on_primary_night">#002E69</color>
-    <color name="screen_primary_container_night">#004494</color>
-    <color name="screen_on_primary_container_night">#D8E2FF</color>
-    <color name="screen_secondary_night">#80D5D1</color>
-    <color name="screen_on_secondary_night">#003735</color>
-    <color name="screen_background_night">#111318</color>
-    <color name="screen_surface_night">#111318</color>
-    <color name="screen_on_surface_night">#E2E2E9</color>
-    <color name="screen_outline_night">#8E9099</color>
+    <!-- MIUIX/HyperOS-inspired app-owned tokens. -->
+    <color name="miuix_primary">#3482FF</color>
+    <color name="miuix_on_primary">#FFFFFF</color>
+    <color name="miuix_primary_container">#E9F2FF</color>
+    <color name="miuix_on_primary_container">#123D72</color>
+    <color name="miuix_secondary">#64748B</color>
+    <color name="miuix_on_secondary">#FFFFFF</color>
+    <color name="miuix_background">#F5F5F7</color>
+    <color name="miuix_surface">#FFFFFF</color>
+    <color name="miuix_surface_variant">#EEF0F5</color>
+    <color name="miuix_on_surface">#17171A</color>
+    <color name="miuix_on_surface_variant">#6F7380</color>
+    <color name="miuix_outline">#D7DBE2</color>
+    <color name="miuix_outline_variant">#EBEDF1</color>
+    <color name="miuix_error">#E5484D</color>
+    <color name="miuix_error_container">#FFE9EA</color>
+    <color name="miuix_on_error_container">#7D1518</color>
+
+    <!-- Material 3 static fallback; Monet replaces these roles when enabled. -->
+    <color name="material3_primary">#6750A4</color>
+    <color name="material3_on_primary">#FFFFFF</color>
+    <color name="material3_primary_container">#EADDFF</color>
+    <color name="material3_on_primary_container">#21005D</color>
+    <color name="material3_secondary">#625B71</color>
+    <color name="material3_on_secondary">#FFFFFF</color>
+    <color name="material3_background">#FFFBFE</color>
+    <color name="material3_surface">#FFFBFE</color>
+    <color name="material3_surface_variant">#E7E0EC</color>
+    <color name="material3_on_surface">#1C1B1F</color>
+    <color name="material3_on_surface_variant">#49454F</color>
+    <color name="material3_outline">#79747E</color>
+    <color name="material3_outline_variant">#CAC4D0</color>
+    <color name="material3_error">#B3261E</color>
+    <color name="material3_error_container">#F9DEDC</color>
+    <color name="material3_on_error_container">#410E0B</color>
 </resources>

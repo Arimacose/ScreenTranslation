@@ -26,6 +26,24 @@ class OverlayWindowFlagsTest {
     }
 
     @Test
+    fun `full screen translations pass touches through and stay out of projection frames`() {
+        val flags = fullScreenTranslationWindowFlags()
+
+        assertTrue(flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0)
+        assertTrue(flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0)
+        assertTrue(flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+    }
+
+    @Test
+    fun `full screen control remains touchable but stays out of projection frames`() {
+        val flags = fullScreenControlWindowFlags()
+
+        assertEquals(0, flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        assertTrue(flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0)
+        assertTrue(flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+    }
+
+    @Test
     fun `selection window owns focus so edge back is not sent to target app`() {
         val flags = selectionOverlayWindowFlags()
 

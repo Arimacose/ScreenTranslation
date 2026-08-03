@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TextAppearance.ScreenTranslation.PageTitle" parent="TextAppearance.Material3.DisplaySmall">
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+
+    <style name="TextAppearance.ScreenTranslation.Section" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.ScreenTranslation.Supporting" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <style name="Widget.ScreenTranslation.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="cardBackgroundColor">?attr/colorSurface</item>
+        <item name="cardCornerRadius">?attr/screenCardCornerRadius</item>
+        <item name="cardElevation">?attr/screenCardElevation</item>
+        <item name="strokeColor">?attr/colorOutlineVariant</item>
+        <item name="strokeWidth">?attr/screenCardStrokeWidth</item>
+    </style>
+
+    <style name="Widget.ScreenTranslation.HeroCard" parent="Widget.ScreenTranslation.Card">
+        <item name="cardBackgroundColor">?attr/screenHeroColor</item>
+        <item name="strokeWidth">0dp</item>
+    </style>
+
+    <style name="Widget.ScreenTranslation.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">?attr/screenControlMinHeight</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="cornerRadius">?attr/screenControlCornerRadius</item>
+    </style>
+
+    <style name="Widget.ScreenTranslation.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">?attr/screenControlMinHeight</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="cornerRadius">?attr/screenControlCornerRadius</item>
+    </style>
+
+    <style name="Widget.ScreenTranslation.Button.Danger" parent="Widget.ScreenTranslation.Button.Outlined">
+        <item name="android:textColor">?attr/colorError</item>
+        <item name="strokeColor">?attr/colorError</item>
+    </style>
+
+    <style name="Widget.ScreenTranslation.ExperimentalBanner" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:background">@drawable/bg_experimental_banner</item>
+        <item name="android:textColor">?attr/colorOnErrorContainer</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+</resources>

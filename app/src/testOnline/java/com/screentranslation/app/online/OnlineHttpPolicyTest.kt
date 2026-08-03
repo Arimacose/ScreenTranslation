@@ -29,6 +29,8 @@ class OnlineHttpPolicyTest {
             OnlineFailureCategory.TEMPORARY_SERVICE,
             OnlineHttpPolicy.failureForStatus(503).category,
         )
+        assertTrue(OnlineHttpPolicy.failureForStatus(401).message.orEmpty().contains("API Key"))
+        assertTrue(OnlineHttpPolicy.failureForStatus(429).message.orEmpty().contains("自动重试"))
     }
 
     @Test

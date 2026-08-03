@@ -26,14 +26,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.screentranslation.app.ml.ModelPreparationProgress
 import com.screentranslation.app.ml.ModelPreparationStage
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.model.LanguageOption
+import com.screentranslation.app.model.CaptureMode
+import com.screentranslation.app.model.UiStyle
 import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.service.CaptureShortcutNotification
 import com.screentranslation.app.service.ScreenTranslationService
+import com.screentranslation.app.ui.UiStyleController
+import com.screentranslation.app.vendor.HyperOsVendorAdapter
 
 internal enum class BatteryPolicyUiState {
     BACKGROUND_RESTRICTED,
@@ -60,16 +67,6 @@ internal fun resolveBatteryPolicyUiState(
     else -> BatteryPolicyUiState.VENDOR_POLICY_UNVERIFIED
 }
 
-/**
- * HyperOS 3 stores exact package names selected as “无限制” in a comma-separated
- * Settings.System value. A null value means the ROM does not expose this signal;
- * an empty or non-matching value is a confirmed “not selected” state.
- */
-internal fun isPackageHyperOsUnrestricted(rawPackages: String?, packageName: String): Boolean? {
-    if (rawPackages == null) return null
-    return rawPackages.split(',').any { it.trim() == packageName }
-}
-
 internal fun sourceOptionsForEdition(
     isBergamotLite: Boolean,
     targetsChineseOnly: Boolean,
@@ -94,16 +91,37 @@ internal fun targetOptionsForEdition(
         LanguageOption.targetOptions
     }
 
+internal data class ModelPreparationButtonState(
+    val isReady: Boolean,
+    val isEnabled: Boolean,
+)
+
+internal fun resolveModelPreparationButtonState(
+    serviceRunning: Boolean,
+    operationIdle: Boolean,
+    sameLanguage: Boolean,
+    readyForSelectedPair: Boolean,
+): ModelPreparationButtonState = ModelPreparationButtonState(
+    isReady = readyForSelectedPair,
+    isEnabled = !serviceRunning && operationIdle && !sameLanguage && !readyForSelectedPair,
+)
+
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: AppPreferences
     private lateinit var projectionManager: MediaProjectionManager
 
     private lateinit var experimentalBannerView: TextView
+    private lateinit var uiStyleGroup: MaterialButtonToggleGroup
+    private lateinit var materialMonetSwitch: MaterialSwitch
+    private lateinit var materialMonetHintView: TextView
     private lateinit var sourceSpinner: Spinner
     private lateinit var targetSpinner: Spinner
+    private lateinit var captureModeSpinner: Spinner
+    private lateinit var captureModeHintView: TextView
     private lateinit var intervalSeekBar: SeekBar
     private lateinit var intervalValueView: TextView
     private lateinit var prepareModelsButton: Button
+    private lateinit var manageModelsButton: Button
     private lateinit var modelStatusView: TextView
     private lateinit var onlineSettingsButton: Button
     private lateinit var onlineConfigStatusView: TextView
@@ -163,6 +181,18 @@ class MainActivity : AppCompatActivity() {
         refreshOnlineConfigurationStatus()
     }
 
+    private val modelManagementLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        when (result.resultCode) {
+            Activity.RESULT_OK -> {
+                invalidatePreparedModel()
+                prepareCurrentModels()
+            }
+            ModelManagementActivity.RESULT_MODELS_CHANGED -> invalidatePreparedModel()
+        }
+    }
+
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -177,7 +207,12 @@ class MainActivity : AppCompatActivity() {
         val source = selectedSourceLanguage()
         val target = selectedTargetLanguage()
         val interval = selectedFrameInterval()
-        preferences.save(source.languageTag, target.languageTag, interval)
+        preferences.save(
+            source.languageTag,
+            target.languageTag,
+            interval,
+            selectedCaptureMode(),
+        )
 
         try {
             val serviceIntent = ScreenTranslationService.startIntent(
@@ -187,6 +222,7 @@ class MainActivity : AppCompatActivity() {
                 sourceLanguage = source.languageTag,
                 targetLanguage = target.languageTag,
                 frameIntervalMs = interval,
+                captureMode = selectedCaptureMode(),
             )
             ContextCompat.startForegroundService(this, serviceIntent)
             serviceStatusView.setText(R.string.service_starting)
@@ -201,6 +237,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        UiStyleController.apply(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -208,12 +245,27 @@ class MainActivity : AppCompatActivity() {
         projectionManager = getSystemService(MediaProjectionManager::class.java)
         bindViews()
         applySystemBarInsets()
+        configureAppearance()
         configureLanguageSelectors()
+        configureCaptureMode()
         configureFrameInterval()
         configureActions()
+        modelReadyFor = savedInstanceState?.let { state ->
+            val source = state.getString(STATE_READY_SOURCE)
+            val target = state.getString(STATE_READY_TARGET)
+            if (source != null && target != null) source to target else null
+        }
         refreshPermissionState()
         setServiceRunningUi(false)
         refreshOnlineConfigurationStatus()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        modelReadyFor?.let { (source, target) ->
+            outState.putString(STATE_READY_SOURCE, source)
+            outState.putString(STATE_READY_TARGET, target)
+        }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -251,11 +303,17 @@ class MainActivity : AppCompatActivity() {
         } else {
             View.GONE
         }
+        uiStyleGroup = findViewById(R.id.group_ui_style)
+        materialMonetSwitch = findViewById(R.id.switch_material_monet)
+        materialMonetHintView = findViewById(R.id.text_material_monet_hint)
         sourceSpinner = findViewById(R.id.spinner_source_language)
         targetSpinner = findViewById(R.id.spinner_target_language)
+        captureModeSpinner = findViewById(R.id.spinner_capture_mode)
+        captureModeHintView = findViewById(R.id.text_capture_mode_hint)
         intervalSeekBar = findViewById(R.id.seek_frame_interval)
         intervalValueView = findViewById(R.id.text_frame_interval)
         prepareModelsButton = findViewById(R.id.button_prepare_models)
+        manageModelsButton = findViewById(R.id.button_manage_models)
         modelStatusView = findViewById(R.id.text_model_status)
         onlineSettingsButton = findViewById(R.id.button_online_settings)
         onlineConfigStatusView = findViewById(R.id.text_online_config_status)
@@ -282,6 +340,54 @@ class MainActivity : AppCompatActivity() {
         startButton = findViewById(R.id.button_start)
         stopButton = findViewById(R.id.button_stop)
         serviceStatusView = findViewById(R.id.text_service_status)
+    }
+
+    private fun configureAppearance() {
+        val currentStyle = preferences.uiStyle
+        uiStyleGroup.check(
+            when (currentStyle) {
+                UiStyle.APPLE -> R.id.button_style_apple
+                UiStyle.MIUIX -> R.id.button_style_miuix
+                UiStyle.MATERIAL3 -> R.id.button_style_material3
+            },
+        )
+        val materialOnlyVisibility = if (currentStyle == UiStyle.MATERIAL3) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        materialMonetSwitch.visibility = materialOnlyVisibility
+        materialMonetHintView.visibility = materialOnlyVisibility
+        materialMonetSwitch.isChecked = preferences.materialMonetEnabled
+        val dynamicColorsAvailable = DynamicColors.isDynamicColorAvailable()
+        materialMonetSwitch.isEnabled = dynamicColorsAvailable
+        materialMonetHintView.setText(
+            if (dynamicColorsAvailable) {
+                R.string.material_monet_hint
+            } else {
+                R.string.material_monet_unavailable
+            },
+        )
+
+        uiStyleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val selectedStyle = when (checkedId) {
+                R.id.button_style_apple -> UiStyle.APPLE
+                R.id.button_style_miuix -> UiStyle.MIUIX
+                R.id.button_style_material3 -> UiStyle.MATERIAL3
+                else -> return@addOnButtonCheckedListener
+            }
+            if (selectedStyle != preferences.uiStyle) {
+                preferences.uiStyle = selectedStyle
+                recreate()
+            }
+        }
+        materialMonetSwitch.setOnCheckedChangeListener { _, enabled ->
+            if (enabled != preferences.materialMonetEnabled) {
+                preferences.materialMonetEnabled = enabled
+                recreate()
+            }
+        }
     }
 
     private fun applySystemBarInsets() {
@@ -381,9 +487,40 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun configureCaptureMode() {
+        captureModeSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            listOf(
+                getString(R.string.capture_mode_region),
+                getString(R.string.capture_mode_full_screen),
+            ),
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        captureModeSpinner.setSelection(preferences.captureMode.ordinal, false)
+        updateCaptureModeHint()
+        captureModeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long,
+            ) {
+                updateCaptureModeHint()
+                persistCurrentConfiguration()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+    }
+
     private fun configureActions() {
         prepareModelsButton.setOnClickListener {
             prepareCurrentModels()
+        }
+        manageModelsButton.setOnClickListener {
+            modelManagementLauncher.launch(Intent(this, ModelManagementActivity::class.java))
         }
         experimentalSmokeTestButton.setOnClickListener {
             runExperimentalSmokeTest()
@@ -484,6 +621,7 @@ class MainActivity : AppCompatActivity() {
                     selectedTargetLanguage().languageTag
                 if (currentPair != requestedPair) {
                     modelStatusView.setText(R.string.model_not_prepared)
+                    setServiceRunningUi(ScreenTranslationService.isRunning)
                     return@runOnUiThread
                 }
 
@@ -495,6 +633,7 @@ class MainActivity : AppCompatActivity() {
                             source.displayName(this),
                             target.displayName(this),
                         )
+                        setServiceRunningUi(ScreenTranslationService.isRunning)
                         onReady?.invoke()
                     },
                     onFailure = { error ->
@@ -503,6 +642,7 @@ class MainActivity : AppCompatActivity() {
                             R.string.model_failed,
                             error.localizedMessage ?: getString(R.string.unknown_error),
                         )
+                        setServiceRunningUi(ScreenTranslationService.isRunning)
                     },
                 )
             }
@@ -697,17 +837,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openOverlayPermissionSettings() {
         val packageUri = "package:$packageName".toUri()
-        val candidates = listOf(
-            // HyperOS 3 ignores the package URI on the standard overlay action
-            // and opens a global app list. Its permission editor reliably opens
-            // this app first; the user then chooses Other permissions > Floating windows.
-            Intent(HYPER_OS_APP_PERMISSION_EDITOR).apply {
-                setClassName(
-                    HYPER_OS_SECURITY_CENTER_PACKAGE,
-                    HYPER_OS_PERMISSION_EDITOR_ACTIVITY,
-                )
-                putExtra(HYPER_OS_PACKAGE_EXTRA, packageName)
-            },
+        val candidates = HyperOsVendorAdapter.overlayPermissionIntents(packageName) + listOf(
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri),
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
@@ -738,19 +868,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun openBatteryPolicySettings() {
         val packageUri = "package:$packageName".toUri()
-        val candidates = listOf(
-            // Verified on HyperOS V816 / Android 16: the per-app power policy
-            // lives inside the vendor app-info screen as its 省电策略 entry.
-            // miui.intent.action.POWER_HIDE_MODE_APP_LIST does not resolve on
-            // this release, and com.miui.securitycenter.action.POWER_SETTINGS
-            // opens the *global* optimization page with no per-app control.
-            Intent().apply {
-                setClassName(
-                    HYPER_OS_SECURITY_CENTER_PACKAGE,
-                    HYPER_OS_APP_DETAILS_ACTIVITY,
-                )
-                putExtra(HYPER_OS_APP_DETAILS_PACKAGE_EXTRA, packageName)
-            },
+        val candidates = HyperOsVendorAdapter.batteryPolicyIntents(packageName) + listOf(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
             Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
         )
@@ -773,13 +891,8 @@ class MainActivity : AppCompatActivity() {
             isAospPowerAllowlisted =
                 getSystemService(PowerManager::class.java)
                     ?.isIgnoringBatteryOptimizations(packageName),
-            isHyperOsUnrestricted = isPackageHyperOsUnrestricted(
-                rawPackages = Settings.System.getString(
-                    contentResolver,
-                    HYPER_OS_NO_RESTRICT_SETTING,
-                ),
-                packageName = packageName,
-            ),
+            isHyperOsUnrestricted = HyperOsVendorAdapter
+                .isPowerPolicyUnrestricted(this, packageName),
         )
 
     private fun maybeContinueAfterOverlayPermission() {
@@ -864,6 +977,7 @@ class MainActivity : AppCompatActivity() {
             sourceLanguage = selectedSourceLanguage().languageTag,
             targetLanguage = selectedTargetLanguage().languageTag,
             frameIntervalMs = selectedFrameInterval(),
+            captureMode = selectedCaptureMode(),
         )
     }
 
@@ -891,6 +1005,21 @@ class MainActivity : AppCompatActivity() {
         ]
     }
 
+    private fun selectedCaptureMode(): CaptureMode =
+        CaptureMode.entries[
+            captureModeSpinner.selectedItemPosition.coerceIn(0, CaptureMode.entries.lastIndex)
+        ]
+
+    private fun updateCaptureModeHint() {
+        captureModeHintView.setText(
+            if (selectedCaptureMode() == CaptureMode.FULL_SCREEN_INCREMENTAL) {
+                R.string.capture_mode_full_screen_hint
+            } else {
+                R.string.capture_mode_region_hint
+            },
+        )
+    }
+
     private fun updateIntervalLabel() {
         intervalValueView.text = getString(
             R.string.frame_interval_value,
@@ -908,9 +1037,21 @@ class MainActivity : AppCompatActivity() {
     private fun setServiceRunningUi(running: Boolean) {
         val operationIdle =
             modelPreparationEngine == null && experimentalSmokeTestEngine == null
+        val currentPair = selectedSourceLanguage().languageTag to selectedTargetLanguage().languageTag
+        val prepareState = resolveModelPreparationButtonState(
+            serviceRunning = running,
+            operationIdle = operationIdle,
+            sameLanguage = selectedSourceLanguage() == selectedTargetLanguage(),
+            readyForSelectedPair = modelReadyFor == currentPair,
+        )
         startButton.isEnabled = !running && operationIdle
         stopButton.isEnabled = running
-        prepareModelsButton.isEnabled = !running && operationIdle
+        prepareModelsButton.setText(
+            if (prepareState.isReady) R.string.model_prepare_ready else R.string.prepare_models,
+        )
+        prepareModelsButton.isEnabled = prepareState.isEnabled
+        captureModeSpinner.isEnabled = !running && operationIdle
+        manageModelsButton.isEnabled = !running && operationIdle
         onlineSettingsButton.isEnabled =
             !running && operationIdle && BuildConfig.ONLINE_LLM
         experimentalSmokeTestButton.isEnabled =
@@ -958,22 +1099,13 @@ class MainActivity : AppCompatActivity() {
             3_000L,
         )
         private const val DEFAULT_INTERVAL_INDEX = 2
-        private const val HYPER_OS_APP_PERMISSION_EDITOR =
-            "miui.intent.action.APP_PERM_EDITOR"
-        private const val HYPER_OS_SECURITY_CENTER_PACKAGE =
-            "com.miui.securitycenter"
-        private const val HYPER_OS_PERMISSION_EDITOR_ACTIVITY =
-            "com.miui.permcenter.permissions.PermissionsEditorActivity"
-        private const val HYPER_OS_PACKAGE_EXTRA = "extra_pkgname"
-        private const val HYPER_OS_APP_DETAILS_ACTIVITY =
-            "com.miui.appmanager.ApplicationsDetailsActivity"
-        private const val HYPER_OS_APP_DETAILS_PACKAGE_EXTRA = "package_name"
-        private const val HYPER_OS_NO_RESTRICT_SETTING = "MILLET_NO_RESTRICT_APP"
         private const val EXPERIMENTAL_SMOKE_LOG_TAG = "HyMt2Q4Smoke"
         private const val ONLINE_SETTINGS_ACTIVITY_CLASS =
             "com.screentranslation.app.online.OnlineSettingsActivity"
         private const val ONLINE_EDITION_BRIDGE_CLASS =
             "com.screentranslation.app.online.OnlineEditionBridge"
+        private const val STATE_READY_SOURCE = "ready_source"
+        private const val STATE_READY_TARGET = "ready_target"
         private const val EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE = "en"
         private const val EXPERIMENTAL_SMOKE_TARGET_LANGUAGE = "zh"
         private const val EXPERIMENTAL_SMOKE_SOURCE_TEXT =

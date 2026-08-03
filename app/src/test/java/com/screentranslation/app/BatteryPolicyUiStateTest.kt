@@ -1,6 +1,7 @@
 package com.screentranslation.app
 
 import com.screentranslation.app.model.LanguageOption
+import com.screentranslation.app.vendor.HyperOsVendorAdapter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -78,13 +79,19 @@ class BatteryPolicyUiStateTest {
 
         assertEquals(
             true,
-            isPackageHyperOsUnrestricted(raw, "com.screentranslation.app.online"),
+            HyperOsVendorAdapter.parseUnrestrictedPackages(
+                raw,
+                "com.screentranslation.app.online",
+            ),
         )
         assertEquals(
             false,
-            isPackageHyperOsUnrestricted(raw, "com.screentranslation.app"),
+            HyperOsVendorAdapter.parseUnrestrictedPackages(raw, "com.screentranslation.app"),
         )
-        assertEquals(null, isPackageHyperOsUnrestricted(null, "com.example"))
+        assertEquals(
+            null,
+            HyperOsVendorAdapter.parseUnrestrictedPackages(null, "com.example"),
+        )
     }
 
     @Test

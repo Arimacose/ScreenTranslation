@@ -16,29 +16,31 @@
 
 - [x] 建立 ML Kit、PP-OCRv6、OPUS-MT 与 Firefox Translations 的固定夹具基准
 - [x] 将 PP-OCRv6 small + ONNX Runtime 提升为 arm64 Debug/Release 默认 OCR
-- [ ] 继续降低 PP-OCRv6 生产路径延迟与内存，并完成 15 分钟温升验收
+- [ ] 继续降低 PP-OCRv6 生产路径延迟与内存，并完成 15 分钟温升验收（[#39](https://github.com/Arimacose/ScreenTranslation/issues/39)）
 - [x] 构建 Firefox Translations / Bergamot Android arm64 运行时并完成真机比较
 - [ ] 在实验特性开关后实现 Bergamot JNI 适配器，并与 PP-OCRv6 联合做内存/温升验收
-- [ ] 在翻译前遮蔽、翻译后恢复版本号、标识符、金额、日期和状态字
-- [ ] 让原文与译文面板可复制
+- [x] 在翻译前遮蔽、翻译后恢复版本号、邮箱、金额、日期和 URL
+- [x] 让原文与译文面板可复制
 - [x] 在不保存历史的前提下增加长结果展开与限高滚动
-- [ ] 恢复 OCR 丢失的关键标点并按语义分句
-- [ ] 抽象 `TranslationProvider`，分离端侧快速模式和高质量模式
-- [ ] 为固定公开文本建立质量回归夹具与人工评分规范
-- [ ] 增加模型管理页面：大小、状态、下载与删除
-- [ ] 增加“关于/开源许可/隐私”应用内页面
+- [ ] 恢复 OCR 丢失的关键标点并按语义分句（[#40](https://github.com/Arimacose/ScreenTranslation/issues/40)）
+- [ ] 抽象 `TranslationProvider`，分离端侧快速模式和高质量模式（[#41](https://github.com/Arimacose/ScreenTranslation/issues/41)）
+- [ ] 为固定公开文本建立质量回归夹具与人工评分规范（[#46](https://github.com/Arimacose/ScreenTranslation/issues/46)）
+- [x] 增加模型管理页面：大小、状态、下载与删除
+- [ ] 增加“关于/开源许可/隐私”应用内页面（[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
 
 验收重点：长句不因面板省略而丢失可访问性；翻译后端的数据流和归属清晰可选。
 
 ## v0.3 — 兼容性与自动化
 
-- [ ] 扩大 Android 16 ROM 验证矩阵
-- [ ] 增加 x86_64 调试构建或独立模拟器 flavor
-- [ ] 增加 Android instrumentation 与 UI 自动化测试
-- [ ] 覆盖旋转、锁屏、投影撤销、任务移除和内存压力
+- [ ] 扩大 Android 16 ROM 验证矩阵（当前里程碑明确延期）
+- [ ] 增加 x86_64 调试构建或独立模拟器 flavor（[#43](https://github.com/Arimacose/ScreenTranslation/issues/43)）
+- [ ] 增加 Android instrumentation 与 UI 自动化测试（[#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
+- [ ] 覆盖旋转、锁屏、投影撤销、任务移除和内存压力（并入 [#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
 - [ ] 建立可重复的性能、温升和持续运行基准
-- [ ] 增加分块差分、块级稳定门和全屏持续识别模式
-- [ ] 生成可发布的依赖清单或 SBOM
+- [x] 增加分块差分、块级稳定门和全屏持续识别模式（Experimental；真机门禁跟踪于 [#38](https://github.com/Arimacose/ScreenTranslation/issues/38)）
+- [x] 以 Apple 风格默认候选、MIUIX、Material 3 + 可选 Monet 替换旧 UI，并统一服务悬浮层视觉令牌
+- [ ] 完成三套 UI 的签名 Release / HyperOS 真机视觉与交互验收（[#47](https://github.com/Arimacose/ScreenTranslation/issues/47)）
+- [ ] 生成可发布的依赖清单或 SBOM（[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
 
 ## v1.0 前置条件
 

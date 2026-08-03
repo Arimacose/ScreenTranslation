@@ -370,6 +370,8 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     add("testOnlineImplementation", "org.json:json:20260719")
+    add("testOnlineImplementation", "com.squareup.okhttp3:mockwebserver3:5.4.0")
+    add("testOnlineImplementation", "com.squareup.okhttp3:okhttp-tls:5.4.0")
 }
 
 tasks.register("printVersionInfo") {

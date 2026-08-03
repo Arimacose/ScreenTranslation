@@ -1,23 +1,112 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.ScreenTranslation" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/screen_primary</item>
-        <item name="colorOnPrimary">@color/screen_on_primary</item>
-        <item name="colorPrimaryContainer">@color/screen_primary_container</item>
-        <item name="colorOnPrimaryContainer">@color/screen_on_primary_container</item>
-        <item name="colorSecondary">@color/screen_secondary</item>
-        <item name="colorOnSecondary">@color/screen_on_secondary</item>
-        <item name="android:colorAccent">@color/screen_primary</item>
-        <item name="android:colorBackground">@color/screen_background</item>
-        <item name="colorSurface">@color/screen_surface</item>
-        <item name="colorOnSurface">@color/screen_on_surface</item>
-        <item name="colorOutline">@color/screen_outline</item>
+    <style name="Theme.ScreenTranslation.Base" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">?attr/colorSurfaceContainerLowest</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="materialButtonStyle">@style/Widget.ScreenTranslation.Button</item>
+        <item name="materialCardViewStyle">@style/Widget.ScreenTranslation.Card</item>
+        <item name="colorControlActivated">?attr/colorPrimary</item>
     </style>
+
+    <!-- Default candidate: restrained grouped cards and iOS-like spacing/shape. -->
+    <style name="Theme.ScreenTranslation.Apple" parent="Theme.ScreenTranslation.Base">
+        <item name="colorPrimary">@color/apple_primary</item>
+        <item name="colorOnPrimary">@color/apple_on_primary</item>
+        <item name="colorPrimaryContainer">@color/apple_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/apple_on_primary_container</item>
+        <item name="colorSecondary">@color/apple_secondary</item>
+        <item name="colorOnSecondary">@color/apple_on_secondary</item>
+        <item name="colorSurface">@color/apple_surface</item>
+        <item name="colorSurfaceVariant">@color/apple_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/apple_surface</item>
+        <item name="colorSurfaceContainerLow">@color/apple_background</item>
+        <item name="colorSurfaceContainerLowest">@color/apple_background</item>
+        <item name="colorOnSurface">@color/apple_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/apple_on_surface_variant</item>
+        <item name="colorOutline">@color/apple_outline</item>
+        <item name="colorOutlineVariant">@color/apple_outline_variant</item>
+        <item name="colorError">@color/apple_error</item>
+        <item name="colorErrorContainer">@color/apple_error_container</item>
+        <item name="colorOnErrorContainer">@color/apple_on_error_container</item>
+        <item name="android:colorAccent">@color/apple_primary</item>
+        <item name="android:colorBackground">@color/apple_background</item>
+        <item name="screenCardCornerRadius">18dp</item>
+        <item name="screenControlCornerRadius">13dp</item>
+        <item name="screenCardElevation">0dp</item>
+        <item name="screenCardStrokeWidth">0dp</item>
+        <item name="screenControlMinHeight">48dp</item>
+        <item name="screenHeroColor">?attr/colorPrimaryContainer</item>
+    </style>
+
+    <!-- MIUIX visual language implemented with stable app-owned View tokens. -->
+    <style name="Theme.ScreenTranslation.Miuix" parent="Theme.ScreenTranslation.Base">
+        <item name="colorPrimary">@color/miuix_primary</item>
+        <item name="colorOnPrimary">@color/miuix_on_primary</item>
+        <item name="colorPrimaryContainer">@color/miuix_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/miuix_on_primary_container</item>
+        <item name="colorSecondary">@color/miuix_secondary</item>
+        <item name="colorOnSecondary">@color/miuix_on_secondary</item>
+        <item name="colorSurface">@color/miuix_surface</item>
+        <item name="colorSurfaceVariant">@color/miuix_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/miuix_surface</item>
+        <item name="colorSurfaceContainerLow">@color/miuix_background</item>
+        <item name="colorSurfaceContainerLowest">@color/miuix_background</item>
+        <item name="colorOnSurface">@color/miuix_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/miuix_on_surface_variant</item>
+        <item name="colorOutline">@color/miuix_outline</item>
+        <item name="colorOutlineVariant">@color/miuix_outline_variant</item>
+        <item name="colorError">@color/miuix_error</item>
+        <item name="colorErrorContainer">@color/miuix_error_container</item>
+        <item name="colorOnErrorContainer">@color/miuix_on_error_container</item>
+        <item name="android:colorAccent">@color/miuix_primary</item>
+        <item name="android:colorBackground">@color/miuix_background</item>
+        <item name="screenCardCornerRadius">24dp</item>
+        <item name="screenControlCornerRadius">16dp</item>
+        <item name="screenCardElevation">0dp</item>
+        <item name="screenCardStrokeWidth">0dp</item>
+        <item name="screenControlMinHeight">52dp</item>
+        <item name="screenHeroColor">?attr/colorPrimaryContainer</item>
+    </style>
+
+    <!-- Google Material 3 fallback palette; DynamicColors overlays Monet roles. -->
+    <style name="Theme.ScreenTranslation.Material3" parent="Theme.ScreenTranslation.Base">
+        <item name="dynamicColorThemeOverlay">@style/ThemeOverlay.Material3.DynamicColors.DayNight</item>
+        <item name="colorPrimary">@color/material3_primary</item>
+        <item name="colorOnPrimary">@color/material3_on_primary</item>
+        <item name="colorPrimaryContainer">@color/material3_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/material3_on_primary_container</item>
+        <item name="colorSecondary">@color/material3_secondary</item>
+        <item name="colorOnSecondary">@color/material3_on_secondary</item>
+        <item name="colorSurface">@color/material3_surface</item>
+        <item name="colorSurfaceVariant">@color/material3_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/material3_surface</item>
+        <item name="colorSurfaceContainerLow">@color/material3_background</item>
+        <item name="colorSurfaceContainerLowest">@color/material3_background</item>
+        <item name="colorOnSurface">@color/material3_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/material3_on_surface_variant</item>
+        <item name="colorOutline">@color/material3_outline</item>
+        <item name="colorOutlineVariant">@color/material3_outline_variant</item>
+        <item name="colorError">@color/material3_error</item>
+        <item name="colorErrorContainer">@color/material3_error_container</item>
+        <item name="colorOnErrorContainer">@color/material3_on_error_container</item>
+        <item name="android:colorAccent">@color/material3_primary</item>
+        <item name="android:colorBackground">@color/material3_background</item>
+        <item name="screenCardCornerRadius">20dp</item>
+        <item name="screenControlCornerRadius">20dp</item>
+        <item name="screenCardElevation">1dp</item>
+        <item name="screenCardStrokeWidth">1dp</item>
+        <item name="screenControlMinHeight">48dp</item>
+        <item name="screenHeroColor">?attr/colorPrimaryContainer</item>
+    </style>
+
+    <!-- Manifest fallback and first-install default. -->
+    <style name="Theme.ScreenTranslation" parent="Theme.ScreenTranslation.Apple" />
 
     <style name="Theme.ScreenTranslation.CaptureShortcut" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>

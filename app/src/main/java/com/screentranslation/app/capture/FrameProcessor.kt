@@ -8,6 +8,7 @@ import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationInputMode
 import com.screentranslation.app.util.ClauseSplitter
+import com.screentranslation.app.util.ProtectedTextCodec
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -28,7 +29,7 @@ class FrameProcessor(
     private val onTranslation: (FrameTranslation) -> Unit,
     private val onError: (Throwable) -> Unit = {},
     elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
-) : AutoCloseable {
+) : FramePipeline {
     data class FrameTranslation(
         val originalText: String,
         val translatedText: String,
@@ -40,13 +41,30 @@ class FrameProcessor(
             TranslationCoordinator(
                 backend = translationEngine,
                 onTranslation = { original, translated ->
-                    onTranslation(FrameTranslation(original, translated))
+                    val protected = synchronized(wholeRegionProtectedText) {
+                        wholeRegionProtectedText.remove(original)
+                    }
+                    onTranslation(
+                        FrameTranslation(
+                            originalText = protected?.original ?: original,
+                            translatedText = protected?.restore(translated) ?: translated,
+                        ),
+                    )
                 },
                 onError = onError,
             )
         } else {
             null
         }
+
+    private val wholeRegionProtectedText = object : LinkedHashMap<
+        String,
+        ProtectedTextCodec.ProtectedText,
+    >(WHOLE_REGION_PROTECTION_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, ProtectedTextCodec.ProtectedText>,
+        ): Boolean = size > WHOLE_REGION_PROTECTION_ENTRIES
+    }
 
     /**
      * Most of a UI is unchanged between frames, so the same block text is
@@ -62,28 +80,30 @@ class FrameProcessor(
             size > TRANSLATION_CACHE_ENTRIES
     }
 
-    fun setEnabled(value: Boolean) {
+    override fun setEnabled(value: Boolean) {
         gate.setEnabled(value)
         if (!value) {
             wholeRegionCoordinator?.reset()
             stableTextGate.reset()
+            synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
         }
     }
 
-    fun resetStability() {
+    override fun resetStability() {
         gate.invalidate()
         stableTextGate.reset()
         wholeRegionCoordinator?.reset()
+        synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
     }
 
     /**
      * Always calls acquireLatestImage so the reader is drained even when work
      * is throttled or another ML task is in flight.
      */
-    fun onImageAvailable(
+    override fun onImageAvailable(
         reader: ImageReader,
-        normalizedRegion: RectF = FULL_FRAME,
-        normalizedExclusion: RectF? = null,
+        normalizedRegion: RectF,
+        normalizedExclusion: RectF?,
     ) {
         val image = try {
             reader.acquireLatestImage()
@@ -140,7 +160,11 @@ class FrameProcessor(
                         // in-flight request through the coordinator.
                         gate.release()
                         onOriginalRecognized(stableText)
-                        checkNotNull(wholeRegionCoordinator).submit(stableText)
+                        val protected = ProtectedTextCodec.protect(stableText)
+                        synchronized(wholeRegionProtectedText) {
+                            wholeRegionProtectedText[protected.encoded] = protected
+                        }
+                        checkNotNull(wholeRegionCoordinator).submit(protected.encoded)
                     } else {
                         translate(stableText, recognition.blocks, frameGeneration)
                     }
@@ -194,11 +218,13 @@ class FrameProcessor(
                 return@forEachIndexed
             }
 
-            translationEngine.translate(part) { translation ->
+            val protected = ProtectedTextCodec.protect(part)
+            translationEngine.translate(protected.encoded) { translation ->
                 translation.fold(
                     onSuccess = { text ->
-                        translated[index] = text
-                        cache(part, text)
+                        val restored = protected.restore(text)
+                        translated[index] = restored
+                        cache(part, restored)
                         if (remaining.decrementAndGet() == 0) {
                             settle { publish(originalText, translationPlan, translated, frameGeneration) }
                         }
@@ -243,6 +269,7 @@ class FrameProcessor(
         wholeRegionCoordinator?.close()
         stableTextGate.reset()
         synchronized(translationCache) { translationCache.clear() }
+        synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
     }
 
     private fun Bitmap.recycleSafely() {
@@ -252,6 +279,6 @@ class FrameProcessor(
     companion object {
         const val DEFAULT_FRAME_INTERVAL_MS = 450L
         private const val TRANSLATION_CACHE_ENTRIES = 128
-        private val FULL_FRAME = RectF(0f, 0f, 1f, 1f)
+        private const val WHOLE_REGION_PROTECTION_ENTRIES = 8
     }
 }

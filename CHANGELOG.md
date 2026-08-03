@@ -5,6 +5,47 @@
 
 ## [Unreleased]
 
+### Added
+
+- 以 Apple 风格（默认候选）、MIUIX 和 Material 3 三套可切换视觉语言替换原有平铺式
+  UI，并统一主页面、模型管理、Online 设置及两类悬浮翻译层。
+- 为 Material 3 增加可关闭的 Monet 动态取色与固定色板回退路径。
+- 当前语对模型准备成功后，“准备模型”变为灰色“已就绪”且不可点击；切换 UI 导致
+  Activity 重建时仍保留该就绪状态。
+
+- 新增保留框选区域为默认值的“全屏增量覆盖”Experimental 模式：`3×6` 亮度分块
+  差分、自然变化后的强制复核、PP-OCRv6 文字框坐标、跨帧 block 稳定门、单活跃
+  翻译队列与静态画面最长 2 秒自适应采样；译文标签优先显示在对应原文框上方。
+- 新增模型管理页，按 edition 展示下载状态、实际/预期大小和固定 revision，可直接
+  发起当前语言模型准备，并在服务停止后删除完整或部分下载权重。
+- 新增 URL、邮箱、日期、金额与版本号的翻译前占位保护/翻译后恢复，以及区域结果面板
+  的独立“复制原文”“复制译文”按钮。
+- 新增真实 localhost HTTPS MockWebServer 契约测试，覆盖 Online 401 不重试、429
+  读取 `Retry-After` 后一次有界重试，以及 90 秒生成超时不重试。
+- 新增英文 README、可复现的 30 秒仓库 UI 预览 GIF、v0.4.0 milestone 和公开路线图
+  issues。
+
+### Changed
+
+- 把 HyperOS 私有省电设置键与设置页 Intent 隔离到 `VendorAdapter` 边界；当前仍只提供
+  `HyperOsVendorAdapter`，本阶段不扩展其他 ROM。
+- Online 的 401/403、429 与超时提示分别指向密钥/权限/余额、限流退避和服务/模型
+  响应时长，避免统一显示泛化网络错误。
+- `OcrEngine.Recognition` 增加归一化文字行几何与置信度，同时保持既有 text/blocks
+  调用兼容。
+
+### Fixed
+
+- 全屏块翻译队列的暂停状态现在只能显式恢复；新任务提交或稳定状态重置不会在屏幕
+  隐藏期间意外重启请求。
+- 当前语言模型准备成功后，主页面操作变为灰色不可点击的“已就绪”；语言对、Online
+  配置或模型文件状态变化后才恢复准备入口。
+
+### Verification
+
+- 本阶段先完成 JVM、Lint、Release 构建和 CI；全屏覆盖的 HyperOS 行为、位置、功耗、
+  温升与持续运行保留到 Issue #38 的签名 Release 真机门禁。
+
 ## [0.3.1] - 2026-08-03
 
 ### Changed
@@ -140,7 +181,8 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.1.0...v0.2.0

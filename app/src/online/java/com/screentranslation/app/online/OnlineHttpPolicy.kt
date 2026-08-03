@@ -13,15 +13,15 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
 internal enum class OnlineFailureCategory(val displayMessage: String) {
-    CREDENTIALS("凭据或服务权限错误"),
+    CREDENTIALS("API Key 无效、权限不足或账户额度不可用，请检查密钥与余额"),
     ENDPOINT_OR_MODEL("服务地址、模型列表或所选模型错误"),
-    RATE_LIMIT("服务请求限流"),
+    RATE_LIMIT("请求过于频繁或额度受限，已自动重试一次；请稍后再试"),
     TEMPORARY_SERVICE("翻译服务暂时异常"),
     REQUEST_CONTRACT("服务不接受当前请求"),
     SERVER("翻译服务返回错误"),
     DNS("服务主机解析失败"),
     TLS("TLS 连接失败"),
-    TIMEOUT("翻译请求超时"),
+    TIMEOUT("翻译请求在 90 秒内未完成，请检查服务状态或改用响应更快的模型"),
     NETWORK("网络请求失败"),
     RESPONSE("翻译响应格式错误"),
 }

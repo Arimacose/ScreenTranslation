@@ -117,18 +117,35 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
                 box.height,
             )
         }
-        val lines = try {
-            recognizeCrops(crops, runtime)
-                .filter { it.confidence >= RECOGNITION_SCORE_THRESHOLD }
-                .map { it.text.trim() }
-                .filter { it.isNotEmpty() }
+        val recognized = try {
+            boxes.zip(recognizeCrops(crops, runtime))
+                .mapNotNull { (box, decoded) ->
+                    val text = decoded.text.trim()
+                    if (decoded.confidence < RECOGNITION_SCORE_THRESHOLD || text.isEmpty()) {
+                        null
+                    } else {
+                        box to decoded.copy(text = text)
+                    }
+                }
         } finally {
             crops.forEach { crop -> crop.recycleSafely() }
         }
 
+        val lines = recognized.map { it.second.text }
+
         return OcrEngine.Recognition(
             text = lines.joinToString("\n"),
             blocks = TextBlockMerger.merge(lines),
+            regions = recognized.map { (box, decoded) ->
+                OcrEngine.TextRegion(
+                    text = decoded.text,
+                    left = box.left.toFloat() / bitmap.width,
+                    top = box.top.toFloat() / bitmap.height,
+                    right = box.right.toFloat() / bitmap.width,
+                    bottom = box.bottom.toFloat() / bitmap.height,
+                    confidence = decoded.confidence,
+                )
+            },
         )
     }
 

@@ -2,7 +2,6 @@ package com.screentranslation.app.overlay
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.util.AttributeSet
@@ -45,38 +44,39 @@ class RegionSelectionView @JvmOverloads constructor(
         get() = selectedRegion?.let(::Rect)
 
     private val density = resources.displayMetrics.density
+    private val visualStyle = resolveOverlayVisualStyle(context)
     private val minSelectionSizePx = dp(MIN_SELECTION_SIZE_DP)
     private val handleOuterRadiusPx = dp(7f)
     private val handleInnerRadiusPx = dp(4f)
 
     private val selectionFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(28, 59, 130, 246)
+        color = visualStyle.selectionFillColor
         style = Paint.Style.FILL
     }
     private val outerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = visualStyle.labelTextColor
         strokeWidth = dp(6f)
         style = Paint.Style.STROKE
     }
     private val innerBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(59, 130, 246)
+        color = visualStyle.accentColor
         strokeWidth = dp(3f)
         style = Paint.Style.STROKE
     }
     private val handleOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = visualStyle.labelTextColor
         style = Paint.Style.FILL
     }
     private val handleInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(37, 99, 235)
+        color = visualStyle.accentColor
         style = Paint.Style.FILL
     }
     private val instructionBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(190, 17, 24, 39)
+        color = visualStyle.instructionColor
         style = Paint.Style.FILL
     }
     private val instructionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = visualStyle.labelTextColor
         textAlign = Paint.Align.CENTER
         textSize = sp(14f)
     }

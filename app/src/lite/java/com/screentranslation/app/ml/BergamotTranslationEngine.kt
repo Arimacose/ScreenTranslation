@@ -626,14 +626,14 @@ private class BergamotModelStore(
         check(!closed.get()) { "Bergamot model preparation was cancelled" }
     }
 
-    private companion object {
-        const val CONFIG_FILE_NAME = "decoder.yml"
-        const val BUFFER_SIZE = 1024 * 1024
-        const val CONNECT_TIMEOUT_MS = 30_000
-        const val READ_TIMEOUT_MS = 180_000
-        const val PROGRESS_INTERVAL_NS = 500_000_000L
+    companion object {
+        private const val CONFIG_FILE_NAME = "decoder.yml"
+        private const val BUFFER_SIZE = 1024 * 1024
+        private const val CONNECT_TIMEOUT_MS = 30_000
+        private const val READ_TIMEOUT_MS = 180_000
+        private const val PROGRESS_INTERVAL_NS = 500_000_000L
 
-        val MODEL_SPECS = listOf(
+        internal val MODEL_SPECS = listOf(
             BergamotModelSpec(
                 id = "en-zh",
                 baseUrl = "https://storage.googleapis.com/" +
@@ -865,14 +865,18 @@ internal object BergamotCachedFileVerifier {
     }
 }
 
-private data class BergamotModelSpec(
+/** Read-only edition catalog shared with the model-management UI. */
+internal fun bergamotModelSpecs(): Collection<BergamotModelSpec> =
+    BergamotModelStore.MODEL_SPECS.values
+
+internal data class BergamotModelSpec(
     val id: String,
     val baseUrl: String,
     val files: List<BergamotFileSpec>,
     val configText: String,
 )
 
-private data class BergamotFileSpec(
+internal data class BergamotFileSpec(
     val compressedName: String,
     val compressedSize: Long,
     val compressedSha256: String,
