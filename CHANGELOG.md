@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 将 ONNX Runtime Android 从 1.26.0 更新到 1.28.0；小米 15 Pro / Android 16
+  固定 PP-OCRv6 夹具输出保持逐字一致，三轮 A/B 的 OCR 中位延迟降低 2.77%，
+  进程峰值内存中位数增加约 4.6 MiB。
+
+### Fixed
+
+- PP-OCRv6 benchmark 改为从 ORT 运行时读取真实版本，并同步更新架构说明、
+  第三方归属材料及 APK/AAB 许可证路径，避免依赖版本与发布材料漂移。
+
 ## [0.3.0] - 2026-08-02
 
 ### Added

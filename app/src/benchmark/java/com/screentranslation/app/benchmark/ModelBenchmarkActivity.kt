@@ -137,7 +137,7 @@ class ModelBenchmarkActivity : Activity() {
                     outputDirectory = outputDirectory,
                     ocrEngine = ocrEngine,
                     translationEngine = translationEngine,
-                    ocrLabel = "ML Kit Text Recognition Latin 16.0.1",
+                    ocrLabel = { "ML Kit Text Recognition Latin 16.0.1" },
                     resultFile = BASELINE_RESULT_FILE,
                 )
             }
@@ -146,7 +146,7 @@ class ModelBenchmarkActivity : Activity() {
                     outputDirectory = outputDirectory,
                     ocrEngine = ocrEngine,
                     translationEngine = translationEngine,
-                    ocrLabel = PpOcrv6Engine.ENGINE_LABEL,
+                    ocrLabel = { PpOcrv6Engine.ENGINE_LABEL },
                     resultFile = PP_OCR_RESULT_FILE,
                 )
             }
@@ -488,7 +488,7 @@ class ModelBenchmarkActivity : Activity() {
         outputDirectory: File,
         ocrEngine: OcrEngine,
         translationEngine: TranslationEngine?,
-        ocrLabel: String,
+        ocrLabel: () -> String,
         resultFile: String,
     ) {
         val warmupBitmap = render(FIXTURES.first())
@@ -533,7 +533,7 @@ class ModelBenchmarkActivity : Activity() {
             .put(
                 "engines",
                 JSONObject()
-                    .put("ocr", ocrLabel)
+                    .put("ocr", ocrLabel())
                     .put(
                         "translation",
                         if (translationEngine == null) {

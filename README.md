@@ -36,7 +36,7 @@
 | compile / min / target SDK | 37 / 36 / 36 |
 | APK ABI | `arm64-v8a`（小米 15 Pro 目标构建） |
 | Production OCR | PP-OCRv6 small ONNX，固定检测/识别模型提交 |
-| OCR runtime | ONNX Runtime Android `1.26.0` |
+| OCR runtime | ONNX Runtime Android `1.28.0` |
 | Lite translation | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
 | Full translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181`，Experimental |
 | Online translation | OkHttp `5.4.0` + 用户配置的 OpenAI-compatible Chat Completions |
