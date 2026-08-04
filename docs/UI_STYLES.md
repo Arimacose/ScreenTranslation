@@ -12,15 +12,20 @@ languages. The choice is stored in app preferences and shared by Lite, Full, and
 
 | Style | Role | Visual treatment | Dynamic color |
 |---|---|---|---|
-| Apple-inspired | First-install default candidate | Grouped surfaces, restrained separators, 18 dp cards, 13 dp controls, Apple-blue accent | No |
+| Apple-inspired | First-install default candidate | Dedicated layouts, large title, system-grouped background, 12 dp white groups, grey section labels, Apple-blue actions, iOS-like segmented control | No |
 | MIUIX | Alternative for the HyperOS target | Larger 24 dp cards, 16 dp controls, 52 dp actions, MIUIX-blue accent | No |
 | Material 3 | Google design-system option | Material elevation, 20 dp cards and controls, semantic Material color roles | Optional Monet |
 
 The Apple-inspired style is an original app-owned implementation and uses no Apple assets.
+It selects dedicated main, model-management, and Online BYOK layouts so it cannot collapse
+back into a recoloured MIUIX screen. Those layouts retain the same View IDs and behaviour
+contract while using a separate grouped-settings hierarchy and component styles. A resource
+contract test enforces both ID parity and the presence of Apple-only visual tokens.
+
 The MIUIX option is implemented with app-owned Android View tokens rather than adding the
-experimental Compose-MIUIX runtime to the existing View application. That keeps capture and
-translation Activities on one renderer while preserving visibly distinct shape, spacing,
-color, and overlay treatments.
+experimental Compose-MIUIX runtime to the existing View application. Material 3 and MIUIX
+continue to share the standard activity layout, while their themes and overlay tokens remain
+independent.
 
 ## Material 3 Monet
 
@@ -35,7 +40,8 @@ selection borders, status text, controls, and translated-block outlines.
 
 ## Scope and lifecycle
 
-- Main setup, model management, and Online BYOK settings use the selected Activity theme.
+- Main setup, model management, and Online BYOK settings select the Apple-only or standard
+  layout family and then apply the selected Activity theme.
 - Region selector, result panel, and full-screen incremental labels use matching overlay tokens.
 - Activity styling updates immediately through recreation. A running overlay adopts the new
   style the next time capture starts, avoiding in-place WindowManager churn.
@@ -44,15 +50,20 @@ selection borders, status text, controls, and translated-block outlines.
 - The ready button uses the disabled component state in all styles: grey surface, grey label,
   and no click action.
 
-## Static verification
+## Verification
 
-This change deliberately has no physical-device acceptance. Its pre-device gate consists of:
+The pre-device gate consists of:
 
 1. deterministic preview regeneration and SHA-256 comparison;
 2. UI-style persistence/default/Monet-scope unit tests;
 3. overlay palette and shape unit tests;
 4. Lite, Full, and Online unit tests and Release lint;
 5. minified Release APK/AAB assembly for all editions.
+
+The Apple rewrite additionally has a same-device visual control on the Xiaomi 15 Pro using
+an isolated Debug-signed Benchmark package: first-install Apple and the immediately switched
+MIUIX screen are captured from the same build and compared. This is an iteration check only;
+it does not replace the signed/R8 Lite, Full, and Online acceptance matrix below.
 
 HyperOS rendering, wallpaper-derived colors, font metrics, gesture navigation, and overlay
 appearance remain part of the later signed-device acceptance gate.

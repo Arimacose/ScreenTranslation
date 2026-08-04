@@ -35,14 +35,18 @@ STYLES = [
         "name": "Apple（默认候选）",
         "bg": "#F2F2F7",
         "surface": "#FFFFFF",
-        "hero": "#EAF4FF",
+        "hero": "#FFFFFF",
         "primary": "#007AFF",
         "primary_container": "#E5F1FF",
         "on": "#1C1C1E",
         "muted": "#636366",
         "outline": "#E5E5EA",
-        "radius": 24,
-        "control_radius": 16,
+        "radius": 14,
+        "control_radius": 12,
+        "section": "#636366",
+        "segment_bg": "#E5E5EA",
+        "segment_selected": "#FFFFFF",
+        "segment_selected_text": "#1C1C1E",
         "monet": False,
     },
     {
@@ -91,11 +95,27 @@ def line(draw, x1, y, x2, color):
 def draw_segmented(draw, x, y, width, selected, spec):
     labels = ["Apple", "MIUIX", "Material 3"]
     item = width / 3
-    rounded(draw, (x, y, x + width, y + 62), spec["control_radius"], spec["bg"], spec["outline"], 2)
+    rounded(
+        draw,
+        (x, y, x + width, y + 62),
+        spec["control_radius"],
+        spec.get("segment_bg", spec["bg"]),
+        spec["outline"],
+        2,
+    )
     sx = x + selected * item
-    rounded(draw, (sx + 3, y + 3, sx + item - 3, y + 59), spec["control_radius"] - 3, spec["primary_container"])
+    rounded(
+        draw,
+        (sx + 3, y + 3, sx + item - 3, y + 59),
+        max(4, spec["control_radius"] - 3),
+        spec.get("segment_selected", spec["primary_container"]),
+    )
     for index, label in enumerate(labels):
-        color = spec["primary"] if index == selected else spec["muted"]
+        color = (
+            spec.get("segment_selected_text", spec["primary"])
+            if index == selected
+            else spec["muted"]
+        )
         text(draw, (x + item * (index + 0.5), y + 31), label, SMALL, color, "mm")
 
 
@@ -116,12 +136,13 @@ def draw_phone(canvas: Image.Image, left: int, top: int, spec: dict, index: int)
     rounded(draw, (left + 270, top + 22, left + 430, top + 48), 16, "#111114")
 
     x, y, content_w = left + 40, top + 74, phone_w - 80
-    text(draw, (x, y), spec["name"], PHONE_TITLE, spec["on"])
+    title = "ScreenTranslation" if index == 0 else spec["name"]
+    text(draw, (x, y), title, PHONE_TITLE, spec["on"])
     text(draw, (x, y + 52), "实时识屏翻译 · Android 16", SMALL, spec["muted"])
 
     y += 96
     rounded(draw, (x, y, x + content_w, y + 210), spec["radius"], spec["surface"], spec["outline"], 2)
-    text(draw, (x + 22, y + 18), "外观", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 18), "外观", SECTION, spec.get("section", spec["primary"]))
     text(draw, (x + 22, y + 54), "界面风格", BODY, spec["on"])
     draw_segmented(draw, x + 22, y + 88, content_w - 44, index, spec)
     if spec["monet"]:
@@ -131,7 +152,7 @@ def draw_phone(canvas: Image.Image, left: int, top: int, spec: dict, index: int)
 
     y += 232
     rounded(draw, (x, y, x + content_w, y + 320), spec["radius"], spec["surface"], spec["outline"], 2)
-    text(draw, (x + 22, y + 18), "翻译设置", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 18), "翻译设置", SECTION, spec.get("section", spec["primary"]))
     text(draw, (x + 22, y + 58), "屏幕原文语言", SMALL, spec["muted"])
     text(draw, (x + content_w - 22, y + 58), "英语  ›", BODY, spec["on"], "ra")
     line(draw, x + 22, y + 94, x + content_w - 22, spec["outline"])
@@ -149,7 +170,7 @@ def draw_phone(canvas: Image.Image, left: int, top: int, spec: dict, index: int)
 
     y += 342
     rounded(draw, (x, y, x + content_w, y + 270), spec["radius"], spec["surface"], spec["outline"], 2)
-    text(draw, (x + 22, y + 18), "翻译模型", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 18), "翻译模型", SECTION, spec.get("section", spec["primary"]))
     text(draw, (x + 22, y + 58), "当前语言模型已通过完整性校验并加载。", SMALL, spec["muted"])
     draw_button(draw, (x + 22, y + 94, x + content_w - 22, y + 154), "已就绪", spec, ready=True)
     rounded(draw, (x + 22, y + 170, x + content_w - 22, y + 222), 14, spec["primary_container"])
@@ -158,7 +179,7 @@ def draw_phone(canvas: Image.Image, left: int, top: int, spec: dict, index: int)
 
     y += 292
     rounded(draw, (x, y, x + content_w, y + 136), spec["radius"], spec["hero"])
-    text(draw, (x + 22, y + 20), "开始识别", SECTION, spec["primary"])
+    text(draw, (x + 22, y + 20), "开始识别", SECTION, spec.get("section", spec["primary"]))
     draw_button(draw, (x + 22, y + 58, x + content_w - 22, y + 116), "开始识屏翻译", spec)
 
 
