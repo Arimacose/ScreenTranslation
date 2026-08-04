@@ -13,6 +13,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.ContextThemeWrapper
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -71,6 +72,10 @@ class OverlayController(
     private val onExpandedChanged: (Boolean) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
+    private val widgetContext = ContextThemeWrapper(
+        appContext,
+        R.style.Theme_ScreenTranslation_OverlayWidgets,
+    )
     private val windowManager =
         appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -557,7 +562,7 @@ class OverlayController(
             intArrayOf(android.R.attr.state_pressed),
             intArrayOf(),
         )
-        return MaterialButton(appContext).apply {
+        return MaterialButton(widgetContext).apply {
             isAllCaps = false
             minHeight = dp(40)
             cornerRadius = dp(visualStyle.controlCornerDp)

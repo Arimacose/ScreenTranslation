@@ -42,6 +42,7 @@ import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.overlay.OverlayController
 import com.screentranslation.app.overlay.FullScreenOverlayController
 import com.screentranslation.app.util.StableTextGate
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * One foreground-service lifetime represents one MediaProjection permission
@@ -76,6 +77,8 @@ class ScreenTranslationService : Service() {
     private var sessionStarted = false
     private var closing = false
     private var projectionStoppedUnexpectedly = false
+    private var startupFailureMessage: String? = null
+    private var startupStage = STARTUP_STAGE_SERVICE_ENTRY
     private var modelReady = false
     private var regionReady = false
     private var contentVisible = true
@@ -95,7 +98,7 @@ class ScreenTranslationService : Service() {
     private var normalizedRegion = NormalizedRegion.FULL
 
     @Volatile
-    private var normalizedOverlayBounds: NormalizedRegion? = null
+    private var overlayExclusionBounds = emptyList<Rect>()
 
     override fun onCreate() {
         super.onCreate()
@@ -126,6 +129,33 @@ class ScreenTranslationService : Service() {
             return START_NOT_STICKY
         }
 
+        // Keep the parcelable path for process recreation and a one-shot
+        // in-process copy for the immediate Activity -> service handoff. The
+        // latter prevents vendor parcel handling from turning a valid consent
+        // callback into an unobservable startup failure.
+        val inProcessRequest = pendingStartRequest.getAndSet(null)
+        val projectionData = inProcessRequest?.projectionData ?: intent.getParcelableExtra(
+            EXTRA_PROJECTION_DATA,
+            Intent::class.java,
+        )
+        val resultCode = inProcessRequest?.resultCode ?: intent.getIntExtra(
+            EXTRA_PROJECTION_RESULT_CODE,
+            Activity.RESULT_CANCELED,
+        )
+        val sourceLanguage = inProcessRequest?.sourceLanguage
+            ?: intent.getStringExtra(EXTRA_SOURCE_LANGUAGE)
+        val targetLanguage = inProcessRequest?.targetLanguage
+            ?: intent.getStringExtra(EXTRA_TARGET_LANGUAGE)
+        val frameIntervalMs = (inProcessRequest?.frameIntervalMs ?: intent
+            .getLongExtra(EXTRA_FRAME_INTERVAL_MS, FrameProcessor.DEFAULT_FRAME_INTERVAL_MS))
+            .coerceAtLeast(0L)
+        val requestedCaptureMode = inProcessRequest?.captureMode
+            ?: CaptureMode.fromPersisted(intent.getStringExtra(EXTRA_CAPTURE_MODE))
+
+        // Parse the mode before building the foreground notification so the
+        // first visible notification describes the actual session rather than
+        // briefly falling back to region mode.
+        captureMode = requestedCaptureMode
         CaptureShortcutNotification.cancel(this)
         startForeground(
             NOTIFICATION_ID,
@@ -133,27 +163,18 @@ class ScreenTranslationService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
         )
 
-        val projectionData = intent.getParcelableExtra(
-            EXTRA_PROJECTION_DATA,
-            Intent::class.java,
-        )
-        val resultCode = intent.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, Activity.RESULT_CANCELED)
-        val sourceLanguage = intent.getStringExtra(EXTRA_SOURCE_LANGUAGE)
-        val targetLanguage = intent.getStringExtra(EXTRA_TARGET_LANGUAGE)
-        val frameIntervalMs = intent
-            .getLongExtra(EXTRA_FRAME_INTERVAL_MS, FrameProcessor.DEFAULT_FRAME_INTERVAL_MS)
-            .coerceAtLeast(0L)
-        val captureMode = CaptureMode.fromPersisted(intent.getStringExtra(EXTRA_CAPTURE_MODE))
-
         if (resultCode != Activity.RESULT_OK ||
             projectionData == null ||
             sourceLanguage.isNullOrBlank() ||
             targetLanguage.isNullOrBlank()
         ) {
-            Log.w(
+            startupFailureMessage = getString(R.string.capture_start_invalid_payload)
+            Log.e(
                 TAG,
                 "Refusing to start: resultCode=$resultCode hasData=${projectionData != null} " +
-                    "source=$sourceLanguage target=$targetLanguage",
+                    "sourcePresent=${!sourceLanguage.isNullOrBlank()} " +
+                    "targetPresent=${!targetLanguage.isNullOrBlank()} " +
+                    "inProcessHandoff=${inProcessRequest != null}",
             )
             stopSelf(startId)
             return START_NOT_STICKY
@@ -166,10 +187,15 @@ class ScreenTranslationService : Service() {
                 sourceLanguage = sourceLanguage,
                 targetLanguage = targetLanguage,
                 frameIntervalMs = frameIntervalMs,
-                captureMode = captureMode,
+                captureMode = requestedCaptureMode,
             )
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to start the capture session", error)
+            startupFailureMessage = getString(
+                R.string.capture_start_initialization_failed,
+                startupStage,
+                startupFailureDetail(error),
+            )
             releaseSession()
             stopSelf(startId)
         }
@@ -187,7 +213,11 @@ class ScreenTranslationService : Service() {
         val projectionStopped = projectionStoppedUnexpectedly
         releaseSession()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        CaptureShortcutNotification.show(this, projectionStopped = projectionStopped)
+        CaptureShortcutNotification.show(
+            context = this,
+            projectionStopped = projectionStopped,
+            startupFailureMessage = startupFailureMessage,
+        )
         super.onDestroy()
     }
 
@@ -202,8 +232,13 @@ class ScreenTranslationService : Service() {
         captureMode: CaptureMode,
     ) {
         this.captureMode = captureMode
+        startupStage = STARTUP_STAGE_OVERLAY
         if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
-            val overlay = FullScreenOverlayController(this, ::stopSelf)
+            val overlay = FullScreenOverlayController(
+                context = this,
+                onStop = ::stopSelf,
+                onOverlayBoundsChanged = ::onFullScreenOverlayBoundsChanged,
+            )
             check(overlay.show()) { "Overlay permission is required" }
             overlay.updateStatus(STATUS_PREPARING_MODEL)
             fullScreenOverlayController = overlay
@@ -212,7 +247,7 @@ class ScreenTranslationService : Service() {
             val overlay = OverlayController(
                 context = this,
                 onRegionChanged = ::onPixelRegionChanged,
-                onOverlayBoundsChanged = ::onOverlayBoundsChanged,
+                onOverlayBoundsChanged = ::onRegionOverlayBoundsChanged,
                 onStop = ::stopSelf,
                 onRegionCleared = ::onRegionCleared,
                 onExpandedChanged = ::onResultsExpandedChanged,
@@ -222,23 +257,29 @@ class ScreenTranslationService : Service() {
             overlayController = overlay
         }
 
+        startupStage = STARTUP_STAGE_SCREEN_RECEIVER
         registerScreenStateReceiver()
 
+        startupStage = STARTUP_STAGE_CAPTURE_THREAD
         val handlerThread = HandlerThread(CAPTURE_THREAD_NAME).apply { start() }
         val handler = Handler(handlerThread.looper)
         captureThread = handlerThread
         captureHandler = handler
 
+        startupStage = STARTUP_STAGE_BACKENDS
         val ocr = PpOcrv6Engine(this)
         val translator = TranslationBackendFactory.create(
             context = this,
             sourceLanguage = sourceLanguage,
             targetLanguage = targetLanguage,
         )
+        startupStage = STARTUP_STAGE_FRAME_PIPELINE
         val processor: FramePipeline = if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
             FullScreenFrameProcessor(
                 ocrEngine = ocr,
                 translationEngine = translator,
+                sourceLanguageTag = sourceLanguage,
+                targetLanguageTag = targetLanguage,
                 frameIntervalMs = frameIntervalMs,
                 onBlocks = { blocks ->
                     mainHandler.post {
@@ -258,6 +299,8 @@ class ScreenTranslationService : Service() {
             FrameProcessor(
                 ocrEngine = ocr,
                 translationEngine = translator,
+                sourceLanguageTag = sourceLanguage,
+                targetLanguageTag = targetLanguage,
                 stableTextGate = StableTextGate(),
                 frameIntervalMs = frameIntervalMs,
                 onOriginalRecognized = { text ->
@@ -298,6 +341,7 @@ class ScreenTranslationService : Service() {
         translationEngine = translator
         frameProcessor = processor
 
+        startupStage = STARTUP_STAGE_MEDIA_PROJECTION
         val projectionManager = getSystemService(MediaProjectionManager::class.java)
         val projection = checkNotNull(
             projectionManager.getMediaProjection(resultCode, projectionData),
@@ -336,6 +380,7 @@ class ScreenTranslationService : Service() {
         mediaProjection = projection
         projectionCallback = callback
 
+        startupStage = STARTUP_STAGE_IMAGE_READER
         val spec = currentCaptureSpec()
         val reader = newImageReader(spec)
         imageReader = reader
@@ -344,6 +389,7 @@ class ScreenTranslationService : Service() {
         captureDensityDpi = spec.densityDpi
 
         // This is the only createVirtualDisplay call for this projection session.
+        startupStage = STARTUP_STAGE_VIRTUAL_DISPLAY
         virtualDisplay = projection.createVirtualDisplay(
             VIRTUAL_DISPLAY_NAME,
             spec.width,
@@ -356,7 +402,9 @@ class ScreenTranslationService : Service() {
         )
         sessionStarted = true
         isRunning = true
+        notifySessionStateChanged()
         needsProjectionRestart = false
+        startupStage = STARTUP_STAGE_MODEL_PREPARATION
         updateOverlayStatus(STATUS_PREPARING_MODEL)
         translator.prepare(
             requireWifi = false,
@@ -401,6 +449,13 @@ class ScreenTranslationService : Service() {
     private fun updateOverlayStatus(status: String) {
         overlayController?.updateStatus(status)
         fullScreenOverlayController?.updateStatus(status)
+    }
+
+    private fun notifySessionStateChanged() {
+        sendBroadcast(
+            Intent(ACTION_SESSION_STATE_CHANGED)
+                .setPackage(packageName),
+        )
     }
 
     /**
@@ -465,7 +520,10 @@ class ScreenTranslationService : Service() {
                     frameProcessor?.onImageAvailable(
                         availableReader,
                         normalizedRegion.toRectF(),
-                        normalizedOverlayBounds?.toRectF(),
+                        normalizedOverlayExclusions(
+                            availableReader.width,
+                            availableReader.height,
+                        ),
                     )
                 },
                 captureHandler,
@@ -520,19 +578,31 @@ class ScreenTranslationService : Service() {
         refreshProcessorState()
     }
 
-    private fun onOverlayBoundsChanged(bounds: Rect?) {
-        normalizedOverlayBounds = if (
-            bounds == null ||
-            captureWidth <= 0 ||
-            captureHeight <= 0
-        ) {
-            null
-        } else {
-            NormalizedRegion.fromPixels(
-                region = bounds,
-                screenWidth = captureWidth,
-                screenHeight = captureHeight,
-            )
+    private fun onRegionOverlayBoundsChanged(bounds: Rect?) {
+        overlayExclusionBounds = bounds?.let { listOf(Rect(it)) }.orEmpty()
+    }
+
+    private fun onFullScreenOverlayBoundsChanged(bounds: List<Rect>) {
+        overlayExclusionBounds = bounds.map(::Rect)
+    }
+
+    private fun normalizedOverlayExclusions(width: Int, height: Int): List<RectF> {
+        if (width <= 0 || height <= 0) return emptyList()
+        return overlayExclusionBounds.mapNotNull { source ->
+            val left = source.left.coerceIn(0, width - 1)
+            val top = source.top.coerceIn(0, height - 1)
+            val right = source.right.coerceIn(left + 1, width)
+            val bottom = source.bottom.coerceIn(top + 1, height)
+            if (right <= left || bottom <= top) {
+                null
+            } else {
+                RectF(
+                    left.toFloat() / width,
+                    top.toFloat() / height,
+                    right.toFloat() / width,
+                    bottom.toFloat() / height,
+                )
+            }
         }
     }
 
@@ -551,6 +621,20 @@ class ScreenTranslationService : Service() {
                 else -> STATUS_RUNNING
             },
         )
+    }
+
+    private fun startupFailureDetail(error: Throwable): String {
+        val message = error.message
+            ?.lineSequence()
+            ?.firstOrNull()
+            ?.trim()
+            ?.take(MAX_STARTUP_ERROR_MESSAGE_CHARS)
+            ?.takeIf { it.isNotEmpty() }
+        return if (message == null) {
+            error.javaClass.simpleName
+        } else {
+            "${error.javaClass.simpleName}: $message"
+        }
     }
 
     /**
@@ -609,7 +693,7 @@ class ScreenTranslationService : Service() {
             // while the overlay still reports "running".
             regionReady = captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL
             normalizedRegion = NormalizedRegion.FULL
-            normalizedOverlayBounds = null
+            overlayExclusionBounds = emptyList()
             frameProcessor?.setEnabled(false)
             frameProcessor?.resetStability()
             mainHandler.post {
@@ -634,7 +718,10 @@ class ScreenTranslationService : Service() {
                         frameProcessor?.onImageAvailable(
                             availableReader,
                             normalizedRegion.toRectF(),
-                            normalizedOverlayBounds?.toRectF(),
+                            normalizedOverlayExclusions(
+                                availableReader.width,
+                                availableReader.height,
+                            ),
                         )
                     },
                     captureHandler,
@@ -665,6 +752,7 @@ class ScreenTranslationService : Service() {
         closing = true
         sessionStarted = false
         isRunning = false
+        notifySessionStateChanged()
 
         screenReceiver?.let { receiver ->
             try {
@@ -700,7 +788,7 @@ class ScreenTranslationService : Service() {
         ocrEngine = null
         overlayController = null
         fullScreenOverlayController = null
-        normalizedOverlayBounds = null
+        overlayExclusionBounds = emptyList()
         captureHandler = null
         captureThread = null
     }
@@ -785,6 +873,8 @@ class ScreenTranslationService : Service() {
             "com.screentranslation.app.action.START_SCREEN_TRANSLATION"
         private const val ACTION_STOP =
             "com.screentranslation.app.action.STOP_SCREEN_TRANSLATION"
+        internal const val ACTION_SESSION_STATE_CHANGED =
+            "com.screentranslation.app.action.SESSION_STATE_CHANGED"
         private const val EXTRA_PROJECTION_RESULT_CODE = "projection_result_code"
         private const val EXTRA_PROJECTION_DATA = "projection_data"
         private const val EXTRA_SOURCE_LANGUAGE = "source_language"
@@ -809,6 +899,18 @@ class ScreenTranslationService : Service() {
         private const val STATUS_EXPANDED_PAUSED = "已展开全文，识别暂停；收起后恢复"
         private const val STATUS_RESIZE_FAILED = "屏幕尺寸变化后无法继续采集，请重新开始"
 
+        private const val STARTUP_STAGE_SERVICE_ENTRY = "SERVICE_ENTRY"
+        private const val STARTUP_STAGE_OVERLAY = "OVERLAY"
+        private const val STARTUP_STAGE_SCREEN_RECEIVER = "SCREEN_RECEIVER"
+        private const val STARTUP_STAGE_CAPTURE_THREAD = "CAPTURE_THREAD"
+        private const val STARTUP_STAGE_BACKENDS = "BACKENDS"
+        private const val STARTUP_STAGE_FRAME_PIPELINE = "FRAME_PIPELINE"
+        private const val STARTUP_STAGE_MEDIA_PROJECTION = "MEDIA_PROJECTION"
+        private const val STARTUP_STAGE_IMAGE_READER = "IMAGE_READER"
+        private const val STARTUP_STAGE_VIRTUAL_DISPLAY = "VIRTUAL_DISPLAY"
+        private const val STARTUP_STAGE_MODEL_PREPARATION = "MODEL_PREPARATION"
+        private const val MAX_STARTUP_ERROR_MESSAGE_CHARS = 160
+
         @Volatile
         var isRunning: Boolean = false
             private set
@@ -822,6 +924,17 @@ class ScreenTranslationService : Service() {
         var needsProjectionRestart: Boolean = false
             private set
 
+        private data class PendingStartRequest(
+            val resultCode: Int,
+            val projectionData: Intent,
+            val sourceLanguage: String,
+            val targetLanguage: String,
+            val frameIntervalMs: Long,
+            val captureMode: CaptureMode,
+        )
+
+        private val pendingStartRequest = AtomicReference<PendingStartRequest?>(null)
+
         fun startIntent(
             context: Context,
             resultCode: Int,
@@ -830,14 +943,31 @@ class ScreenTranslationService : Service() {
             targetLanguage: String,
             frameIntervalMs: Long = FrameProcessor.DEFAULT_FRAME_INTERVAL_MS,
             captureMode: CaptureMode = CaptureMode.REGION,
-        ): Intent = Intent(context, ScreenTranslationService::class.java)
-            .setAction(ACTION_START)
-            .putExtra(EXTRA_PROJECTION_RESULT_CODE, resultCode)
-            .putExtra(EXTRA_PROJECTION_DATA, resultData)
-            .putExtra(EXTRA_SOURCE_LANGUAGE, sourceLanguage)
-            .putExtra(EXTRA_TARGET_LANGUAGE, targetLanguage)
-            .putExtra(EXTRA_FRAME_INTERVAL_MS, frameIntervalMs.coerceAtLeast(0L))
-            .putExtra(EXTRA_CAPTURE_MODE, captureMode.persistedValue)
+        ): Intent {
+            val safeFrameIntervalMs = frameIntervalMs.coerceAtLeast(0L)
+            pendingStartRequest.set(
+                PendingStartRequest(
+                    resultCode = resultCode,
+                    projectionData = resultData,
+                    sourceLanguage = sourceLanguage,
+                    targetLanguage = targetLanguage,
+                    frameIntervalMs = safeFrameIntervalMs,
+                    captureMode = captureMode,
+                ),
+            )
+            return Intent(context, ScreenTranslationService::class.java)
+                .setAction(ACTION_START)
+                .putExtra(EXTRA_PROJECTION_RESULT_CODE, resultCode)
+                .putExtra(EXTRA_PROJECTION_DATA, resultData)
+                .putExtra(EXTRA_SOURCE_LANGUAGE, sourceLanguage)
+                .putExtra(EXTRA_TARGET_LANGUAGE, targetLanguage)
+                .putExtra(EXTRA_FRAME_INTERVAL_MS, safeFrameIntervalMs)
+                .putExtra(EXTRA_CAPTURE_MODE, captureMode.persistedValue)
+        }
+
+        fun discardPendingStartRequest() {
+            pendingStartRequest.set(null)
+        }
 
         fun stopIntent(context: Context): Intent =
             Intent(context, ScreenTranslationService::class.java)

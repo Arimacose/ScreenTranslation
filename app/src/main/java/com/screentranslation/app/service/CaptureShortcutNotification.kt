@@ -37,7 +37,11 @@ object CaptureShortcutNotification {
         manager.createNotificationChannel(channel)
     }
 
-    fun show(context: Context, projectionStopped: Boolean = false) {
+    fun show(
+        context: Context,
+        projectionStopped: Boolean = false,
+        startupFailureMessage: String? = null,
+    ) {
         val appContext = context.applicationContext
         val permissionGranted = ContextCompat.checkSelfPermission(
             appContext,
@@ -67,20 +71,17 @@ object CaptureShortcutNotification {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(
                 appContext.getString(
-                    if (projectionStopped) {
-                        R.string.capture_shortcut_projection_stopped_title
-                    } else {
-                        R.string.capture_shortcut_title
+                    when {
+                        startupFailureMessage != null -> R.string.capture_shortcut_start_failed_title
+                        projectionStopped -> R.string.capture_shortcut_projection_stopped_title
+                        else -> R.string.capture_shortcut_title
                     },
                 ),
             )
             .setContentText(
-                appContext.getString(
-                    if (projectionStopped) {
-                        R.string.capture_shortcut_projection_stopped_text
-                    } else {
-                        R.string.capture_shortcut_text
-                    },
+                startupFailureMessage ?: appContext.getString(
+                    if (projectionStopped) R.string.capture_shortcut_projection_stopped_text
+                    else R.string.capture_shortcut_text,
                 ),
             )
             .setCategory(Notification.CATEGORY_STATUS)

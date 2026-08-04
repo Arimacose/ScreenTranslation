@@ -33,12 +33,12 @@ object BitmapExtractor {
     fun extract(
         image: Image,
         normalizedRegion: RectF,
-        normalizedExclusion: RectF? = null,
+        normalizedExclusions: List<RectF> = emptyList(),
     ): Bitmap {
         val crop = normalizedRegion.toPixelRect(image.width, image.height)
         val bitmap = copyRegion(image, crop)
 
-        normalizedExclusion?.let { exclusion ->
+        normalizedExclusions.forEach { exclusion ->
             val mask = exclusion.toPixelRect(image.width, image.height)
             maskOut(bitmap, crop, mask)
         }

@@ -115,4 +115,9 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowDisablePreview">true</item>
     </style>
+
+    <!-- Services use an application Context, which does not reliably carry an
+         Activity theme on vendor Android builds. Programmatic Material widgets
+         in TYPE_APPLICATION_OVERLAY windows use this explicit wrapper theme. -->
+    <style name="Theme.ScreenTranslation.OverlayWidgets" parent="Theme.Material3.DayNight.NoActionBar" />
 </resources>

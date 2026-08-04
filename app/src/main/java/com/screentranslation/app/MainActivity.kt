@@ -3,8 +3,10 @@ package com.screentranslation.app
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
@@ -156,6 +158,15 @@ class MainActivity : AppCompatActivity() {
     private var pendingStartAfterNotificationPermission = false
     private var pendingStartAfterOverlayPermission = false
     private var projectionRequestInFlight = false
+    private var sessionStateReceiverRegistered = false
+
+    private val sessionStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ScreenTranslationService.ACTION_SESSION_STATE_CHANGED) {
+                refreshServiceStatus()
+            }
+        }
+    }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -228,6 +239,7 @@ class MainActivity : AppCompatActivity() {
             serviceStatusView.setText(R.string.service_starting)
             setServiceRunningUi(true)
         } catch (error: Exception) {
+            ScreenTranslationService.discardPendingStartRequest()
             serviceStatusView.text = getString(
                 R.string.start_failed,
                 error.localizedMessage ?: error.javaClass.simpleName,
@@ -274,6 +286,20 @@ class MainActivity : AppCompatActivity() {
         refreshServiceStatus()
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (!sessionStateReceiverRegistered) {
+            ContextCompat.registerReceiver(
+                this,
+                sessionStateReceiver,
+                IntentFilter(ScreenTranslationService.ACTION_SESSION_STATE_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            sessionStateReceiverRegistered = true
+        }
+        if (::serviceStatusView.isInitialized) refreshServiceStatus()
+    }
+
     override fun onResume() {
         super.onResume()
         if (::overlayPermissionStatusView.isInitialized) {
@@ -292,6 +318,14 @@ class MainActivity : AppCompatActivity() {
         experimentalSmokeTestEngine?.close()
         experimentalSmokeTestEngine = null
         super.onDestroy()
+    }
+
+    override fun onStop() {
+        if (sessionStateReceiverRegistered) {
+            unregisterReceiver(sessionStateReceiver)
+            sessionStateReceiverRegistered = false
+        }
+        super.onStop()
     }
 
     private fun bindViews() {

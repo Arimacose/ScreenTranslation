@@ -8,7 +8,9 @@ import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
 import com.screentranslation.app.util.ProtectedTextCodec
+import com.screentranslation.app.util.SourceTextFilter
 import java.util.concurrent.CancellationException
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -22,6 +24,8 @@ import kotlin.math.max
 class FullScreenFrameProcessor(
     private val ocrEngine: OcrEngine,
     private val translationEngine: TranslationBackend,
+    private val sourceLanguageTag: String,
+    private val targetLanguageTag: String,
     frameIntervalMs: Long,
     private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
     private val onError: (Throwable) -> Unit = {},
@@ -43,6 +47,7 @@ class FullScreenFrameProcessor(
     private val tileBlocks = mutableMapOf<Int, List<ScreenTextBlock>>()
     private val translations = mutableMapOf<Long, TranslationValue>()
     private var verificationTiles = emptySet<Int>()
+    private var lastExclusions = emptyList<RectF>()
     private var enabled = true
     @Volatile
     private var currentBlocks = emptyList<TrackedScreenTextBlock>()
@@ -81,6 +86,7 @@ class FullScreenFrameProcessor(
         gate.setFrameIntervalMs(adaptiveInterval.currentIntervalMs)
         tileBlocks.clear()
         verificationTiles = emptySet()
+        lastExclusions = emptyList()
         currentBlocks = emptyList()
         translationQueue.reset()
         synchronized(translations) { translations.clear() }
@@ -90,7 +96,7 @@ class FullScreenFrameProcessor(
     override fun onImageAvailable(
         reader: ImageReader,
         normalizedRegion: RectF,
-        normalizedExclusion: RectF?,
+        normalizedExclusions: List<RectF>,
     ) {
         val image = try {
             reader.acquireLatestImage()
@@ -106,7 +112,13 @@ class FullScreenFrameProcessor(
         }
 
         val bitmap = try {
-            image.use { BitmapExtractor.extract(it) }
+            image.use {
+                BitmapExtractor.extract(
+                    image = it,
+                    normalizedRegion = normalizedRegion,
+                    normalizedExclusions = normalizedExclusions,
+                )
+            }
         } catch (error: Throwable) {
             gate.release()
             onError(error)
@@ -115,10 +127,35 @@ class FullScreenFrameProcessor(
 
         val tiles = ScreenTileGrid.create(bitmap.width, bitmap.height)
         val signatures = tileSignatures(bitmap, tiles)
-        val changes = signatureDiffer.compare(signatures, verificationTiles)
+        val exclusionChangedTiles = changedExclusionTiles(
+            previous = lastExclusions,
+            current = normalizedExclusions,
+        )
+        val changes = signatureDiffer.compare(
+            current = signatures,
+            forced = verificationTiles,
+            // Adding/removing a label changes which pixels are painted white.
+            // Ignore only tiles touched by changed mask rectangles; suppressing
+            // the whole frame can hide a simultaneous target-app switch.
+            suppressedNaturalTiles = if (signatureDiffer.hasBaseline) {
+                exclusionChangedTiles
+            } else {
+                emptySet()
+            },
+        )
+        lastExclusions = normalizedExclusions.map(::RectF)
         gate.setFrameIntervalMs(
             adaptiveInterval.recordChanged(changes.natural.isNotEmpty()),
         )
+        if (changes.natural.isNotEmpty()) {
+            val visibleBlocks = blocksOutsideTiles(currentBlocks, changes.natural)
+            if (visibleBlocks.size != currentBlocks.size) {
+                currentBlocks = visibleBlocks
+                // A changed source must never retain its old translation while
+                // OCR and translation for the replacement are still in flight.
+                publishBlocks()
+            }
+        }
         if (changes.all.isEmpty()) {
             bitmap.recycleSafely()
             gate.release()
@@ -156,6 +193,11 @@ class FullScreenFrameProcessor(
                 onSuccess = { recognition ->
                     val grouped = tiles.associate { it.index to mutableListOf<ScreenTextBlock>() }
                     recognition.regions.forEach { region ->
+                        val sourceText = SourceTextFilter.filter(
+                            text = region.text,
+                            sourceLanguageTag = sourceLanguageTag,
+                            targetLanguageTag = targetLanguageTag,
+                        ) ?: return@forEach
                         val bounds = NormalizedBounds(
                             left = region.left,
                             top = region.top,
@@ -167,7 +209,7 @@ class FullScreenFrameProcessor(
                         val owner = tiles.firstOrNull { it.contains(centerX, centerY) }
                         if (owner != null) {
                             grouped.getValue(owner.index) += ScreenTextBlock(
-                                region.text,
+                                sourceText,
                                 bounds,
                                 region.confidence,
                             )
@@ -224,6 +266,11 @@ class FullScreenFrameProcessor(
             result.fold(
                 onSuccess = { recognition ->
                     tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
+                        val sourceText = SourceTextFilter.filter(
+                            text = region.text,
+                            sourceLanguageTag = sourceLanguageTag,
+                            targetLanguageTag = targetLanguageTag,
+                        ) ?: return@mapNotNull null
                         val bounds = mapTileRegionToScreen(
                             tileCrop = cropTile,
                             frameWidth = bitmap.width,
@@ -238,7 +285,7 @@ class FullScreenFrameProcessor(
                         if (!baseTile.contains(centerX, centerY)) {
                             null
                         } else {
-                            ScreenTextBlock(region.text, bounds, region.confidence)
+                            ScreenTextBlock(sourceText, bounds, region.confidence)
                         }
                     }
                     recognizeTiles(
@@ -264,7 +311,10 @@ class FullScreenFrameProcessor(
             gate.release()
             return
         }
-        currentBlocks = blockTracker.update(tileBlocks.values.flatten())
+        currentBlocks = blockTracker.update(
+            rawBlocks = tileBlocks.values.flatten(),
+            invalidatedTiles = naturallyChanged,
+        )
         verificationTiles = verificationTileIndices(naturallyChanged, currentBlocks)
         val activeIds = currentBlocks.mapTo(linkedSetOf()) { it.id }
         synchronized(translations) { translations.keys.retainAll(activeIds) }
@@ -339,6 +389,42 @@ class FullScreenFrameProcessor(
         )
     }
 
+    private fun changedExclusionTiles(
+        previous: List<RectF>,
+        current: List<RectF>,
+    ): Set<Int> {
+        val changed = previous.filter { old ->
+            current.none { new -> equivalentExclusion(old, new) }
+        } + current.filter { new ->
+            previous.none { old -> equivalentExclusion(old, new) }
+        }
+        return changed.flatMapTo(linkedSetOf(), ::tilesIntersecting)
+    }
+
+    private fun equivalentExclusion(left: RectF, right: RectF): Boolean =
+        abs(left.left - right.left) <= EXCLUSION_COORDINATE_EPSILON &&
+            abs(left.top - right.top) <= EXCLUSION_COORDINATE_EPSILON &&
+            abs(left.right - right.right) <= EXCLUSION_COORDINATE_EPSILON &&
+            abs(left.bottom - right.bottom) <= EXCLUSION_COORDINATE_EPSILON
+
+    private fun tilesIntersecting(bounds: RectF): List<Int> {
+        val leftColumn = (bounds.left * TILE_COLUMNS).toInt().coerceIn(0, TILE_COLUMNS - 1)
+        val rightColumn = ((bounds.right - EXCLUSION_COORDINATE_EPSILON) * TILE_COLUMNS)
+            .toInt()
+            .coerceIn(leftColumn, TILE_COLUMNS - 1)
+        val topRow = (bounds.top * TILE_ROWS).toInt().coerceIn(0, TILE_ROWS - 1)
+        val bottomRow = ((bounds.bottom - EXCLUSION_COORDINATE_EPSILON) * TILE_ROWS)
+            .toInt()
+            .coerceIn(topRow, TILE_ROWS - 1)
+        return buildList {
+            for (row in topRow..bottomRow) {
+                for (column in leftColumn..rightColumn) {
+                    add(row * TILE_COLUMNS + column)
+                }
+            }
+        }
+    }
+
     override fun close() {
         if (gate.isClosed) return
         gate.close()
@@ -357,6 +443,9 @@ class FullScreenFrameProcessor(
         private const val MIN_TILE_OVERLAP_PX = 16
         private const val MAX_CHANGED_BLOCKS_PER_SCAN = 12
         private const val FULL_FRAME_OCR_TILE_THRESHOLD = 6
+        private const val EXCLUSION_COORDINATE_EPSILON = 0.0005f
+        private const val TILE_COLUMNS = 3
+        private const val TILE_ROWS = 6
     }
 }
 

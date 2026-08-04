@@ -148,9 +148,12 @@
     <string name="capture_channel_name">识屏翻译</string>
     <string name="capture_channel_description">保持屏幕捕获和翻译运行</string>
     <string name="capture_shortcut_title">识屏翻译已就绪</string>
-    <string name="capture_shortcut_text">在目标应用点按此通知，授权后立即框选</string>
+    <string name="capture_shortcut_text">在目标应用点按此通知，授权后立即开始识屏</string>
     <string name="capture_shortcut_projection_stopped_title">屏幕共享会话已结束</string>
-    <string name="capture_shortcut_projection_stopped_text">解锁后点按，重新授权并在当前应用框选</string>
+    <string name="capture_shortcut_projection_stopped_text">解锁后点按，重新授权并立即开始识屏</string>
+    <string name="capture_shortcut_start_failed_title">识屏翻译启动失败</string>
+    <string name="capture_start_invalid_payload">授权结果未完整送达，点按通知重新授权</string>
+    <string name="capture_start_initialization_failed">初始化失败（%1$s / %2$s），点按通知重试</string>
     <string name="capture_shortcut_action">开始识屏</string>
     <string name="quick_start_overlay_required">请先在主页面授予悬浮窗权限</string>
     <string name="quick_start_online_setup_required">请先在主页面完成 Online API 配置</string>
