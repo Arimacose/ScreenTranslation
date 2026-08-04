@@ -225,6 +225,20 @@ app/build/outputs/apk/online/release/app-online-release-unsigned.apk
 `-unsigned` 会变为已签名的 `app-lite-release.apk`、`app-full-release.apk` 或
 `app-online-release.apk`。签名流程见 [`docs/RELEASING.md`](docs/RELEASING.md)。
 
+### Android 16 instrumentation
+
+捕获生命周期的 Android 测试使用隔离的 `onlineInstrumentation` 变体，只生成
+x86_64 Debug 签名包并在 API 36 模拟器运行：
+
+```bash
+./gradlew :app:connectedOnlineInstrumentationAndroidTest
+```
+
+该任务覆盖启动与权限前置、区域/全屏状态、旋转、屏幕开关、任务移除、投影撤销和
+磁盘隐私。它是持续集成回归，不替代 ARM64 签名 Release/R8 真机验收。环境准备、
+产物路径和 Windows 多设备运行方式见
+[`docs/INSTRUMENTATION_TESTING.md`](docs/INSTRUMENTATION_TESTING.md)。
+
 ### Lite · Bergamot
 
 Lite 使用 `com.screentranslation.app` 和 `0.3.1-lite`，可覆盖升级 v0.1.0。

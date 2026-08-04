@@ -51,6 +51,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class ScreenTranslationService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val lifecycle = CaptureLifecycleStateMachine()
 
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
@@ -79,20 +80,13 @@ class ScreenTranslationService : Service() {
     private var projectionStoppedUnexpectedly = false
     private var startupFailureMessage: String? = null
     private var startupStage = STARTUP_STAGE_SERVICE_ENTRY
-    private var modelReady = false
-    private var regionReady = false
-    private var contentVisible = true
 
     /**
      * Vendor MediaProjection implementations do not reliably report a blank
      * screen through [MediaProjection.Callback.onCapturedContentVisibilityChanged],
      * so screen state is tracked independently as a second pause signal.
      */
-    private var screenOn = true
     private var screenReceiver: BroadcastReceiver? = null
-
-    /** True while the overlay shows the full, scrollable result panel. */
-    private var resultsExpanded = false
 
     @Volatile
     private var normalizedRegion = NormalizedRegion.FULL
@@ -107,6 +101,9 @@ class ScreenTranslationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            lifecycle.dispatch(
+                CaptureLifecycleEvent.StopRequested(CaptureStopReason.USER),
+            )
             stopSelf()
             return START_NOT_STICKY
         }
@@ -169,6 +166,9 @@ class ScreenTranslationService : Service() {
             targetLanguage.isNullOrBlank()
         ) {
             startupFailureMessage = getString(R.string.capture_start_invalid_payload)
+            lifecycle.dispatch(
+                CaptureLifecycleEvent.StopRequested(CaptureStopReason.STARTUP_FAILURE),
+            )
             Log.e(
                 TAG,
                 "Refusing to start: resultCode=$resultCode hasData=${projectionData != null} " +
@@ -191,6 +191,9 @@ class ScreenTranslationService : Service() {
             )
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to start the capture session", error)
+            lifecycle.dispatch(
+                CaptureLifecycleEvent.StopRequested(CaptureStopReason.STARTUP_FAILURE),
+            )
             startupFailureMessage = getString(
                 R.string.capture_start_initialization_failed,
                 startupStage,
@@ -207,6 +210,12 @@ class ScreenTranslationService : Service() {
         super.onConfigurationChanged(newConfig)
         if (!sessionStarted || closing) return
         captureHandler?.post { resizeCaptureIfNeeded() }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        lifecycle.dispatch(CaptureLifecycleEvent.TaskRemoved)
+        Log.i(TAG, "Host task removed; capture foreground service remains active")
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
@@ -232,23 +241,28 @@ class ScreenTranslationService : Service() {
         captureMode: CaptureMode,
     ) {
         this.captureMode = captureMode
+        lifecycle.dispatch(
+            CaptureLifecycleEvent.StartRequested(
+                captureMode = captureMode,
+                screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false,
+            ),
+        )
         startupStage = STARTUP_STAGE_OVERLAY
         if (captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL) {
             val overlay = FullScreenOverlayController(
                 context = this,
-                onStop = ::stopSelf,
+                onStop = ::requestUserStop,
                 onOverlayBoundsChanged = ::onFullScreenOverlayBoundsChanged,
             )
             check(overlay.show()) { "Overlay permission is required" }
             overlay.updateStatus(STATUS_PREPARING_MODEL)
             fullScreenOverlayController = overlay
-            regionReady = true
         } else {
             val overlay = OverlayController(
                 context = this,
                 onRegionChanged = ::onPixelRegionChanged,
                 onOverlayBoundsChanged = ::onRegionOverlayBoundsChanged,
-                onStop = ::stopSelf,
+                onStop = ::requestUserStop,
                 onRegionCleared = ::onRegionCleared,
                 onExpandedChanged = ::onResultsExpandedChanged,
             )
@@ -256,6 +270,7 @@ class ScreenTranslationService : Service() {
             overlay.updateStatus(STATUS_SELECT_REGION)
             overlayController = overlay
         }
+        lifecycle.dispatch(CaptureLifecycleEvent.OverlayReady)
 
         startupStage = STARTUP_STAGE_SCREEN_RECEIVER
         registerScreenStateReceiver()
@@ -352,6 +367,7 @@ class ScreenTranslationService : Service() {
             override fun onStop() {
                 mainHandler.post {
                     if (!closing) {
+                        lifecycle.dispatch(CaptureLifecycleEvent.ProjectionRevoked)
                         Log.i(
                             TAG,
                             "MediaProjection stopped by the system; fresh user consent is required",
@@ -371,7 +387,9 @@ class ScreenTranslationService : Service() {
 
             override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
                 mainHandler.post {
-                    contentVisible = isVisible
+                    lifecycle.dispatch(
+                        CaptureLifecycleEvent.ContentVisibilityChanged(isVisible),
+                    )
                     refreshProcessorState()
                 }
             }
@@ -400,6 +418,7 @@ class ScreenTranslationService : Service() {
             null,
             handler,
         )
+        lifecycle.dispatch(CaptureLifecycleEvent.ProjectionReady)
         sessionStarted = true
         isRunning = true
         notifySessionStateChanged()
@@ -421,11 +440,11 @@ class ScreenTranslationService : Service() {
                 if (closing) return@post
                 result.fold(
                     onSuccess = {
-                        modelReady = true
+                        lifecycle.dispatch(CaptureLifecycleEvent.ModelReady)
                         refreshProcessorState()
                     },
                     onFailure = { error ->
-                        modelReady = false
+                        lifecycle.dispatch(CaptureLifecycleEvent.ModelUnavailable)
                         processor.setEnabled(false)
                         updateOverlayStatus(
                             "模型准备失败：${error.message ?: error.javaClass.simpleName}",
@@ -444,6 +463,13 @@ class ScreenTranslationService : Service() {
                 )
             }
         }
+    }
+
+    private fun requestUserStop() {
+        lifecycle.dispatch(
+            CaptureLifecycleEvent.StopRequested(CaptureStopReason.USER),
+        )
+        stopSelf()
     }
 
     private fun updateOverlayStatus(status: String) {
@@ -466,12 +492,16 @@ class ScreenTranslationService : Service() {
      * would leave the OCR pipeline burning battery on frames nobody can see.
      */
     private fun registerScreenStateReceiver() {
-        screenOn = getSystemService(PowerManager::class.java)?.isInteractive != false
+        lifecycle.dispatch(
+            CaptureLifecycleEvent.ScreenStateChanged(
+                getSystemService(PowerManager::class.java)?.isInteractive != false,
+            ),
+        )
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val nowOn = intent?.action != Intent.ACTION_SCREEN_OFF
-                if (nowOn == screenOn) return
-                screenOn = nowOn
+                if (nowOn == lifecycle.snapshot.screenOn) return
+                lifecycle.dispatch(CaptureLifecycleEvent.ScreenStateChanged(nowOn))
                 Log.i(TAG, "Screen ${if (nowOn) "on" else "off"}; processing enabled=$nowOn")
                 refreshProcessorState()
             }
@@ -537,7 +567,7 @@ class ScreenTranslationService : Service() {
             screenWidth = captureWidth,
             screenHeight = captureHeight,
         )
-        regionReady = true
+        lifecycle.dispatch(CaptureLifecycleEvent.RegionSelected)
         frameProcessor?.let {
             it.setEnabled(false)
             // A new crop must establish its own stable OCR candidate.
@@ -558,7 +588,7 @@ class ScreenTranslationService : Service() {
      */
     private fun onResultsExpandedChanged(expanded: Boolean) {
         if (closing) return
-        resultsExpanded = expanded
+        lifecycle.dispatch(CaptureLifecycleEvent.ResultsExpandedChanged(expanded))
         if (expanded) {
             frameProcessor?.setEnabled(false)
         } else {
@@ -569,7 +599,7 @@ class ScreenTranslationService : Service() {
 
     private fun onRegionCleared() {
         if (closing) return
-        regionReady = false
+        lifecycle.dispatch(CaptureLifecycleEvent.RegionCleared)
         normalizedRegion = NormalizedRegion.FULL
         frameProcessor?.let {
             it.setEnabled(false)
@@ -608,15 +638,15 @@ class ScreenTranslationService : Service() {
 
     private fun refreshProcessorState() {
         if (closing) return
-        val ready = modelReady && regionReady && contentVisible && screenOn && !resultsExpanded
-        frameProcessor?.setEnabled(ready)
+        val state = lifecycle.snapshot
+        frameProcessor?.setEnabled(state.processorEnabled)
         updateOverlayStatus(
             when {
-                !modelReady -> STATUS_PREPARING_MODEL
-                !regionReady -> STATUS_SELECT_REGION
-                !screenOn -> STATUS_SCREEN_OFF
-                !contentVisible -> STATUS_CONTENT_HIDDEN
-                resultsExpanded -> STATUS_EXPANDED_PAUSED
+                !state.modelReady -> STATUS_PREPARING_MODEL
+                !state.regionReady -> STATUS_SELECT_REGION
+                !state.screenOn -> STATUS_SCREEN_OFF
+                !state.contentVisible -> STATUS_CONTENT_HIDDEN
+                state.resultsExpanded -> STATUS_EXPANDED_PAUSED
                 captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL -> STATUS_FULL_SCREEN_RUNNING
                 else -> STATUS_RUNNING
             },
@@ -691,7 +721,7 @@ class ScreenTranslationService : Service() {
             // physical rectangle, so the selection is no longer meaningful. Drop it
             // and ask for a new one instead of silently recognizing the wrong area
             // while the overlay still reports "running".
-            regionReady = captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL
+            lifecycle.dispatch(CaptureLifecycleEvent.RotationChanged)
             normalizedRegion = NormalizedRegion.FULL
             overlayExclusionBounds = emptyList()
             frameProcessor?.setEnabled(false)
@@ -750,6 +780,11 @@ class ScreenTranslationService : Service() {
     private fun releaseSession() {
         if (closing) return
         closing = true
+        if (lifecycle.snapshot.stopReason == null) {
+            lifecycle.dispatch(
+                CaptureLifecycleEvent.StopRequested(CaptureStopReason.SERVICE_DESTROYED),
+            )
+        }
         sessionStarted = false
         isRunning = false
         notifySessionStateChanged()
@@ -791,6 +826,7 @@ class ScreenTranslationService : Service() {
         overlayExclusionBounds = emptyList()
         captureHandler = null
         captureThread = null
+        lifecycle.dispatch(CaptureLifecycleEvent.Destroyed)
     }
 
     private fun buildNotification(): Notification {

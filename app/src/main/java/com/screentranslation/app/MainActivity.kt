@@ -39,6 +39,8 @@ import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.model.CaptureMode
 import com.screentranslation.app.model.UiStyle
 import com.screentranslation.app.prefs.AppPreferences
+import com.screentranslation.app.service.CapturePermissionPreconditions
+import com.screentranslation.app.service.CapturePermissionStep
 import com.screentranslation.app.service.CaptureShortcutNotification
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
@@ -827,7 +829,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun continueStartAfterModelPreparation() {
-        if (!hasNotificationPermission()) {
+        if (capturePermissionPreconditions().shouldRequestNotification) {
             pendingStartAfterNotificationPermission = true
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             return
@@ -836,13 +838,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun continueStartAfterNotificationPermission() {
-        if (!Settings.canDrawOverlays(this)) {
-            pendingStartAfterOverlayPermission = true
-            openOverlayPermissionSettings()
-            return
+        when (capturePermissionPreconditions().nextBlockingStep) {
+            CapturePermissionStep.REQUEST_OVERLAY -> {
+                pendingStartAfterOverlayPermission = true
+                openOverlayPermissionSettings()
+            }
+
+            CapturePermissionStep.REQUEST_PROJECTION -> requestProjectionPermission()
         }
-        requestProjectionPermission()
     }
+
+    private fun capturePermissionPreconditions(): CapturePermissionPreconditions =
+        CapturePermissionPreconditions(
+            notificationGranted = hasNotificationPermission(),
+            overlayGranted = Settings.canDrawOverlays(this),
+        )
 
     private fun requestProjectionPermission() {
         if (projectionRequestInFlight) return

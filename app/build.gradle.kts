@@ -211,11 +211,6 @@ android {
         buildConfigField("boolean", "ONLINE_LLM", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // Package only the Xiaomi 15 Pro target ABI.
-        ndk {
-            abiFilters += "arm64-v8a"
-        }
     }
 
     signingConfigs {
@@ -270,6 +265,10 @@ android {
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
+            // Product/debug installs still target the Xiaomi 15 Pro ABI.
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
         }
         create("benchmark") {
             initWith(getByName("debug"))
@@ -277,7 +276,21 @@ android {
             versionNameSuffix = "-benchmark"
             matchingFallbacks += listOf("debug")
         }
+        create("instrumentation") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".instrumentation"
+            versionNameSuffix = "-instrumentation"
+            matchingFallbacks += listOf("debug")
+            // CI runs only Online instrumentation on an Android 16 x86_64 emulator.
+            ndk {
+                abiFilters.clear()
+                abiFilters += "x86_64"
+            }
+        }
         release {
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -323,6 +336,19 @@ android {
 }
 
 androidComponents {
+    beforeVariants(selector().withBuildType("instrumentation")) { variant ->
+        val edition = variant.productFlavors
+            .firstOrNull { (dimension, _) -> dimension == "edition" }
+            ?.second
+        variant.enable = edition == "online"
+        if (variant.enable) {
+            val applicationVariant =
+                variant as com.android.build.api.variant.ApplicationVariantBuilder
+            applicationVariant.deviceTests[
+                com.android.build.api.variant.DeviceTestBuilder.ANDROID_TEST_TYPE
+            ]?.enable = true
+        }
+    }
     beforeVariants(selector().withBuildType("benchmark")) { variant ->
         val applicationVariant =
             variant as com.android.build.api.variant.ApplicationVariantBuilder
@@ -372,6 +398,12 @@ dependencies {
     add("testOnlineImplementation", "org.json:json:20260719")
     add("testOnlineImplementation", "com.squareup.okhttp3:mockwebserver3:5.4.0")
     add("testOnlineImplementation", "com.squareup.okhttp3:okhttp-tls:5.4.0")
+
+    androidTestImplementation("androidx.test:core-ktx:1.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }
 
 tasks.register("printVersionInfo") {
