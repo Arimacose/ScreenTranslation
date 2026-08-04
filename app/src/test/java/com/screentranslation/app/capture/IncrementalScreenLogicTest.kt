@@ -28,12 +28,255 @@ class IncrementalScreenLogicTest {
         tracker.update(listOf(initial))
 
         val changed = initial.copy(text = "New subtitle")
-        val firstChanged = tracker.update(listOf(changed)).single()
+        val changedTile = ScreenTileGrid.indexForNormalizedPoint(
+            changed.bounds.centerX,
+            changed.bounds.centerY,
+        )
+        val firstChanged = tracker.update(
+            rawBlocks = listOf(changed),
+            invalidatedTiles = setOf(changedTile),
+        ).single()
         val stableChanged = tracker.update(listOf(changed)).single()
 
         assertEquals(id, firstChanged.id)
+        assertEquals("New subtitle", firstChanged.text)
         assertFalse(firstChanged.isStable)
         assertTrue(stableChanged.isStable)
+    }
+
+    @Test
+    fun `repeated noisy text cannot replace a committed line without owner tile change`() {
+        val tracker = IncrementalBlockTracker()
+        val initial = block("Contact demo@example.com", 0.1f, 0.7f, 0.8f, 0.8f)
+        tracker.update(listOf(initial))
+        val stable = tracker.update(listOf(initial)).single()
+        val noisy = initial.copy(text = "Contact demo@example.corn")
+
+        val firstNoise = tracker.update(listOf(noisy)).single()
+        val repeatedNoise = tracker.update(listOf(noisy)).single()
+
+        assertEquals(stable.id, firstNoise.id)
+        assertEquals(initial.text, firstNoise.text)
+        assertEquals(initial.bounds, firstNoise.bounds)
+        assertTrue(firstNoise.isStable)
+        assertEquals(initial.text, repeatedNoise.text)
+        assertEquals(initial.bounds, repeatedNoise.bounds)
+        assertTrue(repeatedNoise.isStable)
+    }
+
+    @Test
+    fun `dirty neighboring tile crop cannot replace committed owner tile text`() {
+        val tracker = IncrementalBlockTracker()
+        val complete = block(
+            "The quiet river carried the last light of evening.",
+            0.06f,
+            0.14f,
+            0.84f,
+            0.18f,
+        )
+        tracker.update(listOf(complete))
+        val stable = tracker.update(listOf(complete)).single()
+        val neighboringCropNoise = block(
+            "quiet river ue last lgnt oi evening",
+            0.08f,
+            0.155f,
+            0.62f,
+            0.195f,
+        )
+        val neighboringTile = ScreenTileGrid.indexForNormalizedPoint(
+            neighboringCropNoise.bounds.centerX,
+            neighboringCropNoise.bounds.centerY,
+        )
+        val ownerTile = ScreenTileGrid.indexForNormalizedPoint(
+            complete.bounds.centerX,
+            complete.bounds.centerY,
+        )
+        assertFalse(ownerTile == neighboringTile)
+
+        repeat(4) {
+            val tracked = tracker.update(
+                rawBlocks = listOf(neighboringCropNoise),
+                invalidatedTiles = setOf(neighboringTile),
+            ).single()
+            assertEquals(stable.id, tracked.id)
+            assertEquals(complete.text, tracked.text)
+            assertEquals(complete.bounds, tracked.bounds)
+            assertTrue(tracked.isStable)
+        }
+    }
+
+    @Test
+    fun `repeated narrow fragments never replace a committed complete sentence`() {
+        val tracker = IncrementalBlockTracker()
+        val complete = block(
+            "A careful reader notices what haste would miss.",
+            0.06f,
+            0.36f,
+            0.84f,
+            0.43f,
+        )
+        tracker.update(listOf(complete))
+        val stable = tracker.update(listOf(complete)).single()
+        val clipped = block(
+            "what haste would",
+            0.38f,
+            0.36f,
+            0.64f,
+            0.43f,
+        )
+
+        repeat(4) {
+            val tracked = tracker.update(listOf(clipped)).single()
+            assertEquals(stable.id, tracked.id)
+            assertEquals(complete.text, tracked.text)
+            assertEquals(complete.bounds, tracked.bounds)
+            assertTrue(tracked.isStable)
+        }
+    }
+
+    @Test
+    fun `same committed text keeps its full geometry during forced verification`() {
+        val tracker = IncrementalBlockTracker()
+        val complete = block(
+            "Contact demo@example.com before 18:30.",
+            0.06f,
+            0.70f,
+            0.84f,
+            0.76f,
+        )
+        tracker.update(listOf(complete))
+        val stable = tracker.update(listOf(complete)).single()
+        val implausiblyNarrow = complete.copy(bounds = bounds(0.34f, 0.70f, 0.66f, 0.76f))
+
+        val verified = tracker.update(listOf(implausiblyNarrow)).single()
+
+        assertEquals(stable.id, verified.id)
+        assertEquals(complete.text, verified.text)
+        assertEquals(complete.bounds, verified.bounds)
+        assertTrue(verified.isStable)
+    }
+
+    @Test
+    fun `stable block survives two missed OCR observations outside dirty tiles`() {
+        val tracker = IncrementalBlockTracker(maximumMissedObservations = 2)
+        val initial = block("Version 2.4.1", 0.1f, 0.4f, 0.8f, 0.5f)
+        val id = tracker.update(listOf(initial)).single().id
+        tracker.update(listOf(initial))
+
+        assertEquals(id, tracker.update(emptyList()).single().id)
+        assertEquals(id, tracker.update(emptyList()).single().id)
+        assertTrue(tracker.update(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `missing block in a dirty tile is removed immediately`() {
+        val tracker = IncrementalBlockTracker()
+        val initial = block("Old screen", 0.1f, 0.4f, 0.8f, 0.5f)
+        tracker.update(listOf(initial))
+        tracker.update(listOf(initial))
+        val tile = ScreenTileGrid.indexForNormalizedPoint(
+            initial.bounds.centerX,
+            initial.bounds.centerY,
+        )
+
+        assertTrue(tracker.update(emptyList(), invalidatedTiles = setOf(tile)).isEmpty())
+    }
+
+    @Test
+    fun `overlapping tile prefix is removed in favor of the complete OCR line`() {
+        val tracker = IncrementalBlockTracker()
+        val complete = block(
+            "Contact demo@example.com before 18:30.",
+            0.18f,
+            0.70f,
+            0.82f,
+            0.76f,
+        )
+        val clippedPrefix = block(
+            "Contact demo@e",
+            0.06f,
+            0.70f,
+            0.36f,
+            0.76f,
+        ).copy(confidence = 0.98f)
+
+        val tracked = tracker.update(listOf(clippedPrefix, complete))
+
+        assertEquals(1, tracked.size)
+        assertEquals(complete.text, tracked.single().text)
+    }
+
+    @Test
+    fun `separate controls with contained text remain distinct when geometry does not overlap`() {
+        val tracker = IncrementalBlockTracker()
+        val save = block("Save item", 0.05f, 0.40f, 0.22f, 0.47f)
+        val saveAs = block("Save item as", 0.30f, 0.40f, 0.52f, 0.47f)
+
+        val tracked = tracker.update(listOf(save, saveAs))
+
+        assertEquals(2, tracked.size)
+    }
+
+    @Test
+    fun `complementary text fragments across a tile boundary form one block`() {
+        val tracker = IncrementalBlockTracker()
+        val left = block(
+            "Every difficult problem",
+            0.06f,
+            0.40f,
+            0.35f,
+            0.47f,
+        )
+        val right = block(
+            "becomes clearer with patience.",
+            0.32f,
+            0.40f,
+            0.84f,
+            0.47f,
+        )
+
+        val tracked = tracker.update(listOf(left, right))
+
+        assertEquals(1, tracked.size)
+        assertEquals(
+            "Every difficult problem becomes clearer with patience.",
+            tracked.single().text,
+        )
+    }
+
+    @Test
+    fun `email split at a tile boundary rejoins without whitespace`() {
+        val tracker = IncrementalBlockTracker()
+        val left = block(
+            "Contact demo@e",
+            0.06f,
+            0.70f,
+            0.35f,
+            0.76f,
+        )
+        val right = block(
+            "xample.com before 18:30.",
+            0.32f,
+            0.70f,
+            0.76f,
+            0.76f,
+        )
+
+        val tracked = tracker.update(listOf(left, right))
+
+        assertEquals(1, tracked.size)
+        assertEquals("Contact demo@example.com before 18:30.", tracked.single().text)
+    }
+
+    @Test
+    fun `same-row controls away from a tile boundary are not merged`() {
+        val tracker = IncrementalBlockTracker()
+        val cancel = block("Cancel", 0.06f, 0.55f, 0.18f, 0.62f)
+        val confirm = block("Confirm", 0.22f, 0.55f, 0.31f, 0.62f)
+
+        val tracked = tracker.update(listOf(cancel, confirm))
+
+        assertEquals(2, tracked.size)
     }
 
     @Test
@@ -48,6 +291,43 @@ class IncrementalScreenLogicTest {
 
         assertEquals(setOf(1), result.natural)
         assertEquals(setOf(0, 1), result.all)
+    }
+
+    @Test
+    fun `overlay mask changes suppress only touched tiles and keep forced verification`() {
+        val differ = TileSignatureDiffer()
+        val baseline = listOf(IntArray(100) { 120 }, IntArray(100) { 80 })
+        differ.compare(baseline)
+        assertTrue(differ.hasBaseline)
+
+        val masked = baseline.map { it.clone() }
+        repeat(20) { masked[0][it] = 255 }
+        val rebased = differ.compare(
+            current = masked,
+            forced = setOf(1),
+            suppressedNaturalTiles = setOf(0),
+        )
+
+        assertEquals(emptySet<Int>(), rebased.natural)
+        assertEquals(setOf(1), rebased.all)
+        assertEquals(emptySet<Int>(), differ.compare(masked).all)
+    }
+
+    @Test
+    fun `real changes outside a changed overlay mask remain visible`() {
+        val differ = TileSignatureDiffer()
+        val baseline = listOf(IntArray(100) { 120 }, IntArray(100) { 80 })
+        differ.compare(baseline)
+        val changed = baseline.map { it.clone() }
+        repeat(20) {
+            changed[0][it] = 255
+            changed[1][it] = 10
+        }
+
+        val result = differ.compare(changed, suppressedNaturalTiles = setOf(0))
+
+        assertEquals(setOf(1), result.natural)
+        assertEquals(setOf(1), result.all)
     }
 
     @Test
@@ -108,6 +388,19 @@ class IncrementalScreenLogicTest {
     }
 
     @Test
+    fun `changed tiles hide stale translated blocks immediately`() {
+        val top = trackedBlock(id = 1, top = 0.1f, bottom = 0.2f)
+        val bottom = trackedBlock(id = 2, top = 0.8f, bottom = 0.9f)
+        val changedTile = ScreenTileGrid.indexForNormalizedPoint(
+            top.bounds.centerX,
+            top.bounds.centerY,
+        )
+
+        assertEquals(listOf(bottom), blocksOutsideTiles(listOf(top, bottom), setOf(changedTile)))
+        assertEquals(listOf(top, bottom), blocksOutsideTiles(listOf(top, bottom), emptySet()))
+    }
+
+    @Test
     fun `translation label is placed directly above its source box`() {
         val placement = resolveTranslationPlacement(
             bounds = bounds(0.1f, 0.5f, 0.4f, 0.6f),
@@ -149,4 +442,12 @@ class IncrementalScreenLogicTest {
 
     private fun bounds(left: Float, top: Float, right: Float, bottom: Float) =
         NormalizedBounds(left, top, right, bottom)
+
+    private fun trackedBlock(id: Long, top: Float, bottom: Float) = TrackedScreenTextBlock(
+        id = id,
+        text = "Block $id",
+        bounds = bounds(0.1f, top, 0.4f, bottom),
+        confidence = 0.9f,
+        isStable = true,
+    )
 }

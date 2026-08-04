@@ -11,7 +11,7 @@ interface FramePipeline : AutoCloseable {
     fun onImageAvailable(
         reader: ImageReader,
         normalizedRegion: RectF = FULL_FRAME,
-        normalizedExclusion: RectF? = null,
+        normalizedExclusions: List<RectF> = emptyList(),
     )
 
     companion object {

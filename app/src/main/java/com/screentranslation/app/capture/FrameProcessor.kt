@@ -9,6 +9,7 @@ import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationInputMode
 import com.screentranslation.app.util.ClauseSplitter
 import com.screentranslation.app.util.ProtectedTextCodec
+import com.screentranslation.app.util.SourceTextFilter
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -23,6 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger
 class FrameProcessor(
     private val ocrEngine: OcrEngine,
     private val translationEngine: TranslationBackend,
+    private val sourceLanguageTag: String,
+    private val targetLanguageTag: String,
     private val stableTextGate: StableTextGate = StableTextGate(),
     frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
     private val onOriginalRecognized: (String) -> Unit = {},
@@ -36,6 +39,7 @@ class FrameProcessor(
     )
 
     private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
+    private var hadAcceptedSource = false
     private val wholeRegionCoordinator =
         if (translationEngine.inputMode == TranslationInputMode.WHOLE_REGION) {
             TranslationCoordinator(
@@ -86,6 +90,7 @@ class FrameProcessor(
             wholeRegionCoordinator?.reset()
             stableTextGate.reset()
             synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+            hadAcceptedSource = false
         }
     }
 
@@ -94,6 +99,7 @@ class FrameProcessor(
         stableTextGate.reset()
         wholeRegionCoordinator?.reset()
         synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+        hadAcceptedSource = false
     }
 
     /**
@@ -103,7 +109,7 @@ class FrameProcessor(
     override fun onImageAvailable(
         reader: ImageReader,
         normalizedRegion: RectF,
-        normalizedExclusion: RectF?,
+        normalizedExclusions: List<RectF>,
     ) {
         val image = try {
             reader.acquireLatestImage()
@@ -123,7 +129,7 @@ class FrameProcessor(
                 BitmapExtractor.extract(
                     image = it,
                     normalizedRegion = normalizedRegion,
-                    normalizedExclusion = normalizedExclusion,
+                    normalizedExclusions = normalizedExclusions,
                 )
             }
         } catch (error: Throwable) {
@@ -146,10 +152,27 @@ class FrameProcessor(
 
             result.fold(
                 onSuccess = { recognition ->
+                    val recognitionBlocks = recognition.blocks.ifEmpty {
+                        recognition.regions.map { it.text }.ifEmpty {
+                            recognition.text.lineSequence().toList()
+                        }
+                    }
+                    val filteredBlocks = SourceTextFilter.filterBlocks(
+                        blocks = recognitionBlocks,
+                        sourceLanguageTag = sourceLanguageTag,
+                        targetLanguageTag = targetLanguageTag,
+                    )
+                    val filteredText = filteredBlocks.joinToString("\n")
+                    if (filteredText.isBlank()) {
+                        clearWhenNoSourceText()
+                        gate.release()
+                        return@fold
+                    }
+
                     // Stability is judged on the whole region: a partially
                     // repainted UI should not be treated as settled just because
                     // one block happens to match.
-                    val stableText = stableTextGate.offer(recognition.text)
+                    val stableText = stableTextGate.offer(filteredText)
                     if (stableText == null) {
                         gate.release()
                     } else if (
@@ -159,6 +182,7 @@ class FrameProcessor(
                         // slot: newer stable OCR is allowed to replace an older
                         // in-flight request through the coordinator.
                         gate.release()
+                        hadAcceptedSource = true
                         onOriginalRecognized(stableText)
                         val protected = ProtectedTextCodec.protect(stableText)
                         synchronized(wholeRegionProtectedText) {
@@ -166,7 +190,8 @@ class FrameProcessor(
                         }
                         checkNotNull(wholeRegionCoordinator).submit(protected.encoded)
                     } else {
-                        translate(stableText, recognition.blocks, frameGeneration)
+                        hadAcceptedSource = true
+                        translate(stableText, filteredBlocks, frameGeneration)
                     }
                 },
                 onFailure = { error ->
@@ -175,6 +200,16 @@ class FrameProcessor(
                 },
             )
         }
+    }
+
+    private fun clearWhenNoSourceText() {
+        stableTextGate.reset()
+        wholeRegionCoordinator?.reset()
+        synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+        if (!hadAcceptedSource) return
+
+        hadAcceptedSource = false
+        onTranslation(FrameTranslation(originalText = "", translatedText = ""))
     }
 
     /**

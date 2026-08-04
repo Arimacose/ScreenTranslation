@@ -92,6 +92,7 @@ class ProjectionPermissionActivity : ComponentActivity() {
         runCatching {
             ContextCompat.startForegroundService(this, startIntent)
         }.onFailure {
+            ScreenTranslationService.discardPendingStartRequest()
             CaptureShortcutNotification.show(this)
             Toast.makeText(this, R.string.quick_start_service_failed, Toast.LENGTH_LONG).show()
         }

@@ -30,6 +30,35 @@ class ProtectedTextCodecTest {
     }
 
     @Test
+    fun `restores a token after the translator normalizes its brackets`() {
+        val protected = ProtectedTextCodec.protect(
+            "Visit https://example.com/help for details.",
+        )
+        val normalized = protected.encoded
+            .replace('⟦', '[')
+            .replace('⟧', ']')
+            .replace("Visit ", "请访问 ")
+            .replace(" for details.", " 了解详情。")
+
+        assertEquals(
+            "请访问 https://example.com/help 了解详情。",
+            protected.restore(normalized),
+        )
+    }
+
+    @Test
+    fun `restores a token even when the translator removes its wrapper`() {
+        val protected = ProtectedTextCodec.protect("Contact demo@example.com now.")
+        val wrapperless = protected.encoded
+            .replace("⟦", "")
+            .replace("⟧", "")
+            .replace("Contact ", "联系 ")
+            .replace(" now.", "。")
+
+        assertEquals("联系 demo@example.com。", protected.restore(wrapperless))
+    }
+
+    @Test
     fun `date wins over overlapping version pattern`() {
         val protected = ProtectedTextCodec.protect("Released 2026.08.03 with build 1.2.3-beta.")
 
