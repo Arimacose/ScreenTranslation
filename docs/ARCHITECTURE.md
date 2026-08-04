@@ -17,8 +17,10 @@ edition 额外提供一个非导出的设置 Activity。目标设备为小米 15
 
 `UiStyle` 与 `AppPreferences` 持久化 Apple 风格、MIUIX、Material 3 三选一设置；
 `UiStyleController` 在 Activity 创建前应用相应 View 主题，并只对 Material 3 + Monet
-组合调用 Material `DynamicColors`。Activity 布局只消费语义颜色角色，服务拥有的窗口
-则读取一次 `OverlayVisualStyle` 快照。详见 [UI_STYLES.md](UI_STYLES.md)。
+组合调用 Material `DynamicColors`。Apple 为主页面、模型管理和 Online BYOK 选择独立
+layout family；MIUIX 与 Material 3 继续使用标准 layout family。两组布局保持相同交互
+View ID 契约，服务拥有的窗口则读取一次 `OverlayVisualStyle` 快照。详见
+[UI_STYLES.md](UI_STYLES.md)。
 
 ### 1.2 edition 边界
 

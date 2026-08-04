@@ -6,4 +6,14 @@
         <item name="boxCornerRadiusBottomStart">?attr/screenControlCornerRadius</item>
         <item name="boxCornerRadiusBottomEnd">?attr/screenControlCornerRadius</item>
     </style>
+
+    <style name="Widget.ScreenTranslation.Apple.Input" parent="Widget.Material3.TextInputLayout.FilledBox">
+        <item name="boxBackgroundColor">@color/apple_surface</item>
+        <item name="boxStrokeColor">@color/apple_primary</item>
+        <item name="hintTextColor">@color/apple_on_surface_variant</item>
+        <item name="boxCornerRadiusTopStart">12dp</item>
+        <item name="boxCornerRadiusTopEnd">12dp</item>
+        <item name="boxCornerRadiusBottomStart">12dp</item>
+        <item name="boxCornerRadiusBottomEnd">12dp</item>
+    </style>
 </resources>

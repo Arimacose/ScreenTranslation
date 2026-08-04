@@ -13,6 +13,7 @@ import com.screentranslation.app.model.ManagedModel
 import com.screentranslation.app.model.ModelDownloadState
 import com.screentranslation.app.model.ModelStorageManager
 import com.screentranslation.app.model.ModelStorageManagerFactory
+import com.screentranslation.app.model.UiStyle
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
 
@@ -26,9 +27,15 @@ class ModelManagementActivity : AppCompatActivity() {
     private lateinit var deleteButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        UiStyleController.apply(this)
+        val uiStyle = UiStyleController.apply(this)
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_model_management)
+        setContentView(
+            if (uiStyle == UiStyle.APPLE) {
+                R.layout.activity_model_management_apple
+            } else {
+                R.layout.activity_model_management
+            },
+        )
         title = getString(R.string.model_management_title)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 

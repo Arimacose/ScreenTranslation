@@ -249,9 +249,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        UiStyleController.apply(this)
+        val uiStyle = UiStyleController.apply(this)
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(
+            if (uiStyle == UiStyle.APPLE) {
+                R.layout.activity_main_apple
+            } else {
+                R.layout.activity_main
+            },
+        )
 
         preferences = AppPreferences(this)
         projectionManager = getSystemService(MediaProjectionManager::class.java)

@@ -18,6 +18,7 @@ import com.screentranslation.app.R
 import com.screentranslation.app.ml.OnlineLlmTranslationEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
+import com.screentranslation.app.model.UiStyle
 import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.ui.UiStyleController
 import okhttp3.OkHttpClient
@@ -53,10 +54,16 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private var savedUserConsentHost = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        UiStyleController.apply(this)
+        val uiStyle = UiStyleController.apply(this)
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        setContentView(R.layout.activity_online_settings)
+        setContentView(
+            if (uiStyle == UiStyle.APPLE) {
+                R.layout.activity_online_settings_apple
+            } else {
+                R.layout.activity_online_settings
+            },
+        )
         repository = OnlineTranslationConfigRepository(this)
         preferences = AppPreferences(this)
         modelHttpClient = OnlineHttpClientFactory.create()
