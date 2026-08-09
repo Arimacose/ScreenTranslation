@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
@@ -25,11 +26,14 @@ import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.ViewModel
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.screentranslation.app.ml.ModelPreparationProgress
 import com.screentranslation.app.ml.ModelPreparationStage
@@ -45,6 +49,8 @@ import com.screentranslation.app.service.CaptureShortcutNotification
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
 import com.screentranslation.app.vendor.HyperOsVendorAdapter
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 internal enum class BatteryPolicyUiState {
     BACKGROUND_RESTRICTED,
@@ -110,7 +116,146 @@ internal fun resolveModelPreparationButtonState(
     isEnabled = !serviceRunning && operationIdle && !sameLanguage && !readyForSelectedPair,
 )
 
+internal fun hasSelectedLanguagePairChanged(
+    persistedSource: String,
+    persistedTarget: String,
+    selectedSource: String,
+    selectedTarget: String,
+): Boolean = persistedSource != selectedSource || persistedTarget != selectedTarget
+
+internal data class RetainedModelReadiness(
+    val pair: Pair<String, String>,
+    val identity: String,
+    val generation: Long,
+)
+
+internal class ModelReadinessViewModel : ViewModel() {
+    var generation: Long = 0L
+        private set
+    var snapshot: RetainedModelReadiness? = null
+        private set
+
+    fun invalidate() {
+        generation += 1L
+        snapshot = null
+    }
+
+    fun beginVerification(): Long {
+        invalidate()
+        return generation
+    }
+
+    fun markReady(
+        pair: Pair<String, String>,
+        identity: String,
+        expectedGeneration: Long? = null,
+    ): Boolean {
+        if (expectedGeneration != null && generation != expectedGeneration) return false
+        if (expectedGeneration == null) generation += 1L
+        snapshot = RetainedModelReadiness(pair, identity, generation)
+        return true
+    }
+}
+
+/**
+ * Owns one cancellable resource for a generation of background work.
+ *
+ * Installation and cancellation share one monitor, so a resource created by a
+ * worker either becomes visible to the lifecycle owner or is closed before it
+ * can start expensive work. Exactly one side owns the final close.
+ */
+internal class GenerationOwnedResourceController<T : AutoCloseable> {
+    private val lock = Any()
+    private var generation = 0
+    private var resource: T? = null
+    private var running = false
+
+    val inFlight: Boolean
+        get() = synchronized(lock) { running }
+
+    fun begin(): Int {
+        val stale: T?
+        val nextGeneration: Int
+        synchronized(lock) {
+            generation += 1
+            nextGeneration = generation
+            running = true
+            stale = resource
+            resource = null
+        }
+        close(stale)
+        return nextGeneration
+    }
+
+    fun install(expectedGeneration: Int, candidate: T): Boolean {
+        val installed = synchronized(lock) {
+            when {
+                generation != expectedGeneration || !running -> false
+                resource == null -> {
+                    resource = candidate
+                    true
+                }
+                resource === candidate -> true
+                else -> false
+            }
+        }
+        if (!installed) close(candidate)
+        return installed
+    }
+
+    fun release(candidate: T) {
+        val owned = synchronized(lock) {
+            if (resource === candidate) {
+                resource = null
+                candidate
+            } else {
+                null
+            }
+        }
+        close(owned)
+    }
+
+    fun finish(expectedGeneration: Int): Boolean = synchronized(lock) {
+        if (generation == expectedGeneration && running && resource == null) {
+            running = false
+            true
+        } else {
+            false
+        }
+    }
+
+    fun cancel() {
+        val owned: T?
+        synchronized(lock) {
+            generation += 1
+            running = false
+            owned = resource
+            resource = null
+        }
+        close(owned)
+    }
+
+    private fun close(value: T?) {
+        if (value != null) runCatching { value.close() }
+    }
+}
+
+internal fun retainedReadinessMatches(
+    snapshot: RetainedModelReadiness?,
+    selectedPair: Pair<String, String>,
+    currentIdentity: String?,
+): Boolean = snapshot?.pair == selectedPair &&
+    currentIdentity != null && snapshot.identity == currentIdentity
+
+internal fun shouldStartModelReadinessCheck(
+    activityStarted: Boolean,
+    serviceRunning: Boolean,
+    operationIdle: Boolean,
+    readyForSelectedPair: Boolean,
+): Boolean = activityStarted && !serviceRunning && operationIdle && !readyForSelectedPair
+
 class MainActivity : AppCompatActivity() {
+    private val modelReadinessViewModel: ModelReadinessViewModel by viewModels()
     private lateinit var preferences: AppPreferences
     private lateinit var projectionManager: MediaProjectionManager
 
@@ -125,6 +270,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var intervalSeekBar: SeekBar
     private lateinit var intervalValueView: TextView
     private lateinit var prepareModelsButton: Button
+    private var prepareModelsButtonDefaultTint: ColorStateList? = null
+    private lateinit var prepareModelsButtonDefaultTextColors: ColorStateList
     private lateinit var manageModelsButton: Button
     private lateinit var modelStatusView: TextView
     private lateinit var onlineSettingsButton: Button
@@ -154,6 +301,11 @@ class MainActivity : AppCompatActivity() {
     private var modelPreparationEngine: TranslationBackend? = null
     private var modelPreparationGeneration = 0
     private var modelReadyFor: Pair<String, String>? = null
+    private val modelReadinessController =
+        GenerationOwnedResourceController<TranslationBackend>()
+    private val modelReadinessExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "model-readiness-verifier").apply { isDaemon = true }
+    }
     private var experimentalSmokeTestEngine: TranslationBackend? = null
     private var experimentalSmokeTestGeneration = 0
     private var languageListenersReady = false
@@ -161,11 +313,13 @@ class MainActivity : AppCompatActivity() {
     private var pendingStartAfterOverlayPermission = false
     private var projectionRequestInFlight = false
     private var sessionStateReceiverRegistered = false
+    private var activityStarted = false
 
     private val sessionStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ScreenTranslationService.ACTION_SESSION_STATE_CHANGED) {
                 refreshServiceStatus()
+                reconcileModelReadiness()
             }
         }
     }
@@ -192,6 +346,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         invalidatePreparedModel()
         refreshOnlineConfigurationStatus()
+        reconcileModelReadiness()
     }
 
     private val modelManagementLauncher = registerForActivityResult(
@@ -202,7 +357,10 @@ class MainActivity : AppCompatActivity() {
                 invalidatePreparedModel()
                 prepareCurrentModels()
             }
-            ModelManagementActivity.RESULT_MODELS_CHANGED -> invalidatePreparedModel()
+            ModelManagementActivity.RESULT_MODELS_CHANGED -> {
+                invalidatePreparedModel()
+                reconcileModelReadiness()
+            }
         }
     }
 
@@ -270,22 +428,10 @@ class MainActivity : AppCompatActivity() {
         configureCaptureMode()
         configureFrameInterval()
         configureActions()
-        modelReadyFor = savedInstanceState?.let { state ->
-            val source = state.getString(STATE_READY_SOURCE)
-            val target = state.getString(STATE_READY_TARGET)
-            if (source != null && target != null) source to target else null
-        }
+        modelReadyFor = null
         refreshPermissionState()
         setServiceRunningUi(false)
         refreshOnlineConfigurationStatus()
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        modelReadyFor?.let { (source, target) ->
-            outState.putString(STATE_READY_SOURCE, source)
-            outState.putString(STATE_READY_TARGET, target)
-        }
-        super.onSaveInstanceState(outState)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -296,6 +442,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        activityStarted = true
         if (!sessionStateReceiverRegistered) {
             ContextCompat.registerReceiver(
                 this,
@@ -306,6 +453,7 @@ class MainActivity : AppCompatActivity() {
             sessionStateReceiverRegistered = true
         }
         if (::serviceStatusView.isInitialized) refreshServiceStatus()
+        reconcileModelReadiness()
     }
 
     override fun onResume() {
@@ -316,9 +464,12 @@ class MainActivity : AppCompatActivity() {
             refreshServiceStatus()
             refreshOnlineConfigurationStatus()
         }
+        if (::modelStatusView.isInitialized) reconcileModelReadiness()
     }
 
     override fun onDestroy() {
+        cancelModelReadinessCheck()
+        modelReadinessExecutor.shutdownNow()
         modelPreparationGeneration += 1
         modelPreparationEngine?.close()
         modelPreparationEngine = null
@@ -329,6 +480,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        activityStarted = false
+        cancelModelReadinessCheck()
         if (sessionStateReceiverRegistered) {
             unregisterReceiver(sessionStateReceiver)
             sessionStateReceiverRegistered = false
@@ -355,13 +508,21 @@ class MainActivity : AppCompatActivity() {
         intervalSeekBar = findViewById(R.id.seek_frame_interval)
         intervalValueView = findViewById(R.id.text_frame_interval)
         prepareModelsButton = findViewById(R.id.button_prepare_models)
+        prepareModelsButtonDefaultTint = prepareModelsButton.backgroundTintList
+        prepareModelsButtonDefaultTextColors = prepareModelsButton.textColors
         manageModelsButton = findViewById(R.id.button_manage_models)
         modelStatusView = findViewById(R.id.text_model_status)
+        // Readiness is restored from a retained, artifact-bound identity or a
+        // fresh integrity check, never from the framework's view-state Bundle.
+        prepareModelsButton.isSaveEnabled = false
+        modelStatusView.isSaveEnabled = false
         onlineSettingsButton = findViewById(R.id.button_online_settings)
         onlineConfigStatusView = findViewById(R.id.text_online_config_status)
         experimentalSmokeTestButton = findViewById(R.id.button_experimental_smoke_test)
         experimentalSmokeTestResultView =
             findViewById(R.id.text_experimental_smoke_test_result)
+        // A process recreation must not resurrect an in-progress self-test label.
+        experimentalSmokeTestResultView.isSaveEnabled = false
         val experimentalVisibility = if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
             View.VISIBLE
         } else {
@@ -491,8 +652,21 @@ class MainActivity : AppCompatActivity() {
                 id: Long,
             ) {
                 if (!languageListenersReady) return
+                val selectedSource = selectedSourceLanguage().languageTag
+                val selectedTarget = selectedTargetLanguage().languageTag
+                if (
+                    !hasSelectedLanguagePairChanged(
+                        persistedSource = preferences.sourceLanguage,
+                        persistedTarget = preferences.targetLanguage,
+                        selectedSource = selectedSource,
+                        selectedTarget = selectedTarget,
+                    )
+                ) {
+                    return
+                }
                 persistCurrentConfiguration()
                 invalidatePreparedModel()
+                reconcileModelReadiness()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -620,6 +794,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val requestedPair = source.languageTag to target.languageTag
+        cancelModelReadinessCheck()
+        modelReadinessViewModel.invalidate()
         val generation = ++modelPreparationGeneration
         modelPreparationEngine?.close()
         val engine = TranslationBackendFactory.create(
@@ -656,6 +832,9 @@ class MainActivity : AppCompatActivity() {
                 if (modelPreparationEngine === engine) {
                     modelPreparationEngine = null
                 }
+                val preparedIdentity = result.getOrNull()?.let {
+                    runCatching { engine.currentPreparationIdentity() }.getOrNull()
+                }
                 engine.close()
                 setServiceRunningUi(ScreenTranslationService.isRunning)
 
@@ -669,7 +848,15 @@ class MainActivity : AppCompatActivity() {
 
                 result.fold(
                     onSuccess = {
+                        if (preparedIdentity == null) {
+                            modelReadyFor = null
+                            modelReadinessViewModel.invalidate()
+                            modelStatusView.setText(R.string.model_not_prepared)
+                            setServiceRunningUi(ScreenTranslationService.isRunning)
+                            return@fold
+                        }
                         modelReadyFor = requestedPair
+                        modelReadinessViewModel.markReady(requestedPair, preparedIdentity)
                         modelStatusView.text = getString(
                             R.string.model_ready,
                             source.displayName(this),
@@ -781,6 +968,9 @@ class MainActivity : AppCompatActivity() {
         translation: Result<String>,
     ) {
         val elapsedMs = SystemClock.elapsedRealtime() - startedAt
+        val preparedIdentity = translation.getOrNull()?.let {
+            runCatching { engine.currentPreparationIdentity() }.getOrNull()
+        }
         runOnUiThread {
             if (generation != experimentalSmokeTestGeneration || isDestroyed) {
                 engine.close()
@@ -802,12 +992,22 @@ class MainActivity : AppCompatActivity() {
                     val currentPair = selectedSourceLanguage().languageTag to
                         selectedTargetLanguage().languageTag
                     if (currentPair == smokePair) {
-                        modelReadyFor = smokePair
-                        modelStatusView.text = getString(
-                            R.string.model_ready,
-                            selectedSourceLanguage().displayName(this),
-                            selectedTargetLanguage().displayName(this),
-                        )
+                        if (preparedIdentity != null) {
+                            modelReadyFor = smokePair
+                            modelReadinessViewModel.markReady(smokePair, preparedIdentity)
+                        } else {
+                            modelReadyFor = null
+                            modelReadinessViewModel.invalidate()
+                        }
+                        if (preparedIdentity != null) {
+                            modelStatusView.text = getString(
+                                R.string.model_ready,
+                                selectedSourceLanguage().displayName(this),
+                                selectedTargetLanguage().displayName(this),
+                            )
+                        } else {
+                            modelStatusView.setText(R.string.model_not_prepared)
+                        }
                     }
                     experimentalSmokeTestResultView.text = getString(
                         R.string.experimental_smoke_test_success,
@@ -1007,6 +1207,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun invalidatePreparedModel() {
+        cancelModelReadinessCheck()
+        modelReadinessViewModel.invalidate()
         modelPreparationGeneration += 1
         modelPreparationEngine?.close()
         modelPreparationEngine = null
@@ -1018,6 +1220,180 @@ class MainActivity : AppCompatActivity() {
             } else {
                 R.string.model_not_prepared
             },
+        )
+    }
+
+    private fun reconcileModelReadiness() {
+        val source = selectedSourceLanguage()
+        val target = selectedTargetLanguage()
+        val requestedPair = source.languageTag to target.languageTag
+        val serviceRunning = ScreenTranslationService.isRunning
+        if (serviceRunning) {
+            // The running service already owns the backend/runtime. Do not read
+            // large model artifacts concurrently from a hidden Activity.
+            cancelModelReadinessCheck()
+            setServiceRunningUi(true)
+            return
+        }
+
+        val retained = modelReadinessViewModel.snapshot
+        val currentIdentity = if (retained?.pair == requestedPair) {
+            currentPreparationIdentity(requestedPair)
+        } else {
+            null
+        }
+        if (retainedReadinessMatches(retained, requestedPair, currentIdentity)) {
+            modelReadyFor = requestedPair
+            showSelectedPairReady()
+            setServiceRunningUi(serviceRunning)
+            return
+        }
+        if (modelReadinessController.inFlight) {
+            // onResume follows onStart and must not replace the long-running
+            // Full hash status with a misleading "not prepared" label.
+            modelReadyFor = null
+            modelStatusView.setText(R.string.model_progress_verifying)
+            setServiceRunningUi(serviceRunning)
+            return
+        }
+        if (retained != null) modelReadinessViewModel.invalidate()
+        modelReadyFor = null
+        modelStatusView.setText(
+            if (source == target) R.string.model_same_language else R.string.model_not_prepared,
+        )
+        setServiceRunningUi(serviceRunning)
+
+        val operationIdle = modelPreparationEngine == null &&
+            experimentalSmokeTestEngine == null && !modelReadinessController.inFlight
+        if (
+            source != target && shouldStartModelReadinessCheck(
+                activityStarted = activityStarted,
+                serviceRunning = serviceRunning,
+                operationIdle = operationIdle,
+                readyForSelectedPair = false,
+            )
+        ) {
+            recoverPreparedModelFromStorage(requestedPair)
+        }
+    }
+
+    private fun currentPreparationIdentity(pair: Pair<String, String>): String? {
+        val engine = runCatching {
+            TranslationBackendFactory.create(
+                context = applicationContext,
+                sourceLanguage = pair.first,
+                targetLanguage = pair.second,
+            )
+        }.getOrNull() ?: return null
+        return try {
+            runCatching { engine.currentPreparationIdentity() }.getOrNull()
+        } finally {
+            runCatching { engine.close() }
+        }
+    }
+
+    private fun recoverPreparedModelFromStorage(requestedPair: Pair<String, String>) {
+        if (
+            !shouldStartModelReadinessCheck(
+                activityStarted = activityStarted,
+                serviceRunning = ScreenTranslationService.isRunning,
+                operationIdle = modelPreparationEngine == null &&
+                    experimentalSmokeTestEngine == null && !modelReadinessController.inFlight,
+                readyForSelectedPair = modelReadyFor == requestedPair,
+            )
+        ) {
+            return
+        }
+
+        val generation = modelReadinessController.begin()
+        val processGeneration = modelReadinessViewModel.beginVerification()
+        modelStatusView.setText(R.string.model_progress_verifying)
+        setServiceRunningUi(ScreenTranslationService.isRunning)
+        try {
+            modelReadinessExecutor.execute {
+                val engine = runCatching {
+                    TranslationBackendFactory.create(
+                        context = applicationContext,
+                        sourceLanguage = requestedPair.first,
+                        targetLanguage = requestedPair.second,
+                    )
+                }.getOrNull()
+
+                if (engine == null) {
+                    deliverRecoveredModelReadiness(
+                        generation,
+                        processGeneration,
+                        requestedPair,
+                        null,
+                    )
+                    return@execute
+                }
+                if (!modelReadinessController.install(generation, engine)) {
+                    return@execute
+                }
+
+                val identity = try {
+                    if (runCatching { engine.isPrepared() }.getOrDefault(false)) {
+                        runCatching { engine.currentPreparationIdentity() }.getOrNull()
+                    } else {
+                        null
+                    }
+                } finally {
+                    modelReadinessController.release(engine)
+                }
+                deliverRecoveredModelReadiness(
+                    generation,
+                    processGeneration,
+                    requestedPair,
+                    identity,
+                )
+            }
+        } catch (_: RejectedExecutionException) {
+            modelReadinessController.finish(generation)
+            // Activity destruction owns executor shutdown; no UI result remains relevant.
+        }
+    }
+
+    private fun deliverRecoveredModelReadiness(
+        generation: Int,
+        processGeneration: Long,
+        requestedPair: Pair<String, String>,
+        identity: String?,
+    ) {
+        runOnUiThread {
+            if (!modelReadinessController.finish(generation) || isDestroyed) return@runOnUiThread
+            if (processGeneration != modelReadinessViewModel.generation) return@runOnUiThread
+            if (!activityStarted || ScreenTranslationService.isRunning) return@runOnUiThread
+            val currentPair = selectedSourceLanguage().languageTag to
+                selectedTargetLanguage().languageTag
+            if (currentPair != requestedPair) return@runOnUiThread
+
+            val ready = identity != null && modelReadinessViewModel.markReady(
+                pair = requestedPair,
+                identity = identity,
+                expectedGeneration = processGeneration,
+            )
+            modelReadyFor = requestedPair.takeIf { ready }
+            if (ready) {
+                showSelectedPairReady()
+            } else {
+                modelStatusView.setText(R.string.model_not_prepared)
+            }
+            setServiceRunningUi(ScreenTranslationService.isRunning)
+        }
+    }
+
+    private fun cancelModelReadinessCheck() {
+        modelReadinessController.cancel()
+    }
+
+    private fun showSelectedPairReady() {
+        val source = selectedSourceLanguage()
+        val target = selectedTargetLanguage()
+        modelStatusView.text = getString(
+            R.string.model_ready,
+            source.displayName(this),
+            target.displayName(this),
         )
     }
 
@@ -1086,7 +1462,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setServiceRunningUi(running: Boolean) {
         val operationIdle =
-            modelPreparationEngine == null && experimentalSmokeTestEngine == null
+            modelPreparationEngine == null && experimentalSmokeTestEngine == null &&
+                !modelReadinessController.inFlight
         val currentPair = selectedSourceLanguage().languageTag to selectedTargetLanguage().languageTag
         val prepareState = resolveModelPreparationButtonState(
             serviceRunning = running,
@@ -1099,6 +1476,23 @@ class MainActivity : AppCompatActivity() {
         prepareModelsButton.setText(
             if (prepareState.isReady) R.string.model_prepare_ready else R.string.prepare_models,
         )
+        if (prepareState.isReady) {
+            prepareModelsButton.backgroundTintList = ColorStateList.valueOf(
+                MaterialColors.getColor(
+                    prepareModelsButton,
+                    com.google.android.material.R.attr.colorSurfaceVariant,
+                ),
+            )
+            prepareModelsButton.setTextColor(
+                MaterialColors.getColor(
+                    prepareModelsButton,
+                    com.google.android.material.R.attr.colorOnSurfaceVariant,
+                ),
+            )
+        } else {
+            prepareModelsButton.backgroundTintList = prepareModelsButtonDefaultTint
+            prepareModelsButton.setTextColor(prepareModelsButtonDefaultTextColors)
+        }
         prepareModelsButton.isEnabled = prepareState.isEnabled
         captureModeSpinner.isEnabled = !running && operationIdle
         manageModelsButton.isEnabled = !running && operationIdle
@@ -1154,8 +1548,6 @@ class MainActivity : AppCompatActivity() {
             "com.screentranslation.app.online.OnlineSettingsActivity"
         private const val ONLINE_EDITION_BRIDGE_CLASS =
             "com.screentranslation.app.online.OnlineEditionBridge"
-        private const val STATE_READY_SOURCE = "ready_source"
-        private const val STATE_READY_TARGET = "ready_target"
         private const val EXPERIMENTAL_SMOKE_SOURCE_LANGUAGE = "en"
         private const val EXPERIMENTAL_SMOKE_TARGET_LANGUAGE = "zh"
         private const val EXPERIMENTAL_SMOKE_SOURCE_TEXT =

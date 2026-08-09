@@ -1,10 +1,14 @@
 package com.screentranslation.app.ml
 
+import com.screentranslation.app.RetainedModelReadiness
+import com.screentranslation.app.retainedReadinessMatches
 import com.screentranslation.llama.LlamaRuntime
 import java.io.File
 import java.security.MessageDigest
+import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -114,6 +118,154 @@ class HyMt2Q4TranslationEngineTest {
     }
 
     @Test
+    fun coldReadinessRequiresTheFullModelHashNotOnlyItsSize() {
+        withTempFile(byteArrayOf(1, 2, 3, 4)) { file ->
+            assertTrue(
+                isHyMt2Q4ModelPrepared(
+                    file = file,
+                    expectedSize = file.length(),
+                    expectedSha256 = sha256(file),
+                    sha256 = ::sha256,
+                ),
+            )
+            assertFalse(
+                isHyMt2Q4ModelPrepared(
+                    file = file,
+                    expectedSize = file.length(),
+                    expectedSha256 = "0".repeat(64),
+                    sha256 = ::sha256,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun canonicalVerifierHashesTheModelAndTreatsMarkerAsAuditOnly() {
+        withTempDirectory { directory ->
+            val model = File(directory, "model.gguf").apply {
+                writeBytes(byteArrayOf(1, 2, 3, 4))
+            }
+            val marker = File(directory, "model.gguf.sha256")
+            val expectedSha256 = sha256(model)
+
+            val missingMarker = HyMt2Q4ModelVerifier.verify(
+                modelFile = model,
+                markerFile = marker,
+                expectedSize = model.length(),
+                expectedSha256 = expectedSha256,
+            )
+            assertTrue(missingMarker.ready)
+            assertTrue(missingMarker.identity != null)
+            assertFalse(missingMarker.markerMatches)
+
+            marker.writeText("0".repeat(64))
+            val staleMarker = HyMt2Q4ModelVerifier.verify(
+                modelFile = model,
+                markerFile = marker,
+                expectedSize = model.length(),
+                expectedSha256 = expectedSha256,
+            )
+            assertTrue(staleMarker.ready)
+            assertFalse(staleMarker.markerMatches)
+        }
+    }
+
+    @Test
+    fun matchingMarkerCannotMakeCorruptSameSizeModelReady() {
+        withTempDirectory { directory ->
+            val model = File(directory, "model.gguf").apply {
+                writeBytes(byteArrayOf(1, 2, 3, 4))
+            }
+            val marker = File(directory, "model.gguf.sha256")
+            val expectedSha256 = sha256(model)
+            marker.writeText(expectedSha256)
+            model.writeBytes(byteArrayOf(4, 3, 2, 1))
+
+            val verification = HyMt2Q4ModelVerifier.verify(
+                modelFile = model,
+                markerFile = marker,
+                expectedSize = model.length(),
+                expectedSha256 = expectedSha256,
+            )
+
+            assertFalse(verification.ready)
+            assertTrue(verification.markerMatches)
+            assertTrue(verification.identity == null)
+        }
+    }
+
+    @Test
+    fun retainedFullReadinessIsRejectedAfterModelDeletion() {
+        withTempFile(byteArrayOf(1, 2, 3, 4)) { model ->
+            val expectedSha256 = sha256(model)
+            val identity = HyMt2Q4ModelVerifier.currentIdentity(
+                modelFile = model,
+                expectedSize = model.length(),
+                expectedSha256 = expectedSha256,
+            )!!
+            val pair = "en" to "zh"
+            val retained = RetainedModelReadiness(pair, identity, generation = 1L)
+
+            assertTrue(model.delete())
+            val currentIdentity = HyMt2Q4ModelVerifier.currentIdentity(
+                modelFile = model,
+                expectedSize = 4L,
+                expectedSha256 = expectedSha256,
+            )
+            assertFalse(retainedReadinessMatches(retained, pair, currentIdentity))
+        }
+    }
+
+    @Test
+    fun verifiedFullIdentityIsNotReusedAfterArtifactDeletionOrReplacement() {
+        withTempFile(byteArrayOf(1, 2, 3, 4)) { model ->
+            val expectedSha256 = sha256(model)
+            val verified = HyMt2Q4ModelVerifier.verify(
+                modelFile = model,
+                markerFile = null,
+                expectedSize = model.length(),
+                expectedSha256 = expectedSha256,
+            ).identity!!
+
+            assertTrue(model.delete())
+            assertNull(
+                resolveCurrentPreparationIdentity(
+                    verified,
+                    HyMt2Q4ModelVerifier.currentIdentity(model, 4L, expectedSha256),
+                ),
+            )
+
+            model.writeBytes(byteArrayOf(4, 3, 2, 1))
+            assertNull(
+                resolveCurrentPreparationIdentity(
+                    verified,
+                    HyMt2Q4ModelVerifier.currentIdentity(model, 4L, expectedSha256),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun canonicalHashVerificationHonorsLifecycleCancellation() {
+        withTempFile(ByteArray(2 * 1024 * 1024) { it.toByte() }) { model ->
+            var checks = 0
+            assertThrows(IllegalStateException::class.java) {
+                HyMt2Q4ModelVerifier.verify(
+                    modelFile = model,
+                    markerFile = null,
+                    expectedSize = model.length(),
+                    expectedSha256 = sha256(model),
+                    checkActive = {
+                        checks += 1
+                        check(checks < 4) { "Activity stopped" }
+                    },
+                )
+            }
+            assertTrue(checks >= 4)
+        }
+    }
+
+    @Test
     fun onlyShortPartialIsResumable() {
         withTempFile(byteArrayOf(1, 2, 3, 4)) { file ->
             var hashCalls = 0
@@ -207,6 +359,15 @@ class HyMt2Q4TranslationEngineTest {
             assertion(file)
         } finally {
             file.delete()
+        }
+    }
+
+    private fun withTempDirectory(assertion: (File) -> Unit) {
+        val directory = createTempDirectory("hymt2-verifier-").toFile()
+        try {
+            assertion(directory)
+        } finally {
+            directory.deleteRecursively()
         }
     }
 

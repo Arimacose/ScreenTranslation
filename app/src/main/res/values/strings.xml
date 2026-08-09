@@ -19,7 +19,7 @@
     <string name="target_language">翻译目标语言</string>
     <string name="capture_mode">识别模式</string>
     <string name="capture_mode_region">框选区域（默认）</string>
-    <string name="capture_mode_full_screen">全屏增量覆盖（Experimental）</string>
+    <string name="capture_mode_full_screen">全屏增量覆盖（实验）</string>
     <string name="capture_mode_region_hint">授权后拖动选择区域，结果显示在可展开面板中。</string>
     <string name="capture_mode_full_screen_hint">实验功能：只重识别变化分块，并把译文直接覆盖在对应原文上方；本轮尚未完成 HyperOS 真机验收。</string>
     <string name="frame_interval">识别帧间隔</string>
@@ -48,6 +48,8 @@
     <string name="model_management_title">模型管理</string>
     <string name="model_management_subtitle">查看固定版本、校验状态与磁盘占用；删除只影响当前 edition 的可下载翻译模型。</string>
     <string name="model_inventory_loading">正在读取模型状态…</string>
+    <string name="model_inventory_failed">模型状态读取失败：%1$s</string>
+    <string name="model_inventory_service_running">识屏服务运行中；停止服务后再校验模型完整性。</string>
     <string name="model_inventory_ocr_bundled">PP-OCRv6-small：已随 APK 提供，不占用可删除的下载空间。</string>
     <string name="model_inventory_online_only">Online 版不下载本地翻译权重；API 模型由所选服务提供。</string>
     <string name="model_inventory_state">状态：%1$s</string>
