@@ -1,1 +1,117 @@
-{"schema_version":1}
+{
+  "schema_version": 1,
+  "evidence_id": "hymt2-stq-2026-07-30-xiaomi15pro-android16",
+  "recorded_date": "2026-07-30",
+  "status": "HISTORICAL_STANDALONE_POC_NOT_MIDDLE_TIER_ADMISSION",
+  "device": {
+    "model": "Xiaomi 15 Pro",
+    "os": "Android 16",
+    "abi": "arm64-v8a",
+    "execution": "CPU-only",
+    "cpu_features": [
+      "asimd",
+      "asimddp",
+      "i8mm",
+      "bf16"
+    ]
+  },
+  "source_model": {
+    "repository": "tencent/Hy-MT2-1.8B-1.25Bit-GGUF",
+    "revision": "9df5c824a00a744fb0512a29c640466f4d97dfb0",
+    "file_size_bytes": 461860800,
+    "sha256": "cc497fe8f033b52b3b8b00a7669e9661435432f9d4cd43f7ed24400c01507a93",
+    "load_result": "INCOMPATIBLE_WITH_OBSERVED_PR_ENUMERATION"
+  },
+  "runnable_model": {
+    "transformation_id": "retag-legacy-stq-gguf-v1",
+    "tool": "tools/model-benchmark/retag_legacy_stq_gguf.py",
+    "manifest_sha256": "b4713fdb0e95c74446688597d7c0bab6cc217379379115dc535c2e89f599f284",
+    "file_size_bytes": 461860800,
+    "sha256": "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7",
+    "changes": {
+      "general_file_type": "41->42",
+      "tensor_type": "42->43",
+      "tensor_count": 224,
+      "tensor_payload_changed": false,
+      "payload_offset_bytes": 5090208,
+      "payload_sha256_before": "5ab383ce54adddcbcfbb400aacb5b457005c43f71304291889a61074f5686b2d",
+      "payload_sha256_after": "5ab383ce54adddcbcfbb400aacb5b457005c43f71304291889a61074f5686b2d"
+    }
+  },
+  "runtime": {
+    "upstream_pull_request": "https://github.com/ggml-org/llama.cpp/pull/22836",
+    "snapshot_state": "OPEN",
+    "snapshot_state_verified_date": "2026-08-09",
+    "snapshot_state_source": "https://api.github.com/repos/ggml-org/llama.cpp/pulls/22836",
+    "observed_head_commit": "7e74b8296fbb2e48ad2fbe4663410279bbd2a5e7",
+    "upstream_merge_commit": null,
+    "benchmark_android_runtime_sha256": "de58bceb861b9b13281d1611fbde5975939e2129a3ecc8a382b60bdb24f2c93c",
+    "benchmark_runtime_version_evidence_sha256": "f295cf608f34871f770ebe31719d991bf96bdb20da5e08c29e948958a8fad6c6",
+    "device_runtime_properties_sha256": "0adbc66af8ed5e5d621e6b61fb57fea4cd332bae7b4d316e888269b474c752b1",
+    "repository_gitlink_commit": "caa596ab3f0f8768ee326d6e3d5d39782194676c",
+    "repository_gitlink_verified_date": "2026-08-09",
+    "observed_head_object_present_in_gitlink_clone": false,
+    "gitlink_contains_upstream_merge": false,
+    "verification_status": "NOT_VERIFIED"
+  },
+  "required_routes": {
+    "en-zh": {
+      "q4_bleu_retention_percent": 88.37,
+      "critical_check_regressions_against_shipping_lite": 0,
+      "raw_median_latency_ms": 615.727,
+      "app_pipeline_scope": "APP_CLAUSE_SPLITTER_GOLD_SOURCE_NOT_OCR_END_TO_END",
+      "app_pipeline_median_latency_ms": 600.994,
+      "app_pipeline_p95_latency_ms": 1432.453,
+      "app_pipeline_timeout_count": null,
+      "app_pipeline_timeout_status": "NOT_MEASURED",
+      "raw_result_sha256": "43d8d80ba17153ce9926fc5246533bdc50829ade33d4a7b55fd6b771921d1e1a",
+      "score_sha256": "aff52d86a6daca3fece4b35ca9dd2dbbb85b97c814669c68fd606d5fcef94ec3"
+    },
+    "ja-zh": {
+      "q4_bleu_retention_percent": 89.68,
+      "critical_check_regressions_against_shipping_lite": 8,
+      "raw_median_latency_ms": 622.125,
+      "app_pipeline_scope": "APP_CLAUSE_SPLITTER_GOLD_SOURCE_NOT_OCR_END_TO_END",
+      "app_pipeline_median_latency_ms": 577.303,
+      "app_pipeline_p95_latency_ms": 1416.108,
+      "app_pipeline_timeout_count": null,
+      "app_pipeline_timeout_status": "NOT_MEASURED",
+      "raw_result_sha256": "2123f90db5e616ffaa54724262cfeec90307ebb5dcacd339972583ecb6675c8a",
+      "score_sha256": "efd40fe23582913b09fb6bae66b32b55df385efd90a695b32af54546874ce4c3"
+    }
+  },
+  "standalone_resource_observation": {
+    "scope": "STANDALONE_NATIVE_RUNNER_NOT_INTEGRATED_RELEASE_PROCESS",
+    "steady_rss_kib": 924860,
+    "process_high_water_kib": 925000
+  },
+  "integrated_release": {
+    "status": "NOT_MEASURED",
+    "process_pss_bytes": null,
+    "process_high_water_bytes": null,
+    "lmk_event_count": null
+  },
+  "sustained_thermal": {
+    "status": "NOT_MEASURED",
+    "operational_window_minutes": 14,
+    "operational_window_is_hot_run": false,
+    "thermal_status_start": 0,
+    "thermal_status_end": 0,
+    "sustained_hot_run_minutes": null,
+    "thermal_status_samples": null,
+    "maximum_thermal_status": null
+  },
+  "admission": {
+    "eligible": false,
+    "blocking_evidence": [
+      "UPSTREAM_PULL_REQUEST_NOT_MERGED",
+      "PINNED_RUNTIME_MERGE_ANCESTRY_NOT_VERIFIED",
+      "QUALITY_RETENTION_BELOW_THRESHOLD",
+      "CRITICAL_CHECK_REGRESSION",
+      "RAW_MEDIAN_LATENCY_ABOVE_THRESHOLD",
+      "APP_PIPELINE_TIMEOUTS_NOT_MEASURED",
+      "INTEGRATED_RELEASE_NOT_MEASURED",
+      "SUSTAINED_THERMAL_NOT_MEASURED"
+    ]
+  }
+}

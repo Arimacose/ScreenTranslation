@@ -71,7 +71,12 @@ object TranslationBackendFactory {
             check(configured.size == 1) {
                 "Exactly one translation provider must be configured for this edition"
             }
-            return configured.single()
+            return configured.single().also { selected ->
+                check(selected.isSelectable) {
+                    "Configured translation provider is blocked by its capability/evaluation gate: " +
+                        selected.id
+                }
+            }
         }
 
     fun create(

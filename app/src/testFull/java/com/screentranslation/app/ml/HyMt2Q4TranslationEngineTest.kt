@@ -1,5 +1,6 @@
 package com.screentranslation.app.ml
 
+import com.screentranslation.llama.LlamaRuntime
 import java.io.File
 import java.security.MessageDigest
 import org.junit.Assert.assertEquals
@@ -47,6 +48,37 @@ class HyMt2Q4TranslationEngineTest {
         )
         assertEquals(1_133_080_448L, HyMt2Q4ModelDescriptor.MODEL_SIZE_BYTES)
         assertFalse(HyMt2Q4ModelDescriptor.MODEL_URL.contains("/main/"))
+    }
+
+    @Test
+    fun runtimeModelStorageAndCloseContractsMatchFullProfile() {
+        val profile = TranslationProviderProfiles.hyMt2Q4Full
+        val descriptor = checkNotNull(profile.modelStorage.localModelDescriptor)
+
+        assertEquals(HyMt2Q4ProviderContract.modelDescriptor, descriptor)
+        assertEquals(descriptor.revision, HyMt2Q4ModelDescriptor.MODEL_REVISION)
+        assertEquals(descriptor.fileName, HyMt2Q4ModelDescriptor.MODEL_FILE_NAME)
+        assertEquals(descriptor.relativeDirectory, HyMt2Q4ModelDescriptor.MODEL_RELATIVE_DIRECTORY)
+        assertEquals("models/hymt2-q4", descriptor.relativeDirectory)
+        assertEquals(descriptor.expectedBytes, HyMt2Q4ModelDescriptor.MODEL_SIZE_BYTES)
+        assertEquals(descriptor.sha256, HyMt2Q4ModelDescriptor.MODEL_SHA256)
+        assertEquals(
+            HyMt2Q4ProviderContract.CONTEXT_WINDOW_TOKENS,
+            LlamaRuntime.DEFAULT_CONTEXT_SIZE,
+        )
+        assertEquals(
+            HyMt2Q4ProviderContract.RESERVED_OUTPUT_TOKENS,
+            LlamaRuntime.DEFAULT_MAX_TOKENS,
+        )
+        assertTrue(profile.modelStorage.userRemovableFromApp)
+        assertEquals(
+            TranslationPerRequestCancellation.NO_PER_REQUEST_CANCEL,
+            profile.cancellation.perRequest,
+        )
+        assertEquals(
+            TranslationCloseBehavior.MARK_CLOSED_DRAIN_EXECUTOR_THEN_RELEASE_RUNTIME,
+            profile.cancellation.onClose,
+        )
     }
 
     @Test

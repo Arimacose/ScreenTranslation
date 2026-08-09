@@ -83,13 +83,17 @@ ML Kit 互有胜负，但中位延迟更高且峰值 RSS 约 767.63 MiB。初始
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
 Hy-MT2 1.8B Q4_K_M 已进入 Full Experimental edition；STQ1_0
-1.25-bit 仍为受 fail-closed gate 约束的 standalone PoC：只有 llama.cpp
-格式支持合并且应用 pin 到包含该支持的 commit 后才重新开放候选验收。Q4 是当前质量上限；1.25-bit 相对
+1.25-bit 仍为受 fail-closed gate 约束的 standalone PoC：当前 llama.cpp PR
+`#22836` 是 `OPEN`，仓库 gitlink `caa596…` 也没有 merge-ancestry 证据；只有 PR
+变为 `MERGED`，且 CI 证明实际 gitlink 包含 merge 并核对 runnable GGUF hash 后才重新开放候选验收。Q4 是当前质量上限；1.25-bit 相对
 ML Kit/Bergamot 仍有 `6.9–9.5` BLEU 优势，但只保留 Q4 的
 `88.4–93.4%` BLEU，日中关键语义检查也低于 Bergamot。
-1.25-bit 模型为 440.46 MiB、进程 HWM 约 0.88 GiB，资源比 Q4 低约 59%，
+1.25-bit 模型为 440.46 MiB、standalone runner HWM 约 0.88 GiB，资源比 Q4 低约 59%，
 raw 中位延迟仍为 `616–622 ms`。四模型数据、格式兼容过程和验收结论见
 [`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md)。
+官方 source GGUF、retag runnable GGUF、转换 manifest 及“集成 Release/持续热测未测”
+的机器可读记录见
+[`docs/evidence/hymt2-stq-evidence-2026-07-30.json`](docs/evidence/hymt2-stq-evidence-2026-07-30.json)。
 
 Full · HY-MT2 Q4 Experimental 的 v0.2.0 签名 Release 已在小米 15 Pro /
 Android 16 上完成真机验收：应用内固定长句自检在 `22.579 s` 和

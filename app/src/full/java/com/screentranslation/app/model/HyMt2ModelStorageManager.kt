@@ -6,7 +6,7 @@ import java.io.File
 
 class HyMt2ModelStorageManager(context: Context) : ModelStorageManager {
     private val modelsRoot = File(context.noBackupFilesDir, "models")
-    private val root = File(modelsRoot, "hymt2-q4")
+    private val root = File(context.noBackupFilesDir, HyMt2Q4ModelDescriptor.MODEL_RELATIVE_DIRECTORY)
 
     override fun scan(): List<ManagedModel> {
         val model = File(root, HyMt2Q4ModelDescriptor.MODEL_FILE_NAME)

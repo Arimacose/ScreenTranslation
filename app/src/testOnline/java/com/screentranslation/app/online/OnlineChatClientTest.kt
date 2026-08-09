@@ -1,5 +1,9 @@
 package com.screentranslation.app.online
 
+import com.screentranslation.app.ml.OnlineByokProviderContract
+import com.screentranslation.app.ml.TranslationCloseBehavior
+import com.screentranslation.app.ml.TranslationPerRequestCancellation
+import com.screentranslation.app.ml.TranslationProviderProfiles
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.EventListener
@@ -20,6 +24,22 @@ import java.util.concurrent.Executors
 import kotlin.reflect.KClass
 
 class OnlineChatClientTest {
+    @Test
+    fun `request limit and cancellation behavior match Online profile`() {
+        val profile = TranslationProviderProfiles.onlineByok
+
+        assertEquals(OnlineByokProviderContract.MAX_INPUT_CHARACTERS, OnlineChatClient.MAX_INPUT_CHARACTERS)
+        assertEquals(OnlineChatClient.MAX_INPUT_CHARACTERS, profile.input.maximumCharacters)
+        assertEquals(
+            TranslationPerRequestCancellation.ACTIVE_REQUEST_BEST_EFFORT,
+            profile.cancellation.perRequest,
+        )
+        assertEquals(
+            TranslationCloseBehavior.PREEMPT_ACTIVE_AND_DISCARD_QUEUED,
+            profile.cancellation.onClose,
+        )
+    }
+
     @Test
     fun `posts one bearer-authenticated chat request and parses translation`() {
         val factory = RecordingCallFactory()

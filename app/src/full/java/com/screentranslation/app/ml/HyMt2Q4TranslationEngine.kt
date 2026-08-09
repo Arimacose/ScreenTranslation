@@ -158,11 +158,14 @@ private class LlamaHyMt2Q4RuntimeHandle : HyMt2Q4RuntimeHandle {
     override fun loadModel(model: File): String =
         delegate.loadModel(
             model = model,
-            contextSize = LlamaRuntime.DEFAULT_CONTEXT_SIZE,
+            contextSize = HyMt2Q4ProviderContract.CONTEXT_WINDOW_TOKENS,
             threads = LlamaRuntime.DEFAULT_THREADS,
         )
 
-    override fun complete(prompt: String): String = delegate.complete(prompt)
+    override fun complete(prompt: String): String = delegate.complete(
+        prompt = prompt,
+        maxTokens = HyMt2Q4ProviderContract.RESERVED_OUTPUT_TOKENS,
+    )
 
     override fun close() = delegate.close()
 }
@@ -302,7 +305,10 @@ private class HyMt2Q4ModelStore(
     context: Context,
     private val closed: AtomicBoolean,
 ) {
-    private val modelDirectory = File(context.noBackupFilesDir, "models/hymt2-q4")
+    private val modelDirectory = File(
+        context.noBackupFilesDir,
+        HyMt2Q4ModelDescriptor.MODEL_RELATIVE_DIRECTORY,
+    )
     private val modelFile = File(modelDirectory, MODEL_FILE_NAME)
     private val partialFile = File(modelDirectory, "$MODEL_FILE_NAME.part")
     private val verifiedMarker = File(modelDirectory, "$MODEL_FILE_NAME.sha256")
@@ -551,12 +557,12 @@ internal fun classifyHyMt2Q4Candidate(
  * floating-revision downloads visible to both code review and unit tests.
  */
 internal object HyMt2Q4ModelDescriptor {
-    const val MODEL_REPOSITORY = "tencent/Hy-MT2-1.8B-GGUF"
-    const val MODEL_REVISION = "1cd5208700acedef4ef93019b6cfc148b8522d45"
-    const val MODEL_FILE_NAME = "Hy-MT2-1.8B-Q4_K_M.gguf"
-    const val MODEL_SIZE_BYTES = 1_133_080_448L
-    const val MODEL_SHA256 =
-        "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699"
+    const val MODEL_REPOSITORY = HyMt2Q4ProviderContract.MODEL_REPOSITORY
+    const val MODEL_REVISION = HyMt2Q4ProviderContract.MODEL_REVISION
+    const val MODEL_RELATIVE_DIRECTORY = HyMt2Q4ProviderContract.MODEL_RELATIVE_DIRECTORY
+    const val MODEL_FILE_NAME = HyMt2Q4ProviderContract.MODEL_FILE_NAME
+    const val MODEL_SIZE_BYTES = HyMt2Q4ProviderContract.MODEL_SIZE_BYTES
+    const val MODEL_SHA256 = HyMt2Q4ProviderContract.MODEL_SHA256
     const val MODEL_URL =
         "https://huggingface.co/$MODEL_REPOSITORY/resolve/" +
             "$MODEL_REVISION/$MODEL_FILE_NAME?download=true"

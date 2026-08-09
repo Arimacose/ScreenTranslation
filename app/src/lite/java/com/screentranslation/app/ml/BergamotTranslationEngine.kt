@@ -160,11 +160,6 @@ internal data class BergamotLanguageRoute(
     val modelIds: List<String>,
 ) {
     companion object {
-        private val routes = mapOf(
-            Pair("en", "zh") to listOf("en-zh"),
-            Pair("ja", "zh") to listOf("ja-en", "en-zh"),
-        )
-
         fun requireSupported(
             sourceLanguage: String,
             targetLanguage: String,
@@ -172,12 +167,18 @@ internal data class BergamotLanguageRoute(
             val source = sourceLanguage.trim().lowercase(Locale.ROOT)
             val target = targetLanguage.trim().lowercase(Locale.ROOT)
             require(source.isNotBlank()) { "Source language is blank" }
-            val models = routes[Pair(source, target)]
+            val providerRoute = BergamotLiteProviderContract.modelIdsByRoute.keys.firstOrNull {
+                it.sourceLanguageTag == source && it.targetLanguageTag == target
+            }
                 ?: throw IllegalArgumentException(
                     "ScreenTranslation Lite / Bergamot currently supports " +
                         "en→zh and ja→en→zh only; selected $source→$target",
                 )
-            return BergamotLanguageRoute(source, target, models)
+            return BergamotLanguageRoute(
+                sourceLanguage = source,
+                targetLanguage = target,
+                modelIds = BergamotLiteProviderContract.modelIdsByRoute.getValue(providerRoute),
+            )
         }
     }
 }

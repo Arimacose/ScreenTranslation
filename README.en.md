@@ -40,11 +40,15 @@ stable region text or stable changed blocks—not screenshots or coordinates—t
 endpoint configured by the user.
 
 Every backend now publishes a typed profile for language routes and pivots, input limits,
-model storage, cancellation semantics, latency/memory class, and attribution. The daily
+model storage, per-request cancellation, close-time PREEMPT/DRAIN behavior, route-keyed
+latency/memory observations, and attribution. The daily
 middle-tier thresholds and the fail-closed HY-MT2 STQ gate are documented in
 [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md). STQ remains
-outside every edition factory until its llama.cpp format support is merged and the app pins
-a runtime commit containing that support.
+outside every edition factory while llama.cpp PR #22836 is OPEN. Promotion additionally
+requires CI or versioned evidence that the repository gitlink contains the eventual merge and
+loads the exact runnable GGUF hash. The source/retag artifact chain and explicitly missing
+integrated Release/thermal evidence are pinned in
+[`docs/evidence/hymt2-stq-evidence-2026-07-30.json`](docs/evidence/hymt2-stq-evidence-2026-07-30.json).
 
 ## Current features
 
