@@ -82,9 +82,10 @@ ML Kit 互有胜负，但中位延迟更高且峰值 RSS 约 767.63 MiB。初始
 多元英/日中报告见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
-面向后续模型替换的 `2026.08-public-v1` 回归发布已扩充为 48 条英中与 48 条
-日中，逐条登记来源/许可并固定 SHA-256；Lite/Full/Online 的自动阈值、
-protected-span 硬门、双盲充分性/流畅性量表和无 API key 的 Online 失败回放见
+面向后续模型替换的 `2026.08-public-v2-original-references` 回归发布包含 48 条
+英中与 48 条日中，逐条登记来源/许可并固定 SHA-256；正式候选采用 canonical
+corpus join 的最小严格 schema，Lite/Full/Online 的自动阈值、category/tag
+protected 硬门、候选哈希绑定盲评和 Kotlin 生产策略生成的 Online 失败证据见
 [`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md)。
 
 Hy-MT2 1.8B Q4_K_M 已进入 Full Experimental edition；STQ1_0

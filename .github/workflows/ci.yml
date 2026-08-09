@@ -118,6 +118,16 @@ jobs:
             bundleFullRelease \
             bundleOnlineRelease
 
+      - name: Verify JVM-generated Online failure evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/model-benchmark-venv/bin/activate"
+          python tools/model-benchmark/translation_regression.py \
+            verify-online-evidence \
+            --evidence app/build/model-benchmark/translation-regression/online-failure-evidence.json \
+            --output app/build/model-benchmark/translation-regression/online-failure-verification.json
+
       - name: Verify R8, edition metadata, OCR assets, and backend isolation
         shell: bash
         run: |

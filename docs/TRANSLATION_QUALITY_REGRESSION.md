@@ -1,72 +1,41 @@
 # 可公开复现的翻译质量回归
 
-本项目从 `2026.08-public-v1` 起将英→中、日→中测试集作为**带版本和
-SHA-256 的公开回归语料**维护。自动分数、关键语义检查、保护片段检查、双盲
-人工评分和 Online 失败契约共同构成候选翻译后端的质量门；BLEU 或 chrF++
-中的任一单项都不代表发布结论。
+`2026.08-public-v2-original-references` 是英→中、日→中翻译回归语料的当前
+发布。自动指标、关键语义检查、protected hard gate、绑定候选哈希的盲评，以及
+Online 生产 Kotlin 策略证据共同决定发布结果；BLEU、chrF++ 或历史报告中的单个
+数字都不能单独证明 release ready。
 
-## 固定输入与许可
+## 固定输入、许可与原创性
 
 | 项目 | 固定值 |
 |---|---|
-| 语料发布 | `2026.08-public-v1` |
 | 语料文件 | `app/src/benchmark/assets/translation-fixtures.json` |
-| SHA-256 固定文件 | `app/src/benchmark/assets/translation-fixtures.sha256` |
-| 当前 SHA-256 | `d5995c3ba21aaf45ae65b1dc93d0c2df3ddb6d7cb6e9861ad7f8e6923e32bb28` |
-| 权利/来源说明 | `app/src/benchmark/assets/translation-fixtures.LICENSE.md` |
-| 自动阈值 | `tools/model-benchmark/fixtures/translation-regression-thresholds.json` |
+| 语料发布 | `2026.08-public-v2-original-references` |
+| 语料 SHA-256 | `043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72` |
+| 权利与原创性审计 | `app/src/benchmark/assets/translation-fixtures.LICENSE.md` |
+| 阈值 | `tools/model-benchmark/fixtures/translation-regression-thresholds.json` |
+| 历史校准登记 | `tools/model-benchmark/fixtures/translation-regression-calibration.json` |
 | 人审量表 | `tools/model-benchmark/fixtures/human-rating-rubric.json` |
 | Online 失败契约 | `tools/model-benchmark/fixtures/online-failure-contract.json` |
 
-项目自建源文、全部中文参考译文、语义检查及元数据使用 Apache-2.0。三条引用
-公版原作的 source excerpt 在 JSON 的 `provenance_id` 和权利说明中分别列出
-作品、作者、来源记录及 `LicenseRef-Public-Domain`；它们的中文参考译文仍是
-项目自写的 Apache-2.0 内容。
+每个方向包含 48 条，覆盖 protected spans、长句、UI、字幕、电商、否定/条件、
+数量、文学与高风险剂量/退款条件。三个公版源文有作品、作者和来源登记；所有中文
+参考译文均为项目原创 Apache-2.0 内容。v2 已重写 Austen、Dickens 和《吾辈是猫》
+的六条参考，校验器保留退休参考的 SHA-256 与 12 字符窗口哈希，不重新提交退休
+译文或可复原长片段。逐项搜索和近似重复审计记录在权利说明中。
 
-每次运行先同时检查：
+`validate` 同时检查 corpus pin、唯一 ID/源文、来源/许可、关键正则、参考正例、
+退休参考指纹、Online contract、完整阈值范围和历史校准文件哈希。
 
-1. corpus 字节摘要与 `.sha256` 固定值一致；
-2. 每条 case 都能解析到来源登记项和参考译文 SPDX；
-3. 每条关键正则可编译，且至少一个项目参考译文能命中该语义检查；
-4. 阈值文件绑定同一 `corpus_release`；
-5. failure fixture 不包含 API-key 形状的值。
+## 历史校准不是 formal evidence
 
-修改语料时必须使用新的 `corpus_release` 并更新固定摘要。旧候选在旧语料上的
-分数不能直接填入新发布的门槛报告。
+Lite/Bergamot、Full/Hy-MT2 Q4 和 Online/DeepSeek V4-Flash 的既有 40-case 报告
+及结果 SHA-256 已登记到 calibration manifest。它们解释当前阈值的量级，但都明确
+标记为 `formal_gate_eligible: false`：当前语料是 48-case，仓库也不保存那些历史
+候选的完整逐条输出。正式结果必须重新生成当前 corpus 的完整 candidate 和真实
+incumbent，不能把历史 aggregate 或手填分数伪装成通过证据。
 
-## 覆盖矩阵
-
-| 语言方向 | 用例 | 类别 | 中文参考 | 关键检查 | 公版源文 |
-|---|---:|---:|---:|---:|---:|
-| 英→中 | 48 | 15 | 62 | 64 | 2 |
-| 日→中 | 48 | 15 | 68 | 62 | 1 |
-
-两套语料均显式包含：
-
-- URL、邮箱、版本号、模板占位符、host、订单号等 `protected_span`；
-- 多从句长文本、否定、条件、例外、数量和时间；
-- 紧凑 UI label、权限、破坏性操作和系统状态；
-- 说话人、断行、打断、口语与上下文相关的字幕；
-- 倒计时、价格、折扣、自动续订、退货窗口等电商文字；
-- 文学、惯用语、敬语、技术文本及高风险剂量/退款条件。
-
-Online 另有 9 个完全本地的协议/传输回放：401、403、HTTP 408、socket read
-timeout、429 `Retry-After`、500、503、畸形 JSON 和空译文。它固定“可能已被
-服务端处理的 socket/generation timeout 不重试；HTTP 408/429/503 至多重试一次；
-普通 500 不重试；错误时保留上一条译文”的候选行为，不向任何真实服务发请求。
-
-## 自动分数和可执行门槛
-
-所有 edition 同时满足以下相对回归门：
-
-- 相对同 edition 的已发布 incumbent，BLEU 下降不超过 `2.0`；
-- chrF++ 下降不超过 `2.0`；
-- 关键检查通过率下降不超过 `0.03`；
-- 所有 protected-span 检查必须通过。
-
-`translation_raw` 的绝对下限如下。数值基于 `2026-07-29` 至
-`2026-08-01` 的同源 40-case 历史基准留出回归余量，现已绑定扩充后的
-`2026.08-public-v1`；发布候选必须重新跑 48-case 结果，不复用旧报告数字。
+当前 raw translation 下限为：
 
 | Edition | 方向 | BLEU | chrF++ | 关键检查率 | 充分性 | 流畅性 |
 |---|---|---:|---:|---:|---:|---:|
@@ -77,12 +46,63 @@ timeout、429 `Retry-After`、500、503、畸形 JSON 和空译文。它固定�
 | Online | 英→中 | ≥50 | ≥36 | ≥0.72 | ≥4.2 | ≥4.2 |
 | Online | 日→中 | ≥45 | ≥34 | ≥0.72 | ≥4.2 | ≥4.2 |
 
-人工门还要求：每个 blind output 至少 2 名独立评分者、case 覆盖率 `1.0`、
-critical human error rate 不超过 `0.02`。Online 必须额外通过完整失败契约。
+候选还必须相对同 edition incumbent 满足 BLEU/chrF++ 下降均不超过 2.0、关键
+检查率下降不超过 0.03。`category == protected_span` **或** tags 含 `protected` /
+`protected_span` 的任何 case 都进入 protected hard gate，必须逐项通过。
 
-## 一分钟无密钥自检
+## Formal candidate schema
 
-安装项目已固定的 scorer 依赖后运行：
+候选文件不携带 source text、参考译文、category、tags、risk 或 critical checks；这些
+字段只能从固定 corpus 按 `case_id + source_sha256` join。以下各层均为 exact-key
+schema，任何未知字段都会失败：
+
+```json
+{
+  "schema_version": 2,
+  "evidence_kind": "real_model_inference",
+  "corpus_release": "2026.08-public-v2-original-references",
+  "fixture_sha256": "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
+  "suite_id": "en-zh-diverse-v2",
+  "source_language": "en",
+  "target_language": "zh",
+  "inference": {
+    "producer": "DEVICE_BENCHMARK_RUNNER",
+    "engine_id": "ENGINE_ID",
+    "model_id": "MODEL_ID",
+    "model_revision": "MODEL_REVISION",
+    "runtime_id": "RUNTIME_ID",
+    "runtime_revision": "RUNTIME_REVISION",
+    "device_kind": "physical-android-device",
+    "device_model": "DEVICE_MODEL",
+    "os_version": "Android-16",
+    "architecture": "arm64-v8a",
+    "started_at_utc": "2026-08-09T01:00:00Z",
+    "completed_at_utc": "2026-08-09T01:05:00Z",
+    "repetitions": 1,
+    "latency_clock": "elapsed-realtime-monotonic",
+    "network_path": "offline"
+  },
+  "cases": [
+    {
+      "case_id": "CASE_ID",
+      "source_sha256": "SOURCE_TEXT_SHA256",
+      "candidate": {
+        "output_text": "真实推理输出",
+        "latencies_ms": [123.0],
+        "median_latency_ms": 123.0
+      }
+    }
+  ]
+}
+```
+
+Gate 严格检查 48/48 coverage、唯一 ID、source hash、repetition/latency 数量、finite
+范围、median 与样本一致、UTC 时间和真实推理元数据。Formal 只接受精确的
+`real_model_inference`；reference、fixture、replay、synthetic、smoke evidence 均被
+拒绝。即使把 evidence kind 伪写成 real，整套 canonical reference playback 或整套
+source pass-through 仍会被内容级检查拒绝。
+
+## Harness smoke 的边界
 
 ```powershell
 python -m pip install -r .\tools\model-benchmark\requirements.txt
@@ -92,62 +112,38 @@ python .\tools\model-benchmark\translation_regression.py smoke `
 python -m unittest discover -s .\tools\model-benchmark -p "test_*.py" -v
 ```
 
-`smoke` 使用项目参考译文生成 candidate/incumbent 回放，只证明语料、指标、阈值、
-保护片段和 Online failure gate 的代码路径可执行。报告会明确写入
-`not_model_evidence`、`release_ready: false`，不能冒充真实模型质量或人工验收。
-仓库保留的确定性报告是
-`docs/evidence/translation-regression-harness-smoke.json`。
+Smoke 用参考译文验证 corpus join、scorer、阈值和 hard gate 的管线是否可执行，
+不调用模型，也不执行 Online Kotlin policy。其每个 edition 和总报告都固定
+`release_ready: false`；Online smoke 只标记 contract schema 可解析。Formal `gate`
+没有 automated-only 或 reference replay 入口。
 
-## 真实候选结果契约
+## Online 失败证据
 
-Android Benchmark 或 host adapter 结果必须携带以下字段：
+Online contract 包含 401、403、HTTP 408、socket read timeout、429
+`Retry-After`、500、503、畸形 JSON 和空 assistant content。畸形/空输出都经过
+`OpenAiChatProtocol.parseTranslation` 与 `OnlineHttpPolicy.sanitizeNetworkFailure`
+归类为 `response`，而不是由 Python 把 `expected` 复制成 `actual`。
 
-```json
-{
-  "method": {
-    "fixture_schema_version": 2,
-    "fixture_suite": "en-zh-diverse-v2",
-    "fixture_corpus_release": "2026.08-public-v1",
-    "fixture_sha256": "d5995c3ba21aaf45ae65b1dc93d0c2df3ddb6d7cb6e9861ad7f8e6923e32bb28"
-  }
-}
-```
-
-结果 case 的 ID 和顺序必须与语料完全一致。项目的 ML Kit Benchmark activity、
-OPUS-MT、Bergamot、Android Bergamot、Hy-MT2 和 TranslateGemma adapter 都会
-把这些 fixture 元数据传到候选 JSON。模型权重、运行日志和真实结果仍放在被忽略的
-`app/build/model-benchmark/`；PR 只提交 harness、固定语料和经过审核的摘要。
-
-候选和 incumbent 各准备两份 JSON 后，可先运行不含人审的诊断门：
+运行 Online JVM 测试会逐 case 执行生产 policy/parser，检查分类、retry、attempt、
+delay，并通过生产 region overlay 状态策略证明失败时保留上一条可用译文：
 
 ```powershell
-python .\tools\model-benchmark\translation_regression.py gate `
-  --edition full `
-  --candidate en-zh=PATH\candidate-en.json `
-  --candidate ja-zh=PATH\candidate-ja.json `
-  --baseline en-zh=PATH\incumbent-en.json `
-  --baseline ja-zh=PATH\incumbent-ja.json `
-  --automated-only-smoke `
-  --output .\app\build\model-benchmark\translation-regression\full-auto.json
+.\gradlew.bat --no-daemon :app:testOnlineDebugUnitTest
 ```
 
-该模式的 `release_ready` 固定为 `false`。Online 还要先生成或接入实际客户端测试
-产生的 failure replay：
+测试生成被 Gradle build 目录忽略的：
 
-```powershell
-python .\tools\model-benchmark\translation_regression.py replay-failures `
-  --output .\app\build\model-benchmark\translation-regression\failure-replay.json
+```text
+app/build/model-benchmark/translation-regression/online-failure-evidence.json
 ```
 
-正式 Online `gate` 用 `--failure-replay FILE` 指向结果。仓库自带的确定性回放用于
-验证 contract evaluator；客户端集成测试应按同一 schema 写入实际分类、重试次数、
-退避和 prior-text 保留结果。
+Python formal gate 只接受 `evidence_kind: kotlin_policy_execution`、当前 contract hash、
+固定 producer，以及与测试源码当前 SHA-256 一致的证据；synthetic/copied replay 会
+被拒绝。Online 运行 gate 时必须传 `--failure-evidence`。
 
-## 双盲充分性/流畅性流程
+## 盲评工作流
 
-### 1. 建立盲评包
-
-至少提供 incumbent 与 candidate 两个系统，每个系统都包含两个语言方向：
+### 1. 生成盲评 sheet 与私有 key
 
 ```powershell
 python .\tools\model-benchmark\translation_regression.py blind `
@@ -155,59 +151,69 @@ python .\tools\model-benchmark\translation_regression.py blind `
   --system incumbent:ja-zh=PATH\old-ja.json `
   --system candidate:en-zh=PATH\new-en.json `
   --system candidate:ja-zh=PATH\new-ja.json `
-  --seed release-2026.08-review-1 `
-  --sheet PATH\blind-sheet.json `
-  --key PATH\blind-key.json `
-  --rating-template PATH\ratings-template.json
+  --sheet PATH\review.blind-sheet.json `
+  --rating-template PATH\review.blind-rating-template.json
 ```
 
-`blind-sheet.json` 只含 source、匿名 `output_id` 和随机输出顺序，不含 engine、
-edition、model 名称；映射只存在 `blind-key.json`。key 不进入公开 PR，在评分锁定前
-也不交给评分者。对同一个 corpus 和 seed，匿名化结果完全确定，便于审计。
+工具内部使用 `secrets.token_bytes(32)` 与 HMAC-SHA256 产生不可预测 ID 和顺序，CLI
+不接受 seed。公开 sheet 不含 system ID、model ID、原 case ID 或可逆 seed；只含
+评分必需的 source、context category、匿名 output 和 opaque IDs。私有 key 才含
+system/case 映射及每个正式 candidate JSON 的 canonical SHA-256。
 
-### 2. 两名以上评分者独立填写
+`--key` 省略时，key 默认写到用户目录：
 
-每名评分者复制 template，填写不同的 pseudonymous `rater_id`，并对每条 output
-填写：
+```text
+~/.screentranslation/blind-review-keys/<bundle-id>.blind-key.json
+```
 
-- `adequacy`: 1–5，判断源文含义、逻辑、实体和语气是否保留；
-- `fluency`: 1–5，判断简体中文是否自然连贯；
-- `critical_error`: `none` 或量表列出的意义反转、否定/条件、数量/时间、保护片段、
-  危险指令、未翻译之一；
-- `notes`: 可选的简短依据。
+显式 `--key` 也必须位于仓库外；`.gitignore` 另行阻止常见 blind key/sheet/rating
+文件名。公开仓库只保留 rubric 与格式说明。
 
-工具拒绝漏项、重复项、超出 1–5 的分数、未知 error 和重复 rater ID。
+### 2. 独立评分
 
-### 3. 聚合并运行正式门
+至少两名评分者各自填写 pseudonymous `rater_id`，对每个 output 给出：
+
+- `adequacy`: 1–5；
+- `fluency`: 1–5；
+- `critical_error`: rubric 中的固定枚举；
+- `notes`: 简短依据。
+
+评分端对 sheet、key、rating 文档逐层 exact-schema 校验，验证 bundle/sheet hash、
+opaque output 一对一覆盖、唯一 rater、1–5 整数和 critical error 枚举。篡改 source、
+漏项、重复 output、未知字段或换用另一 sheet 的 key 都会失败。
+
+### 3. 聚合并运行 formal gate
 
 ```powershell
 python .\tools\model-benchmark\translation_regression.py score-human `
-  --sheet PATH\blind-sheet.json `
-  --key PATH\blind-key.json `
+  --sheet PATH\review.blind-sheet.json `
+  --key $HOME\.screentranslation\blind-review-keys\BUNDLE.blind-key.json `
   --ratings PATH\reviewer-a.json `
   --ratings PATH\reviewer-b.json `
   --output PATH\human-summary.json
 
 python .\tools\model-benchmark\translation_regression.py gate `
-  --edition full `
+  --edition online `
   --candidate en-zh=PATH\candidate-en.json `
   --candidate ja-zh=PATH\candidate-ja.json `
   --baseline en-zh=PATH\incumbent-en.json `
   --baseline ja-zh=PATH\incumbent-ja.json `
   --human-summary PATH\human-summary.json `
   --candidate-system candidate `
-  --output PATH\full-release-gate.json
+  --failure-evidence .\app\build\model-benchmark\translation-regression\online-failure-evidence.json `
+  --output PATH\online-release-gate.json
 ```
 
-正式 gate 只有在自动门、保护片段、人审门，以及 Online 的失败门全部通过时才写入
-`release_ready: true` 并以 0 退出。这个流程从 fixture validation 到盲评聚合均不需要
-私有 API key；Online 模型的真实译文可以由用户在自己的环境中生成后离线评分。
+Human summary 中每个 system/pair 都携带 `system_evidence_sha256`。Gate 将候选 JSON
+重新 canonical-hash 后逐语言对比；给另一候选打出的全 5 分不能复用。只有当前 corpus
+真实 candidate/incumbent、自动门、protected hard gate、绑定的人审和（Online）Kotlin
+failure evidence 同时通过时，报告才可能写入 `release_ready: true`。
 
 ## 维护原则
 
-1. 语料和阈值是 release-scoped 输入，模型输出是独立、可替换的证据。
-2. 新参考译文必须由项目编写或明确登记来源/许可，不从闭源服务输出反向充当 gold。
-3. 新增语义检查时，至少一个参考译文必须通过，且单元测试要覆盖真实正例和反例。
-4. 保护片段是硬门；高 BLEU 不抵消 URL、金额、日期、版本号或占位符损坏。
-5. 失败回放只包含项目自写 fixture，不保存 API key、真实请求头或供应商响应正文。
-6. 参考 replay 只做 harness smoke；模型替换决策使用真实输出和双盲结果。
+1. Canonical corpus 是 source/reference/check/category/tag 的唯一权威。
+2. Model result 只保存真实输出与推理元数据；不保存私有 API key。
+3. 历史 aggregate 与 harness smoke 均不是发布证据。
+4. Protected span 损坏是硬失败，高 BLEU 不能抵消。
+5. 新 corpus release 必须更新 byte pin、阈值绑定、原创性审计和校准说明。
+6. Online 错误证据来自 Kotlin 生产 policy/parser；Python 不生成 expected-copy replay。

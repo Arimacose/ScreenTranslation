@@ -1,1 +1,116 @@
-{"schema_version":0}
+{
+  "schema_version": 1,
+  "description": "Traceable historical calibration context for the three editions. These 40-case reports predate the current 48-case corpus and contain no redistributable raw model outputs, so every entry is explicitly excluded from the formal release gate.",
+  "target_corpus_release": "2026.08-public-v2-original-references",
+  "formal_gate_eligible": false,
+  "entries": [
+    {
+      "id": "lite-bergamot-en-zh-2026-07-29",
+      "edition": "lite",
+      "pair": "en-zh",
+      "backend": "Bergamot Firefox Translations direct en-zh",
+      "source_document": "docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md",
+      "source_document_sha256": "3b565e6e1528915646d84348f38e37bbcce939909bc907a8923b82851b6c1615",
+      "source_result_sha256": "fdb71f672dcd9e480e65c0ed0f774941e328ec7dfd3fe1cb8e9f982a3998b135",
+      "measured_corpus_release": "legacy-40-case-suite-2026-07",
+      "case_count": 40,
+      "metrics": {
+        "bleu": 38.969,
+        "chrf_pp": 28.733,
+        "critical_check_rate": 0.6481481481481481
+      },
+      "formal_gate_eligible": false,
+      "exclusion_reason": "Historical aggregate only: corpus coverage is 40 rather than 48 and canonical candidate outputs are unavailable in this repository."
+    },
+    {
+      "id": "lite-bergamot-ja-zh-2026-07-29",
+      "edition": "lite",
+      "pair": "ja-zh",
+      "backend": "Bergamot ja-en-zh cascade",
+      "source_document": "docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md",
+      "source_document_sha256": "3b565e6e1528915646d84348f38e37bbcce939909bc907a8923b82851b6c1615",
+      "source_result_sha256": "ec17bfdef08644c9bd6fa33f6e5fc5386450e50af1b6ddff63f259f9ab2c8dc6",
+      "measured_corpus_release": "legacy-40-case-suite-2026-07",
+      "case_count": 40,
+      "metrics": {
+        "bleu": 32.368,
+        "chrf_pp": 23.386,
+        "critical_check_rate": 0.8269230769230769
+      },
+      "formal_gate_eligible": false,
+      "exclusion_reason": "Historical aggregate only: corpus coverage is 40 rather than 48 and canonical candidate outputs are unavailable in this repository."
+    },
+    {
+      "id": "full-hymt2-q4-en-zh-2026-07-30",
+      "edition": "full",
+      "pair": "en-zh",
+      "backend": "Hy-MT2 1.8B Q4_K_M",
+      "source_document": "docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md",
+      "source_document_sha256": "1bd54a74fcf35ef7d15a9129d5e602578396f47fc8644c401aa5307172193230",
+      "source_result_sha256": "cc32f3f0424b65b54cae87c800b01c31495ad424a8add61078a40c92afd11a95",
+      "measured_corpus_release": "legacy-40-case-suite-2026-07",
+      "case_count": 40,
+      "metrics": {
+        "bleu": 51.885,
+        "chrf_pp": 36.089,
+        "critical_check_rate": 0.6666666666666666
+      },
+      "formal_gate_eligible": false,
+      "exclusion_reason": "Historical aggregate only: corpus coverage is 40 rather than 48 and canonical candidate outputs are unavailable in this repository."
+    },
+    {
+      "id": "full-hymt2-q4-ja-zh-2026-07-30",
+      "edition": "full",
+      "pair": "ja-zh",
+      "backend": "Hy-MT2 1.8B Q4_K_M",
+      "source_document": "docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md",
+      "source_document_sha256": "1bd54a74fcf35ef7d15a9129d5e602578396f47fc8644c401aa5307172193230",
+      "source_result_sha256": "3a0a80d85d74ca17e437c0b6ba6d16d9500badb884dc8df25155c5039d883861",
+      "measured_corpus_release": "legacy-40-case-suite-2026-07",
+      "case_count": 40,
+      "metrics": {
+        "bleu": 45.543,
+        "chrf_pp": 31.615,
+        "critical_check_rate": 0.75
+      },
+      "formal_gate_eligible": false,
+      "exclusion_reason": "Historical aggregate only: corpus coverage is 40 rather than 48 and canonical candidate outputs are unavailable in this repository."
+    },
+    {
+      "id": "online-deepseek-v4-flash-en-zh-2026-08-01",
+      "edition": "online",
+      "pair": "en-zh",
+      "backend": "DeepSeek V4-Flash BYOK HTTPS",
+      "source_document": "docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md",
+      "source_document_sha256": "6a1c2b14e0530aab1fe08db4d4407d8fc2705dce4d38e99fd3598a2723afd8f9",
+      "source_result_sha256": "232bc2ceae4a993c09dd03bbfeb6175cd99d1aebd9b85f9d2baf36750a53bf87",
+      "measured_corpus_release": "legacy-40-case-suite-2026-07",
+      "case_count": 40,
+      "metrics": {
+        "bleu": 66.922,
+        "chrf_pp": 47.182,
+        "critical_check_rate": 0.8148148148148148
+      },
+      "formal_gate_eligible": false,
+      "exclusion_reason": "Historical aggregate only: corpus coverage is 40 rather than 48 and canonical candidate outputs are unavailable in this repository."
+    },
+    {
+      "id": "online-deepseek-v4-flash-ja-zh-2026-08-01",
+      "edition": "online",
+      "pair": "ja-zh",
+      "backend": "DeepSeek V4-Flash BYOK HTTPS",
+      "source_document": "docs/CLOUD_MODEL_BENCHMARK_2026-08-01.md",
+      "source_document_sha256": "6a1c2b14e0530aab1fe08db4d4407d8fc2705dce4d38e99fd3598a2723afd8f9",
+      "source_result_sha256": "1e7950bf77a7b9e91c94744ab56a9a1f6bc89720759bd8a5af3c101c36ce6ec9",
+      "measured_corpus_release": "legacy-40-case-suite-2026-07",
+      "case_count": 40,
+      "metrics": {
+        "bleu": 59.327,
+        "chrf_pp": 40.07,
+        "critical_check_rate": 0.7692307692307693
+      },
+      "formal_gate_eligible": false,
+      "exclusion_reason": "Historical aggregate only: corpus coverage is 40 rather than 48 and canonical candidate outputs are unavailable in this repository."
+    }
+  ]
+}

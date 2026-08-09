@@ -325,7 +325,10 @@ class ScreenTranslationService : Service() {
                             if (controller != null && !controller.hasOverlayPermission()) {
                                 stopSelf()
                             } else {
-                                controller?.updateContent(text, "")
+                                // Keep the last successful translation visible
+                                // until this latest-wins request completes. A
+                                // timeout or provider error updates status only.
+                                controller?.updateOriginal(text)
                                 controller?.updateStatus(STATUS_TRANSLATING)
                             }
                         }

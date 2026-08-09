@@ -28,6 +28,14 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 
+# Blind review identities/sheets are generated locally. Identity keys default
+# outside the repository; these patterns provide a second fail-safe.
+*.blind-key.json
+*.blind-sheet.json
+*.blind-ratings.json
+*.blind-rating-template.json
+blind-review-keys/
+
 # Packaged outputs copied outside Gradle build directories
 *.apk
 *.aab

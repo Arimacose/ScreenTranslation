@@ -45,6 +45,28 @@ internal fun selectionOverlayWindowFlags(): Int =
     overlayWindowFlags() and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv() and
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
 
+internal data class RegionOverlayContent(
+    val original: String,
+    val translation: String,
+)
+
+/**
+ * Region-mode requests are latest-wins, but a transient Online failure must
+ * not erase the last useful translation while the next source is pending.
+ * Keeping this transition pure lets the production failure contract exercise
+ * the same state rule without constructing an Android window in a JVM test.
+ */
+internal object RegionOverlayContentPolicy {
+    fun pending(
+        currentOriginal: String,
+        currentTranslation: String,
+        nextOriginal: String,
+    ): RegionOverlayContent = RegionOverlayContent(
+        original = nextOriginal,
+        translation = currentTranslation,
+    )
+}
+
 /**
  * Owns exactly one TYPE_APPLICATION_OVERLAY window.
  *
@@ -243,7 +265,12 @@ class OverlayController(
     }
 
     fun updateOriginal(text: String) {
-        updateContent(text, currentTranslation)
+        val pending = RegionOverlayContentPolicy.pending(
+            currentOriginal = currentOriginal,
+            currentTranslation = currentTranslation,
+            nextOriginal = text,
+        )
+        updateContent(pending.original, pending.translation)
     }
 
     fun updateTranslation(text: String) {

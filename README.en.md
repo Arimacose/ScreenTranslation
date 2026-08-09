@@ -108,8 +108,9 @@ Core design notes:
 - [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)
 - [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md)
 - [`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md) —
-  pinned public English/Japanese-to-Chinese fixtures, executable edition thresholds,
-  protected-span gates, blinded adequacy/fluency review, and key-free failure replay.
+  pinned public English/Japanese-to-Chinese fixtures, strict canonical-join candidate
+  evidence, executable edition thresholds, category/tag protected-span gates,
+  candidate-hash-bound blinded review, and Kotlin production-path Online failure evidence.
 - [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - [`PRIVACY.md`](PRIVACY.md)

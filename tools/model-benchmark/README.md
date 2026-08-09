@@ -107,10 +107,12 @@ criteria. Critical checks and human review remain release gates.
 
 ## Public translation regression release
 
-The version-locked `2026.08-public-v1` corpus expands both retained language
+The version-locked `2026.08-public-v2-original-references` corpus expands both retained language
 pairs to 48 cases and records SPDX/provenance for every source and Chinese
 reference. It adds explicit protected-span, subtitle, commerce, compact-UI,
-and long exception-policy cases plus a key-free Online failure replay.
+and long exception-policy cases. All six Chinese references paired with the
+three public-domain source excerpts were independently rewritten and checked
+against retired exact/near-duplicate fingerprints.
 
 Validate the corpus hash, provenance, executable edition thresholds, critical
 checks, and failure contract, then run the deterministic harness smoke:
@@ -121,11 +123,17 @@ python .\tools\model-benchmark\translation_regression.py smoke `
   --output .\app\build\model-benchmark\translation-regression\harness-smoke.json
 ```
 
-The smoke intentionally reports `release_ready: false`: reference replay tests
-the harness but is not model evidence. Real candidate promotion also requires
-the paired incumbent results and two-rater blinded adequacy/fluency review.
+The smoke intentionally reports `release_ready: false`: synthetic reference
+playback tests the harness but formal validation rejects it. Formal candidates
+use an exact-key minimal schema containing only case/source identity, output,
+latency and real-inference metadata; source text, references, tags, categories
+and checks are joined only from the hash-pinned corpus. Real promotion also
+requires paired incumbent results, two-rater blinded adequacy/fluency review
+bound to candidate evidence hashes, and for Online a JVM-generated artifact
+from the production Kotlin HTTP policy/parser. Expected-to-actual failure
+replay is not an accepted gate input.
 The complete candidate JSON contract, Lite/Full/Online thresholds, blind bundle
-commands, rating rubric, and Online replay schema are documented in
+commands, external private-key handling, rating rubric, and Online evidence schema are documented in
 [`docs/TRANSLATION_QUALITY_REGRESSION.md`](../../docs/TRANSLATION_QUALITY_REGRESSION.md).
 
 ## Candidate-engine contract

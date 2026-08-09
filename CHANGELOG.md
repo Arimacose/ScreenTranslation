@@ -28,9 +28,10 @@
   路由、输入限制、模型存储、取消/关闭语义、逐路由性能与 attribution；HY-MT2 STQ
   中间档候选改由 CI 重算的 canonical PR/gitlink/ancestry/artifact admission 记录约束，
   当前缺测与 Open PR 均保持 fail-closed，未进入 factory 或模型下载路径。
-- 新增 `2026.08-public-v1` 英→中/日→中公开质量回归发布：每方向 48 条、逐条
-  来源/许可、语料 SHA-256、protected-span 硬门、Lite/Full/Online 可执行阈值、
-  双盲充分性/流畅性量表及无需 API key 的 Online 失败回放。
+- 新增 `2026.08-public-v2-original-references` 英→中/日→中公开质量回归发布：
+  每方向 48 条、逐条来源/许可、原创参考审计、语料 SHA-256、category/tag
+  protected 硬门、Lite/Full/Online 全字段阈值、候选哈希绑定盲评，以及由生产
+  Kotlin policy/parser 执行生成的 Online 失败证据。
 
 ### Changed
 

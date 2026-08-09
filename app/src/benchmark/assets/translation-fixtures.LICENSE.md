@@ -1,6 +1,6 @@
 # Translation regression fixture rights and provenance
 
-Corpus release: `2026.08-public-v1`
+Corpus release: `2026.08-public-v2-original-references`
 
 This file applies to `translation-fixtures.json`.
 
@@ -43,3 +43,39 @@ The corpus byte hash is pinned in `translation-fixtures.sha256`. A fixture edit
 must deliberately create a new `corpus_release`, update the pinned hash, and
 document why historical candidate scores are no longer directly comparable.
 Adding or replacing a model result never changes the corpus file.
+
+## Original-reference audit for public-domain excerpts
+
+The three public-domain **source** excerpts remain unchanged, but all six
+Chinese references were independently rewritten for this release. In
+particular, the Austen references no longer reuse the familiar “universal
+truth” wording, the Dickens references no longer reproduce the conventional
+parallel translation, and the Soseki references no longer reproduce either of
+the short translations retained in public v1.
+
+The following checks were completed on 2026-08-09 before the v2 hash was
+pinned:
+
+1. Exact SHA-256 comparison against all six retired v1 references: `0/6`
+   matches. Their hashes remain in `translation_regression.py` as a regression
+   deny-list, without redistributing the retired text.
+2. Salt-free SHA-256 fingerprints of sampled 12-character windows from the
+   retired references: no v2 reference shares two windows. Only the hashes are
+   retained; no retired expressive fragment is reintroduced. The validator
+   rejects a future near-duplicate that matches two or more windows.
+3. Exact web searches for one distinctive sentence from each newly authored
+   group (Austen, Dickens, and both Soseki alternatives) returned no exact
+   quoted match in the indexed results inspected on 2026-08-09. This search is
+   an additional collision check, not a claim that a search engine indexes all
+   published text.
+4. Corpus-wide normalized source IDs, source texts, and reference alternatives
+   are checked for exact duplicates during `validate`; candidate files never
+   carry a reference, category, tag, source text, or semantic check that could
+   override the canonical join.
+
+Search phrases used for the external collision check:
+
+- `大家似乎都认定：一个家境殷实而尚未成婚的男人`
+- `那个年代一面极为美好，一面又最为糟糕`
+- `说来，我是一只猫，到现在仍没人给我取名`
+- `我这家伙是只猫，至今还没有一个名字`

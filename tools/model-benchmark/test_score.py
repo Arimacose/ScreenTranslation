@@ -91,7 +91,7 @@ class CriticalCheckTest(unittest.TestCase):
             "method": {
                 "fixture_schema_version": 2,
                 "fixture_suite": "en-zh-diverse-v2",
-                "fixture_corpus_release": "2026.08-public-v1",
+                "fixture_corpus_release": "2026.08-public-v2-original-references",
                 "fixture_sha256": "a" * 64,
                 "model_file": "not-fixture-metadata",
             },
@@ -100,7 +100,7 @@ class CriticalCheckTest(unittest.TestCase):
             {
                 "fixture_schema_version": 2,
                 "fixture_suite": "en-zh-diverse-v2",
-                "fixture_corpus_release": "2026.08-public-v1",
+                "fixture_corpus_release": "2026.08-public-v2-original-references",
                 "fixture_sha256": "a" * 64,
             },
             score.fixture_metadata(source),

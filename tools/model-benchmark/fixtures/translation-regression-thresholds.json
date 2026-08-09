@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "corpus_release": "2026.08-public-v1",
+  "schema_version": 2,
+  "corpus_release": "2026.08-public-v2-original-references",
   "scored_layer": "translation_raw",
   "comparison": {
     "maximum_bleu_drop": 2.0,
@@ -17,17 +17,21 @@
       "en-zh": {
         "minimum_bleu": 34.0,
         "minimum_chrf_pp": 24.0,
-        "minimum_critical_check_rate": 0.60,
+        "minimum_critical_check_rate": 0.6,
         "minimum_mean_adequacy": 3.5,
         "minimum_mean_fluency": 3.5
       },
       "ja-zh": {
         "minimum_bleu": 28.0,
         "minimum_chrf_pp": 20.0,
-        "minimum_critical_check_rate": 0.70,
+        "minimum_critical_check_rate": 0.7,
         "minimum_mean_adequacy": 3.5,
         "minimum_mean_fluency": 3.5
-      }
+      },
+      "calibration_evidence": [
+        "lite-bergamot-en-zh-2026-07-29",
+        "lite-bergamot-ja-zh-2026-07-29"
+      ]
     },
     "full": {
       "en-zh": {
@@ -43,7 +47,11 @@
         "minimum_critical_check_rate": 0.68,
         "minimum_mean_adequacy": 4.0,
         "minimum_mean_fluency": 4.0
-      }
+      },
+      "calibration_evidence": [
+        "full-hymt2-q4-en-zh-2026-07-30",
+        "full-hymt2-q4-ja-zh-2026-07-30"
+      ]
     },
     "online": {
       "en-zh": {
@@ -60,7 +68,13 @@
         "minimum_mean_adequacy": 4.2,
         "minimum_mean_fluency": 4.2
       },
-      "required_failure_contract": true
+      "required_failure_contract": true,
+      "calibration_evidence": [
+        "online-deepseek-v4-flash-en-zh-2026-08-01",
+        "online-deepseek-v4-flash-ja-zh-2026-08-01"
+      ]
     }
-  }
+  },
+  "calibration_manifest_sha256": "e4ea3c42548a07afa24195111631736e8c198005def9d3175cb0100857304247",
+  "formal_gate_policy": "Historical aggregate calibration is context only. Formal results require complete current-corpus real inference evidence, a real incumbent, blind ratings bound to candidate hashes, and Online Kotlin policy evidence."
 }

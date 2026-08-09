@@ -52,8 +52,8 @@
           "provenance": "public_domain",
           "source_text": "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
           "reference_translations": [
-            "凡是有钱的单身汉，总想娶位太太，这已经成了一条举世公认的真理。",
-            "一个拥有丰厚财产的单身男子必定想娶妻，这是一条举世公认的真理。"
+            "大家似乎都认定：一个家境殷实而尚未成婚的男人，必然想找一位妻子。",
+            "世人普遍有这样的看法：手握丰厚财产的单身男子，总该有成家的打算。"
           ],
           "critical_checks": [],
           "provenance_id": "jane-austen-pride-prejudice-1813-public-domain",
@@ -274,8 +274,8 @@
           "provenance": "public_domain",
           "source_text": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.",
           "reference_translations": [
-            "这是最好的时代，也是最坏的时代；这是智慧的时代，也是愚蠢的时代；这是信仰的时期，也是怀疑的时期；这是光明的季节，也是黑暗的季节；这是希望之春，也是绝望之冬；我们面前应有尽有，我们面前一无所有；我们都将直上天堂，我们都将直下地狱——简而言之，那个时代与现在如此相似，以至于当时最喧嚣的权威坚持认为，无论好坏，都只能用最高级来形容它。",
-            "那是最美好的时代，也是最糟糕的时代；那是智慧的年头，也是愚昧的年头；那是信仰的时期，也是怀疑的时期；那是光明的季节，也是黑暗的季节；那是希望之春，也是绝望之冬。我们面前无所不有，我们面前一无所有；我们都在直奔天堂，我们都在直奔相反的方向。总之，那个时代与当今如此相像，以至于最喧嚣的权威坚持认为，无论善恶，只能用最高级来评价它。"
+            "那个年代一面极为美好，一面又最为糟糕；人们既显得智慧，也尽显愚昧；信念高涨，却又疑虑重重；光明与黑暗并存；希望像春天萌发，绝望又如寒冬笼罩。前方仿佛万物齐备，却也像是什么都没有；众人以为自己正走向天堂，也可能正奔向完全相反的去处。总之，它与我们所处的年代十分相像，以至于最喧闹的评论者坚持，无论褒贬，都只能用最高程度来概括。",
+            "那时既是美好的顶峰，也是最糟糕的谷底；既崇尚智慧，又充满愚昧；既笃信不疑，又处处怀疑；光明的时节紧邻黑暗的时节，希望的春意伴着绝望的寒冬。我们眼前似乎应有尽有，也似乎一无所有；所有人都像在直奔天堂，又像在朝它的反方向前进。归根结底，那段时期和当下相差无几，声音最大的权威因此认定，对它作好坏评判时只能使用最高级。"
           ],
           "critical_checks": [
             {
@@ -1405,7 +1405,7 @@
           ]
         }
       ],
-      "corpus_release": "2026.08-public-v1",
+      "corpus_release": "2026.08-public-v2-original-references",
       "reference_language": "zh-Hans",
       "default_license_spdx": "Apache-2.0",
       "required_review_domains": [
@@ -2505,15 +2505,15 @@
           "provenance": "public_domain",
           "source_text": "吾輩は猫である。名前はまだ無い。",
           "reference_translations": [
-            "我是猫。名字还没有。",
-            "咱家是猫，尚且没有名字。"
+            "说来，我是一只猫，到现在仍没人给我取名。",
+            "我这家伙是只猫，至今还没有一个名字。"
           ],
           "critical_checks": [
             {
               "name": "cat identity and unnamed",
               "all_regex": [
-                "(我是(一只)?猫|咱家是猫)",
-                "(没有名字|还没名字|尚且没有名字|名字还没有)"
+                "我.{0,6}是.{0,3}猫",
+                "(没有.{0,4}名字|还没.{0,4}名字|没人.{0,4}取名|尚未.{0,4}取名)"
               ]
             }
           ],
@@ -2800,7 +2800,7 @@
           ]
         }
       ],
-      "corpus_release": "2026.08-public-v1",
+      "corpus_release": "2026.08-public-v2-original-references",
       "reference_language": "zh-Hans",
       "default_license_spdx": "Apache-2.0",
       "required_review_domains": [
@@ -2813,7 +2813,7 @@
       ]
     }
   ],
-  "corpus_release": "2026.08-public-v1",
+  "corpus_release": "2026.08-public-v2-original-references",
   "license": {
     "default_spdx": "Apache-2.0",
     "default_scope": "Project-authored synthetic source text, Chinese reference translations, semantic checks, and metadata.",

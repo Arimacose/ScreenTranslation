@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "report_kind": "deterministic_harness_smoke_not_model_evidence",
   "validation": {
-    "schema_version": 1,
-    "corpus_release": "2026.08-public-v1",
-    "fixture_sha256": "d5995c3ba21aaf45ae65b1dc93d0c2df3ddb6d7cb6e9861ad7f8e6923e32bb28",
+    "schema_version": 2,
+    "corpus_release": "2026.08-public-v2-original-references",
+    "fixture_sha256": "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
     "fixture_license": "Apache-2.0",
     "suite_stats": {
       "en-zh": {
@@ -29,7 +29,8 @@
           "ui"
         ],
         "critical_check_count": 64,
-        "public_domain_source_cases": 2
+        "public_domain_source_cases": 2,
+        "protected_gate_cases": 3
       },
       "ja-zh": {
         "suite_id": "ja-zh-diverse-v1",
@@ -53,19 +54,30 @@
           "word_sense"
         ],
         "critical_check_count": 62,
-        "public_domain_source_cases": 1
+        "public_domain_source_cases": 1,
+        "protected_gate_cases": 3
       }
     },
     "failure_contract": {
       "case_count": 9,
       "classifications": [
         "credentials",
-        "empty_output",
-        "protocol",
         "rate_limit",
+        "response",
         "server",
         "temporary_service",
         "timeout"
+      ]
+    },
+    "calibration": {
+      "entry_count": 6,
+      "entry_ids": [
+        "full-hymt2-q4-en-zh-2026-07-30",
+        "full-hymt2-q4-ja-zh-2026-07-30",
+        "lite-bergamot-en-zh-2026-07-29",
+        "lite-bergamot-ja-zh-2026-07-29",
+        "online-deepseek-v4-flash-en-zh-2026-08-01",
+        "online-deepseek-v4-flash-ja-zh-2026-08-01"
       ]
     },
     "threshold_editions": [
@@ -76,11 +88,7 @@
   },
   "editions": {
     "lite": {
-      "schema_version": 1,
-      "report_kind": "harness_smoke_not_release_evidence",
-      "edition": "lite",
-      "corpus_release": "2026.08-public-v1",
-      "fixture_sha256": "d5995c3ba21aaf45ae65b1dc93d0c2df3ddb6d7cb6e9861ad7f8e6923e32bb28",
+      "report_kind": "harness_smoke_not_model_evidence",
       "automated_passed": true,
       "release_ready": false,
       "pairs": {
@@ -93,6 +101,7 @@
             "critical_checks_total": 64,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "baseline": {
@@ -102,6 +111,7 @@
             "critical_checks_total": 64,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "checks": [
@@ -127,7 +137,7 @@
               "passed": true
             },
             {
-              "name": "all protected-span checks",
+              "name": "all category/tag protected checks",
               "actual": true,
               "relation": "==",
               "expected": true,
@@ -165,6 +175,7 @@
             "critical_checks_total": 62,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "baseline": {
@@ -174,6 +185,7 @@
             "critical_checks_total": 62,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "checks": [
@@ -199,7 +211,7 @@
               "passed": true
             },
             {
-              "name": "all protected-span checks",
+              "name": "all category/tag protected checks",
               "actual": true,
               "relation": "==",
               "expected": true,
@@ -231,20 +243,16 @@
       },
       "failure_contract": {
         "required": false,
-        "passed": true
+        "passed": true,
+        "status": "contract_schema_only_not_production_execution"
       },
       "human_review": {
         "passed": false,
-        "status": "not_run_in_harness_smoke",
-        "release_gate_satisfied": false
+        "status": "not_run_in_harness_smoke"
       }
     },
     "full": {
-      "schema_version": 1,
-      "report_kind": "harness_smoke_not_release_evidence",
-      "edition": "full",
-      "corpus_release": "2026.08-public-v1",
-      "fixture_sha256": "d5995c3ba21aaf45ae65b1dc93d0c2df3ddb6d7cb6e9861ad7f8e6923e32bb28",
+      "report_kind": "harness_smoke_not_model_evidence",
       "automated_passed": true,
       "release_ready": false,
       "pairs": {
@@ -257,6 +265,7 @@
             "critical_checks_total": 64,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "baseline": {
@@ -266,6 +275,7 @@
             "critical_checks_total": 64,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "checks": [
@@ -291,7 +301,7 @@
               "passed": true
             },
             {
-              "name": "all protected-span checks",
+              "name": "all category/tag protected checks",
               "actual": true,
               "relation": "==",
               "expected": true,
@@ -329,6 +339,7 @@
             "critical_checks_total": 62,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "baseline": {
@@ -338,6 +349,7 @@
             "critical_checks_total": 62,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "checks": [
@@ -363,7 +375,7 @@
               "passed": true
             },
             {
-              "name": "all protected-span checks",
+              "name": "all category/tag protected checks",
               "actual": true,
               "relation": "==",
               "expected": true,
@@ -395,20 +407,16 @@
       },
       "failure_contract": {
         "required": false,
-        "passed": true
+        "passed": true,
+        "status": "contract_schema_only_not_production_execution"
       },
       "human_review": {
         "passed": false,
-        "status": "not_run_in_harness_smoke",
-        "release_gate_satisfied": false
+        "status": "not_run_in_harness_smoke"
       }
     },
     "online": {
-      "schema_version": 1,
-      "report_kind": "harness_smoke_not_release_evidence",
-      "edition": "online",
-      "corpus_release": "2026.08-public-v1",
-      "fixture_sha256": "d5995c3ba21aaf45ae65b1dc93d0c2df3ddb6d7cb6e9861ad7f8e6923e32bb28",
+      "report_kind": "harness_smoke_not_model_evidence",
       "automated_passed": true,
       "release_ready": false,
       "pairs": {
@@ -421,6 +429,7 @@
             "critical_checks_total": 64,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "baseline": {
@@ -430,6 +439,7 @@
             "critical_checks_total": 64,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "checks": [
@@ -455,7 +465,7 @@
               "passed": true
             },
             {
-              "name": "all protected-span checks",
+              "name": "all category/tag protected checks",
               "actual": true,
               "relation": "==",
               "expected": true,
@@ -493,6 +503,7 @@
             "critical_checks_total": 62,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "baseline": {
@@ -502,6 +513,7 @@
             "critical_checks_total": 62,
             "critical_check_rate": 1.0,
             "protected_span_checks_passed": true,
+            "protected_case_count": 3,
             "case_count": 48
           },
           "checks": [
@@ -527,7 +539,7 @@
               "passed": true
             },
             {
-              "name": "all protected-span checks",
+              "name": "all category/tag protected checks",
               "actual": true,
               "relation": "==",
               "expected": true,
@@ -560,16 +572,15 @@
       "failure_contract": {
         "required": true,
         "passed": true,
-        "case_count": 9
+        "status": "contract_schema_only_not_production_execution"
       },
       "human_review": {
         "passed": false,
-        "status": "not_run_in_harness_smoke",
-        "release_gate_satisfied": false
+        "status": "not_run_in_harness_smoke"
       }
     }
   },
   "passed": true,
   "release_ready": false,
-  "release_ready_reason": "Blind ratings and real candidate outputs are deliberately absent from harness smoke."
+  "release_ready_reason": "Synthetic references validate plumbing only; real inference, Kotlin failure evidence and blind ratings are absent."
 }
