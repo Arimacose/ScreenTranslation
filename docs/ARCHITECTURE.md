@@ -29,9 +29,9 @@ PP-OCRv6-small 与两套捕获/悬浮层实现：
 
 | Edition | applicationId | versionName | 翻译后端 | 语言范围 |
 |---|---|---|---|---|
-| Lite | `com.screentranslation.app` | `0.3.1-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
-| Full | `com.screentranslation.app.full` | `0.3.1-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
-| Online | `com.screentranslation.app.online` | `0.3.1-online` | 用户配置的 OpenAI-compatible LLM | 能力由用户选择的模型决定 |
+| Lite | `com.screentranslation.app` | `2.0.0-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
+| Full | `com.screentranslation.app.full` | `2.0.0-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
+| Online | `com.screentranslation.app.online` | `2.0.0-online` | 用户配置的 OpenAI-compatible LLM | 能力由用户选择的模型决定 |
 
 Lite 保留基础包名以承接 v0.1.0 升级，Full/Online 使用 `.full`/`.online` 后缀，
 因此三者可在同一设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：
@@ -271,7 +271,7 @@ stateDiagram-v2
 
 - 不写入截图，不记录 OCR/译文历史，不上传截图。Online 仅在用户确认后发送 OCR 文本。
 - 翻译模型按需下载；项目代码不把屏幕图像、OCR 原文或译文发送到项目服务器。
-- v0.3.1 Lite/Full/Online Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
+- v2.0.0 Lite/Full/Online Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
   `benchmark` 变体中用于基线测量。各 edition 的数据边界见
   [`PRIVACY.md`](../PRIVACY.md)。
 - `FLAG_SECURE`、DRM、工作资料策略保护的窗口可能是黑屏或空白，视为系统拒绝捕获，而不是 OCR 故障。
@@ -281,7 +281,7 @@ stateDiagram-v2
 ## 8. 构建依赖
 
 ```text
-AGP application / library                9.3.1 / 9.3.0
+AGP application / library                9.3.1 / 9.3.1
 Gradle Wrapper                           9.6.1
 compile / min / target SDK               37 / 36 / 36
 Android Build Tools                      37.0.0

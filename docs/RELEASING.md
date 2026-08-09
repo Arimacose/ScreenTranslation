@@ -90,25 +90,29 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/ap
 
 ## 4. 创建发布标签
 
-发布 PR 合并且 `main` 全绿后：
+发布 PR 合并、`main` 全绿，并且手动 signed-acceptance artifact 已完成
+`docs/DEVICE_TEST.md` 的目标真机门禁后：
 
 ```bash
 git switch main
 git pull --ff-only
-VERSION=0.3.1
-git tag -s "v$VERSION" -m "ScreenTranslation v$VERSION"
+VERSION=2.0.0
+git tag -a "v$VERSION" -m "ScreenTranslation v$VERSION"
 git push origin "v$VERSION"
 ```
 
-优先使用已验证签名的 annotated tag。Tag 必须与 Gradle `versionName` 完全匹配，否则 workflow
-会终止。
+当前仓库历史采用 annotated tag；发布 workflow 会验证它确实是 tag object、其 commit
+属于 `origin/main`，并要求 tag 名与 Gradle `versionName` 完全匹配。若维护者已配置 GPG/SSH
+签名，可把 `-a` 换成 `-s`。`gh release create --verify-tag` 只核对远端 tag 已存在，
+不等同于验证 tag 的密码学签名；Android APK/AAB 的发布签名由独立 keystore 门禁负责。
 
 ## 5. 自动发布内容
 
 `.github/workflows/release.yml` 会：
 
 1. 验证四个签名 secrets；
-2. 检查 tag 与 `versionName`；
+2. 检查 tag 与 `versionName`，要求 annotated/signed tag object，并确认 tag commit
+   属于 `origin/main`；
 3. 以 recursive submodules 检出源码，并准备 Android 16、NDK r23b/r29 与 CMake 3.31.6；
 4. 对 Lite/Full/Online 分别运行单元测试、release Lint、APK 和 AAB 构建；
 5. 执行 16 KiB 对齐、APK v2 签名和既有证书摘要验证；
@@ -134,11 +138,13 @@ git push origin "v$VERSION"
 维护者从 GitHub release 重新下载产物：
 
 ```bash
-VERSION=0.3.1
+VERSION=2.0.0
 sha256sum -c SHA256SUMS
 apksigner verify --verbose --print-certs "ScreenTranslation-$VERSION-lite-bergamot.apk"
 apksigner verify --verbose --print-certs \
   "ScreenTranslation-$VERSION-full-hymt2-q4-experimental.apk"
+apksigner verify --verbose --print-certs \
+  "ScreenTranslation-$VERSION-online-llm.apk"
 ```
 
 随后安装到干净测试设备，确认版本、首次权限链、模型下载和基础翻译。检查 release notes、

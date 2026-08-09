@@ -16,6 +16,63 @@ Online。最终标签发布后必须重新下载公开 Release 资产，逐项�
 公开 APK 完成安装/升级、冷启动和核心链路烟测；手动验收 artifact 只用于发布门禁，
 不能替代公开产物的最终复核。
 
+## v2.0.0 最终签名验收矩阵（待执行）
+
+### 候选边界
+
+- 基础版本：`versionCode=6`、`versionName=2.0.0`；三 edition 运行时分别为
+  `2.0.0-lite`、`2.0.0-full`、`2.0.0-online`；
+- 功能集成主线：Issues #40、#41、#46、#47 的实现代码均已合并；其中 #47 的实现合并提交为
+  `38f09c0fb4bce346cff3928b7c3bbee5a048628e`；
+- 签名候选必须由最终版本提交在 `main` 上手动运行
+  `Signed release and acceptance` workflow 生成；artifact 名中的 GitHub SHA、三份 APK
+  SHA-256、三份 AAB SHA-256、`SHA256SUMS` 和证书摘要共同写入最终记录；
+- 预期 release 证书 SHA-256 为
+  `b58712578045532158d45b847ab7ed1be041236b5a7a0bd1a1db5480fbe0439f`；
+- 本轮只完成代码、JVM、Lint、R8、APK/AAB、API 36 instrumentation、CodeQL 与依赖
+  审查；真机命令、安装与屏幕共享操作按当前暂停要求留在本节。
+
+### 已完成的非真机门禁
+
+- PR #56 最终实现 HEAD `5d3118363fccf4ae3e8ab4ed91d64d89dfd19e37`：Lite 227、
+  Full 223、Online 240 个 JVM 测试，共 690 个，0 failure/error/skip；
+- 三 edition Release lint 均为 0 error，三套 R8/minify、Release APK/AAB 与
+  `assemble*DebugAndroidTest` 均通过；
+- GitHub 的三 edition verification、API 36 capture lifecycle instrumentation、CodeQL
+  和 dependency review 全部通过；
+- Lite/Full 首页与模型管理页使用各自的完整 SHA-256 verifier；Online readiness 绑定
+  规范化 endpoint、模型、同意版本与 Keystore key identity；
+- Activity 重建仅复用 retained pair/artifact identity，冷进程与服务准备继续执行完整
+  固定哈希；后台 verifier 的 generation、安装、取消、释放和完成使用单一同步 owner。
+
+### 恢复真机工作后的执行顺序
+
+1. 从最终 `main` 手动运行 signed-acceptance workflow，下载并执行
+   `sha256sum -c SHA256SUMS`，核对三 APK 的 v2 签名、16 KiB 对齐、包名、版本和 ARM64
+   ABI；
+2. 依次 `adb install -r` Lite、Full、Online，确认 Lite 延续原包升级，Full/Online
+   可并存；每次切 edition 前记录设备端 `base.apk` SHA-256；
+3. Lite：英语→中文、日语→英语→中文各完成冷启动准备、灰色“已就绪”、区域识屏、
+   停止与通知栏重启；删除模型或同尺寸损坏夹具后 readiness 必须失效；
+4. Full：冷启动显示完整性校验进度；Home/设置页导致 `onStop` 时校验停止，回前台后
+   重新开始；服务运行时不并发读取 1.13 GB 权重；有效模型在主页与模型管理页结论一致；
+5. Online：配置真实 BYOK 后获取模型并完成翻译；删除或轮换 API key 后旧 readiness
+   立即失效；401/403、429 和超时分别显示对应错误语义；
+6. Apple 默认、MIUIX、Material 3 固定色与 Monet 各检查 light/dark；Material 3 至少更换
+   两张壁纸核对动态色，三风格均检查按钮、模型页、Online 设置、区域结果和全屏标签；
+7. 把 `font_scale` 设为 1.30，检查“全屏增量覆盖（实验）”、Base URL 与 API Key 提示、
+   语言 spinner 和灰色“已就绪”没有截断或重叠，结束后恢复用户原设置；
+8. 通过 MediaProjection 系统对话框完成授权、旋转、锁屏恢复、撤销、停止、任务移除和
+   通知栏重启；记录 HyperOS 省电策略“无限制”识别；
+9. 通过后创建 annotated `v2.0.0` tag；公开 Release 生成后重新下载 9 个资产，复核
+   `SHA256SUMS`、证书、版本与许可证，并用公开 APK 重做升级/安装、冷启动和核心链路
+   smoke，再关闭 Issue #47 与 v2.0.0 milestone。
+
+### 延期项
+
+Issue #38 的全屏覆盖长时耐久与 Issue #39 的 PP-OCRv6 持续性能/温升矩阵已移至
+v2.1.0，不属于 v2.0.0 发布声明。v2.0.0 仍需完成上面的短时功能与 UI 真机矩阵。
+
 ## 2026-08-03 ONNX Runtime Android 1.28.0 升级验收
 
 ### 范围与方法
