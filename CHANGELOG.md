@@ -5,9 +5,11 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-09
+
 ### Added
 
-- 以 Apple 风格（默认候选）、MIUIX 和 Material 3 三套可切换视觉语言替换原有平铺式
+- 以 Apple 风格（默认）、MIUIX 和 Material 3 三套可切换视觉语言替换原有平铺式
   UI，并统一主页面、模型管理、Online 设置及两类悬浮翻译层。
 - 为 Material 3 增加可关闭的 Monet 动态取色与固定色板回退路径。
 - 当前语对模型准备成功后，“准备模型”变为灰色“已就绪”且不可点击；切换 UI 导致
@@ -22,8 +24,10 @@
   的独立“复制原文”“复制译文”按钮。
 - 新增真实 localhost HTTPS MockWebServer 契约测试，覆盖 Online 401 不重试、429
   读取 `Retry-After` 后一次有界重试，以及 90 秒生成超时不重试。
-- 新增英文 README、可复现的 30 秒仓库 UI 预览 GIF、v0.4.0 milestone 和公开路线图
+- 新增英文 README、可复现的 30 秒仓库 UI 预览 GIF、v2.0.0 milestone 和公开路线图
   issues。
+- 新增 API 36 instrumentation 回归，覆盖屏幕共享授权、旋转/锁屏恢复、
+  授权撤销、停止与通知栏重启的状态机。
 - 新增 Lite/Full/Online/Benchmark 的类型化 `TranslationProviderProfile`，统一声明语言
   路由、输入限制、模型存储、取消/关闭语义、逐路由性能与 attribution；HY-MT2 STQ
   中间档候选改由 CI 重算的 canonical PR/gitlink/ancestry/artifact admission 记录约束，
@@ -41,6 +45,9 @@
   响应时长，避免统一显示泛化网络错误。
 - `OcrEngine.Recognition` 增加归一化文字行几何与置信度，同时保持既有 text/blocks
   调用兼容。
+- 中间档 HY-MT2 1.25-bit STQ 仅保留为评估候选；上游 runtime 支持、
+  可运行模型哈希、逐语言路由质量、应用内延迟、Release 整进程内存与
+  30 分钟热稳定证据未同时满足时，不进入 edition 选择、工厂或下载路径。
 
 ### Fixed
 
@@ -48,14 +55,27 @@
   隐藏期间意外重启请求。
 - 当前语言模型准备成功后，主页面操作变为灰色不可点击的“已就绪”；语言对、Online
   配置或模型文件状态变化后才恢复准备入口。
+- OCR 标点恢复改为保守的高置信句尾/成对闭合策略，去除英文长度、
+  任意 `-ed/-ing`、中文名词和日语裸 `する` 等高误报信号；密集受保护文本
+  线性化处理并增加 65,536 字符有界回退。
+- UI 风格重建、进程冷启和模型管理返回主页时，“已就绪”不再依赖
+  `savedInstanceState` 猜测；Lite/Full 重算完整 SHA-256，Online 绑定规范化
+  URL、模型、同意版本与 Keystore 密钥身份，删除、替换或轮换后立即失效。
+- Lite 与 Full 的主页、模型管理共用各自的完整 SHA-256 验证器；Lite 已验证完整模型
+  优先于遗留 `.part` 状态，Full 1.13 GB 权重校验只在 Activity `STARTED` 且识屏服务
+  未运行时执行，避免后台或推理期并发全量读取。
+- 模型就绪后台任务改由同步 generation/resource controller 统一管理安装、取消、释放
+  与一次性完成，消除生命周期切换时的双重关闭、资源泄漏和旧结果发布窗口。
 
 ### Verification
 
-- 本阶段先完成 JVM、Lint、Release 构建和 CI；全屏覆盖的 HyperOS 行为、位置、功耗、
-  温升与持续运行保留到 Issue #38 的签名 Release 真机门禁。
+- JVM、Lint、R8 Release、APK/AAB、API 36 instrumentation 与 GitHub CI 均作为
+  v2.0.0 候选的非真机门禁。三 edition 最终签名 Release 与三套 UI 真机矩阵
+  仍由 Issue #47 跟踪；全屏覆盖的长时功耗、温升与持续运行保留到
+  v2.1.0 的 Issue #38/#39，不纳入本版本声明。
 - 翻译回归工具对 96 条公开语料、126 个关键检查和 9 个 Online 失败场景完成确定性
-  harness smoke；参考译文回放明确标记为非模型证据，正式发布仍强制真实候选输出和
-  至少两名盲评者。
+  harness smoke；参考回放、调用方自报 provenance 和未经认证的人工评分均保持
+  fail-closed，正式候选仍需 gate-owned 或可外部验签的模型输出证据与可信评分身份。
 
 ## [0.3.1] - 2026-08-03
 
@@ -192,7 +212,8 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.1...v2.0.0
 [0.3.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.0...v0.2.1

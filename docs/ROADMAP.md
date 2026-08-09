@@ -24,7 +24,7 @@
 - [x] 在不保存历史的前提下增加长结果展开与限高滚动
 - [x] 恢复 OCR 丢失的关键标点并按语义分句（[#40](https://github.com/Arimacose/ScreenTranslation/issues/40)；[质量基准](OCR_PUNCTUATION_QUALITY_2026-08-09.md)）
 - [x] 以类型化 `TranslationProviderProfile` 分离 Lite、Full、Online 能力与中间档门禁（[#41](https://github.com/Arimacose/ScreenTranslation/issues/41)）
-- [ ] 为固定公开文本建立质量回归夹具与人工评分规范（[#46](https://github.com/Arimacose/ScreenTranslation/issues/46)）
+- [x] 为固定公开文本建立质量回归夹具与人工评分规范（[#46](https://github.com/Arimacose/ScreenTranslation/issues/46)）
 - [x] 增加模型管理页面：大小、状态、下载与删除
 - [ ] 增加“关于/开源许可/隐私”应用内页面（[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
 
@@ -34,19 +34,21 @@
 
 - [ ] 扩大 Android 16 ROM 验证矩阵（当前里程碑明确延期）
 - [ ] 增加 x86_64 调试构建或独立模拟器 flavor（[#43](https://github.com/Arimacose/ScreenTranslation/issues/43)）
-- [ ] 增加 Android instrumentation 与 UI 自动化测试（[#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
-- [ ] 覆盖旋转、锁屏、投影撤销、任务移除和内存压力（并入 [#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
+- [x] 增加 Android instrumentation 与 UI 自动化测试（[#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
+- [x] 覆盖旋转、锁屏、投影撤销和任务移除状态机（并入 [#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
+- [ ] 增加内存压力与系统回收进程后的专项状态恢复回归
 - [ ] 建立可重复的性能、温升和持续运行基准
 - [x] 增加分块差分、块级稳定门和全屏持续识别模式（Experimental；真机门禁跟踪于 [#38](https://github.com/Arimacose/ScreenTranslation/issues/38)）
 - [x] 以 Apple 风格默认候选、MIUIX、Material 3 + 可选 Monet 替换旧 UI，并统一服务悬浮层视觉令牌
 - [ ] 完成三套 UI 的签名 Release / HyperOS 真机视觉与交互验收（[#47](https://github.com/Arimacose/ScreenTranslation/issues/47)）
 - [ ] 生成可发布的依赖清单或 SBOM（[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
 
-## v1.0 前置条件
+## v2.x 跨设备稳定性边界
 
 - 冻结全局唯一 `applicationId`、应用名称和长期发布签名；
 - 稳定的数据迁移和版本策略；
-- 至少两类 Android 16 ROM 的重复验收；
+- 在后续版本中扩展到至少两类 Android 16 ROM 的重复验收；v2.0.0 明确只承诺
+  小米 15 Pro / 当前 HyperOS 基线；
 - 权限、隐私、签名和安全响应流程经过实际演练；
 - 核心捕获状态机具备自动化回归；
 - 翻译质量模式与用户预期有明确区分；

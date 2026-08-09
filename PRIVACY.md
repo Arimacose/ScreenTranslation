@@ -1,6 +1,6 @@
 # 隐私说明
 
-最近更新：2026-08-03
+最近更新：2026-08-09
 
 ScreenTranslation 是一个由用户主动启动的屏幕翻译工具。本文件描述当前开源代码的
 数据流；发行者若修改代码、接入服务或增加分析 SDK，应发布相应版本的隐私说明。
@@ -57,7 +57,7 @@ Firefox Translations 固定 HTTPS 地址。Full edition 的 Hy-MT2 Q4 模型来�
 Hugging Face revision。应用逐文件校验发布清单中的长度和 SHA-256；校验通过后，
 翻译推理全部在设备端执行。
 
-v0.3.1 的 Lite、Full 与 Online APK 不使用 ML Kit Translate。仓库中的 `benchmark`
+v2.0.0 的 Lite、Full 与 Online APK 不使用 ML Kit Translate。仓库中的 `benchmark`
 build type 仍保留 ML Kit Translate 作为可复现实验对照，但该对照不属于三份
 GitHub Release APK。
 

@@ -127,6 +127,17 @@ jobs:
               echo "::error::Tag $GITHUB_REF_NAME does not match base version $version_name"
               exit 1
             fi
+            if [[ "$(git cat-file -t "$GITHUB_REF")" != "tag" ]]; then
+              echo "::error::Release refs must be annotated or signed tag objects"
+              exit 1
+            fi
+            tag_commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            git fetch --no-tags origin \
+              "+refs/heads/main:refs/remotes/origin/main"
+            if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+              echo "::error::Release tag commit is not contained in origin/main"
+              exit 1
+            fi
           elif [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "::error::Manual signed acceptance must run from main"
             exit 1
@@ -432,6 +443,16 @@ jobs:
           - **Online · BYOK API**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. The app fetches the endpoint's model list after explicit data-flow consent; OCR text is sent only to the selected service and screenshots are not uploaded.
 
           The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. Full and Online use `.full` and `.online`, so all three editions can coexist.
+
+          ## Highlights
+
+          - Apple-inspired (default), MIUIX, and Material 3 visual languages, with optional Monet dynamic color for Material 3.
+          - Region capture remains the default; the Experimental full-screen incremental path recognizes changed tiles and positions translations above the corresponding source text.
+          - Model management, copyable source/translation panels, protected URLs/dates/amounts/versions, and conservative OCR punctuation restoration.
+          - Explicit Lite/Full/Online provider profiles plus a fail-closed evaluation boundary for non-shipping middle-tier candidates.
+          - A redistributable English-to-Chinese and Japanese-to-Chinese regression suite with strict candidate evidence and Online failure contracts.
+
+          The supported device baseline remains Android 16 on Xiaomi 15 Pro / current HyperOS. The Full edition and full-screen incremental mode remain Experimental. Long-run full-screen endurance and sustained PP-OCRv6 power/thermal measurements remain tracked in the open roadmap and are not claimed by this release.
 
           Complete third-party license texts, native dependency notices, immutable model coordinates, and the MPL corresponding-source instructions are included in `ScreenTranslation-${{ steps.version.outputs.version_name }}-THIRD-PARTY.zip` and embedded in the applicable APK/AAB.
           NOTES
