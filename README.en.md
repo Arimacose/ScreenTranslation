@@ -50,8 +50,9 @@ endpoint configured by the user.
 - Block-level two-observation stability and a single-active translation queue.
 - Adaptive capture interval: returns to the configured active rate after changes and backs
   off toward 2 seconds on static content.
-- Deterministic recovery for high-confidence sentence endings, hard-line boundaries, and
-  missing closing punctuation; URLs, email addresses, dates, amounts, decimals, and versions
+- Deterministic recovery for high-confidence standalone-block endings, paragraph boundaries,
+  and missing closing punctuation while single visual line wraps remain unchanged; URLs,
+  email addresses, dates, amounts, decimals, and versions
   are protected first and restored byte-for-byte.
 - Copy original text and translated text independently from the region result panel.
 - Model management screen with status, current/expected size, pinned revision, refresh,

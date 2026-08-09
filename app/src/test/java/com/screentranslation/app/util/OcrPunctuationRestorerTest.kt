@@ -3,6 +3,8 @@ package com.screentranslation.app.util
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import kotlin.math.min
+import kotlin.random.Random
+import kotlin.system.measureTimeMillis
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,9 +22,9 @@ class OcrPunctuationRestorerTest {
             ),
         )
         assertEquals(
-            "模型准备完成之后会自动开始处理下一帧。",
+            "模型准备完成之后，下一帧的处理会自动开始。",
             OcrPunctuationRestorer.restore(
-                "模型准备完成之后会自动开始处理下一帧",
+                "模型准备完成之后，下一帧的处理会自动开始",
                 "zh-CN",
             ),
         )
@@ -73,11 +75,23 @@ class OcrPunctuationRestorerTest {
         )
         listOf(
             "Notifications and control center" to "en",
-            "Model download and storage settings" to "en",
+            "Advanced network internet connection sharing security settings" to "en",
+            "Open source licenses and third party notices" to "en",
+            "Display advanced network security settings" to "en",
+            "Application battery background activity restrictions" to "en",
+            "Application run settings" to "en",
+            "Please open source licenses and third party notices" to "en",
             "通知和控制中心" to "zh",
-            "模型下载和存储设置" to "zh",
+            "显示与亮度设置" to "zh",
+            "应用安装权限管理" to "zh",
+            "已下载模型管理" to "zh",
+            "翻译语言和识别设置" to "zh",
+            "请勿打扰模式设置" to "zh",
             "ネットワークとインターネット" to "ja",
+            "バックグラウンドで使用する" to "ja",
             "モデルのダウンロード設定" to "ja",
+            "翻訳を開始するアプリの設定" to "ja",
+            "プライバシーとセキュリティ" to "ja",
         ).forEach { (label, language) ->
             assertEquals(label, OcrPunctuationRestorer.restore(label, language))
         }
@@ -100,7 +114,7 @@ class OcrPunctuationRestorerTest {
             "demo@example.com",
             "￥1,299.00",
         )
-        val raw = "Install ${values[1]} on ${values[2]} from ${values[3]}, contact ${values[4]}, " +
+        val raw = "Please install ${values[1]} on ${values[2]} from ${values[3]}, contact ${values[4]}, " +
             "and pay ${values[5]} after measuring ${values[0]} units"
         val restored = OcrPunctuationRestorer.restore(raw, "en")
 
@@ -120,14 +134,111 @@ class OcrPunctuationRestorerTest {
     }
 
     @Test
-    fun `clause splitter treats restored Latin endings as boundaries`() {
-        val raw = "The storm crossed the northern valley before midnight while every station " +
-            "reported lower water levels\nThe rescue team reopened the mountain road after " +
-            "engineers inspected every bridge and radio relay"
+    fun `seeded adversarial inputs never crash corrupt tokens or lose idempotence`() {
+        val random = Random(71_197_671)
+        val fragments = listOf(
+            "a", "Z", " ", "\t", "\n", "\r\n", ".", "!", "?", "。", "！", "？", "…",
+            "(", ")", "[", "]", "{", "}", "“", "”", "「", "」", "《", "》",
+            "隐私", "显示", "设置", "かな", "モデル", "翻訳", "🙂", "\uD800", "\uDC00",
+            "3.14", "v2.0.0", "2026-08-09", "https://example.com/a?q=1",
+            "demo@example.com", "￥1,299.00",
+        )
+        val languages = listOf("en", "zh", "ja", "und", "EN-us")
+
+        repeat(2_000) { caseIndex ->
+            val targetLength = random.nextInt(257)
+            val raw = buildString(targetLength + 16) {
+                while (length < targetLength) append(fragments.random(random))
+            }.take(targetLength)
+            val protected = ProtectedTextCodec.protect(raw)
+            assertEquals("codec mismatch at case $caseIndex", raw, protected.restore(protected.encoded))
+
+            val language = languages.random(random)
+            val once = OcrPunctuationRestorer.restore(raw, language)
+            val twice = OcrPunctuationRestorer.restore(once, language)
+            assertEquals("non-idempotent case $caseIndex", once, twice)
+            assertFalse("token leaked at case $caseIndex", once.contains("STP_"))
+            assertFalse("token leaked at case $caseIndex", twice.contains("STP_"))
+        }
+    }
+
+    @Test
+    fun `clause splitter treats restored paragraph endings as boundaries`() {
+        val raw = "The storm had crossed the northern valley before midnight when every station " +
+            "confirmed that the final warning had ended\n\nAt sunrise the rescue team had reopened " +
+            "the mountain road after every safety check was complete"
         val restored = OcrPunctuationRestorer.restore(raw, "en").normalizeForSplitter()
 
         assertEquals(1, ClauseSplitter.split(raw.normalizeForSplitter()).size)
         assertEquals(2, ClauseSplitter.split(restored).size)
+    }
+
+    @Test
+    fun `soft visual line wraps stay byte unchanged in English Chinese and Japanese`() {
+        val examples = listOf(
+            "en" to (
+                "The application automatically wraps this long explanatory text near the right edge\n" +
+                    "Android sixteen continues rendering the same sentence on the next visual line"
+                ),
+            "zh" to (
+                "这是一个因为屏幕宽度限制而自动换行的完整说明文本\n" +
+                    "下一行仍然属于同一个句子并且没有新的语义边界"
+                ),
+            "ja" to (
+                "これは画面の幅によって自動的に折り返された一つの説明文です\n" +
+                    "次の行も同じ文章の続きであり新しい意味の境界ではありません"
+                ),
+        )
+
+        examples.forEach { (language, raw) ->
+            assertEquals(raw, OcrPunctuationRestorer.restore(raw, language))
+        }
+    }
+
+    @Test
+    fun `production block path restores a complete sentence but preserves a sibling UI label`() {
+        val blocks = listOf(
+            "The translation model will remain ready after initialization is complete",
+            "Open source licenses and third party notices",
+        )
+
+        assertEquals(
+            listOf(
+                "The translation model will remain ready after initialization is complete.",
+                blocks[1],
+            ),
+            OcrPunctuationRestorer.restoreBlocks(blocks, "en"),
+        )
+    }
+
+    @Test
+    fun `zh protected fixture is stable across JVM regex implementations`() {
+        val raw = "请在2026-08-09安装v2.0.0，并访问https://example.com/releases/2.0查看说明，基准误差为3.14"
+        val expected = "$raw。"
+        val restored = OcrPunctuationRestorer.restore(raw, "zh")
+
+        assertEquals(expected, restored)
+        listOf("2026-08-09", "v2.0.0", "https://example.com/releases/2.0", "3.14")
+            .forEach { value -> assertByteIdenticalSubstring(value, restored) }
+    }
+
+    @Test
+    fun `dense protected OCR input completes within a generous production bound`() {
+        val raw = buildString {
+            repeat(1_000) { index ->
+                append("value ").append(index).append('.').append(index + 1)
+                append(" url https://example.com/r/").append(index).append(' ')
+            }
+        }
+        assertTrue("fixture must exercise the former 43k hotspot", raw.length in 40_000..60_000)
+
+        var restored = ""
+        val elapsedMs = measureTimeMillis {
+            restored = OcrPunctuationRestorer.restore(raw, "en")
+        }
+
+        assertEquals(raw, restored)
+        assertTrue("43k dense protected input took ${elapsedMs}ms", elapsedMs < 4_000)
     }
 
     @Test

@@ -55,7 +55,7 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 | `FrameProcessor` | 限速、单飞处理、丢弃过期帧和串联 OCR/翻译 | 不允许并发处理两帧；结果带代次校验 |
 | `FullScreenFrameProcessor` | 亮度分块差分、脏块 OCR、文字框稳定与逐块翻译 | `3×6` 分块；强制复核；最多 12 个新块/轮；翻译单活跃 |
 | `IncrementalBlockTracker` | 以文字与几何匹配维持 block ID，过滤重复框 | 同一内容连续两次观察后才稳定 |
-| `OcrPunctuationRestorer` | 在分句/翻译前恢复高置信句尾、硬换行句界和缺失右侧成对标点 | 先 token 化保护值；纯 Kotlin；规则与阈值固定 |
+| `OcrPunctuationRestorer` | 在分句/翻译前恢复高置信独立块句尾、段落句界和缺失右侧成对标点；单换行视觉折行保持原样 | 先 token 化保护值；纯 Kotlin；规则与阈值固定 |
 | `ProtectedTextCodec` | 翻译前替换 URL、邮箱、日期、金额、小数与版本号，翻译后恢复 | 纯 Kotlin；token 避免与输入冲突 |
 | `BitmapExtractor` | 从 ImageReader 图像读取 stride，构造 Bitmap 并裁剪 | 每个 `Image` 均在 `finally` 中关闭 |
 | `OcrEngine` | 为帧处理层提供统一 OCR 接口；生产实现为 `PpOcrv6Engine` | 单工作线程串行推理；关闭时释放 ORT session 与线程 |

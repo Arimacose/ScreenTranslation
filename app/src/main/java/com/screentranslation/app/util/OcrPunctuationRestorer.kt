@@ -6,7 +6,7 @@ import java.util.Locale
  * Conservatively restores high-value punctuation that OCR commonly drops.
  *
  * The rules are intentionally deterministic and language-aware. They only:
- * - terminate sentence-like OCR blocks and high-confidence hard line breaks;
+ * - terminate high-confidence standalone OCR blocks and paragraph breaks;
  * - close an unambiguous unmatched opening quote/bracket at the block boundary;
  * - leave short labels, code-like text, and malformed/crossed pairs alone.
  *
@@ -16,34 +16,57 @@ import java.util.Locale
  */
 internal object OcrPunctuationRestorer {
     fun restore(text: String, sourceLanguageTag: String): String {
-        if (text.isBlank()) return text
+        return restore(text, sourceLanguageTag, allowSentenceEnding = true)
+    }
+
+    /** Restores each OCR detector block independently using the same rules. */
+    fun restoreBlocks(blocks: List<String>, sourceLanguageTag: String): List<String> {
+        return blocks.map { block ->
+            restore(block, sourceLanguageTag, allowSentenceEnding = true)
+        }
+    }
+
+    fun restore(
+        text: String,
+        sourceLanguageTag: String,
+        allowSentenceEnding: Boolean,
+    ): String {
+        if (text.isBlank() || text.length > MAX_INPUT_LENGTH) return text
 
         val language = primaryLanguage(sourceLanguageTag)
         val protected = ProtectedTextCodec.protect(text)
-        val withLineBoundaries = restoreHardLineBoundaries(
-            text = protected.encoded,
-            protected = protected,
-            language = language,
-        )
+        val withLineBoundaries = if (allowSentenceEnding) {
+            restoreParagraphBoundaries(
+                text = protected.encoded,
+                protected = protected,
+                language = language,
+            )
+        } else {
+            protected.encoded
+        }
         val withClosedPairs = closeUnmatchedPairs(
             text = withLineBoundaries,
             protected = protected,
             language = language,
         )
-        val restored = restoreBlockEnding(
-            text = withClosedPairs,
-            protected = protected,
-            language = language,
-        )
+        val restored = if (allowSentenceEnding && !containsSoftLineBreak(withClosedPairs)) {
+            restoreBlockEnding(
+                text = withClosedPairs,
+                protected = protected,
+                language = language,
+            )
+        } else {
+            withClosedPairs
+        }
         return protected.restore(restored)
     }
 
-    private fun restoreHardLineBoundaries(
+    private fun restoreParagraphBoundaries(
         text: String,
         protected: ProtectedTextCodec.ProtectedText,
         language: String,
     ): String {
-        val breaks = LINE_BREAK.findAll(text).toList()
+        val breaks = PARAGRAPH_BREAK.findAll(text).toList()
         if (breaks.isEmpty()) return text
 
         return buildString(text.length + breaks.size) {
@@ -54,7 +77,7 @@ internal object OcrPunctuationRestorer {
                 val nextEnd = breaks.getOrNull(index + 1)?.range?.first ?: text.length
                 val nextLine = text.substring(nextStart, nextEnd)
                 append(
-                    if (shouldTerminateLine(line, nextLine, protected, language)) {
+                    if (shouldTerminateParagraph(line, nextLine, protected, language)) {
                         insertTerminal(line, terminalFor(language))
                     } else {
                         line
@@ -67,7 +90,7 @@ internal object OcrPunctuationRestorer {
         }
     }
 
-    private fun shouldTerminateLine(
+    private fun shouldTerminateParagraph(
         line: String,
         nextLine: String,
         protected: ProtectedTextCodec.ProtectedText,
@@ -77,6 +100,7 @@ internal object OcrPunctuationRestorer {
         val left = protected.withoutProtectedValues(line)
         val right = protected.withoutProtectedValues(nextLine)
         if (!isSentenceLike(left, language, strict = true) ||
+            !hasStrongTerminalForm(left, language) ||
             !isSentenceLike(right, language, strict = true)
         ) return false
 
@@ -156,15 +180,17 @@ internal object OcrPunctuationRestorer {
     private fun isChineseSentenceLike(text: String, strict: Boolean): Boolean {
         val count = countScripts(text, HAN)
         if (count < if (strict) STRICT_CJK_LETTERS else MIN_ZH_LETTERS) return false
-        return strict || ZH_SENTENCE_SIGNALS.any(text::contains) ||
-            ZH_SENTENCE_ENDINGS.any(text::endsWith)
+        return isChineseImperative(text) ||
+            ZH_SENTENCE_ENDINGS.any(text::endsWith) ||
+            (ZH_CLAUSE_SIGNALS.any(text::contains) && ZH_PREDICATE_ENDINGS.any(text::endsWith)) ||
+            ZH_VALUE_PREDICATE_ENDINGS.any(text::endsWith)
     }
 
     private fun isJapaneseSentenceLike(text: String, strict: Boolean): Boolean {
         val kana = countScripts(text, HIRAGANA, KATAKANA)
         val cjk = kana + countScripts(text, HAN)
         if (kana == 0 || cjk < if (strict) STRICT_CJK_LETTERS else MIN_JA_LETTERS) return false
-        return strict || JA_SENTENCE_ENDINGS.any(text::endsWith)
+        return JA_SENTENCE_ENDINGS.any(text::endsWith)
     }
 
     private fun isLatinSentenceLike(text: String, strict: Boolean): Boolean {
@@ -174,18 +200,49 @@ internal object OcrPunctuationRestorer {
         val minimumLetters = if (strict) STRICT_LATIN_LETTERS else MIN_LATIN_LETTERS
         if (words.size < minimumWords || letterCount < minimumLetters) return false
 
-        // Three-word noun phrases are common settings labels. A short block is
-        // treated as a sentence only when it carries a small grammatical signal.
-        if (!strict && words.size <= SHORT_LATIN_LABEL_WORD_LIMIT) {
-            val normalized = words.map { it.lowercase(Locale.ROOT) }
-            val hasSignal = normalized.any { word ->
-                word in SHORT_SENTENCE_SIGNALS ||
-                    word.endsWith("ed") ||
-                    word.endsWith("ing")
-            }
-            if (!hasSignal) return false
+        val normalized = words.map { it.lowercase(Locale.ROOT) }
+        val withoutPoliteness = normalized.dropWhile { it == "please" }
+        if (withoutPoliteness.take(2) == listOf("open", "source")) return false
+
+        val hasFiniteClause = normalized.withIndex().any { (index, word) ->
+            index > 0 && (
+                word in LATIN_AUXILIARIES ||
+                    (word in LATIN_FINITE_VERBS &&
+                        (index >= 2 || normalized.take(index).any(LATIN_SUBJECT_LEADS::contains)))
+                )
         }
-        return true
+        val imperativeOffset = if (normalized.firstOrNull() == "please") 1 else 0
+        val imperative = normalized.getOrNull(imperativeOffset) in LATIN_IMPERATIVE_VERBS &&
+            (imperativeOffset == 1 || normalized.getOrNull(1) in LATIN_IMPERATIVE_OBJECT_LEADS)
+        return hasFiniteClause || imperative
+    }
+
+    private fun isChineseImperative(text: String): Boolean =
+        ZH_IMPERATIVE_PREFIXES.any(text::startsWith) ||
+            (text.startsWith("请在") && ZH_IMPERATIVE_VERBS.any(text::contains))
+
+    private fun hasStrongTerminalForm(text: String, language: String): Boolean {
+        val trimmed = text.trim()
+        return when (language) {
+            "zh" -> ZH_SENTENCE_ENDINGS.any(trimmed::endsWith) ||
+                (ZH_CLAUSE_SIGNALS.any(trimmed::contains) &&
+                    ZH_PREDICATE_ENDINGS.any(trimmed::endsWith))
+            "ja" -> JA_SENTENCE_ENDINGS.any(trimmed::endsWith)
+            else -> {
+                val words = LATIN_WORD.findAll(trimmed)
+                    .map { it.value.lowercase(Locale.ROOT) }
+                    .toList()
+                val last = words.lastOrNull()
+                val previous = words.getOrNull(words.lastIndex - 1)
+                last in LATIN_STRONG_FINAL_VERBS ||
+                    (previous in LATIN_AUXILIARIES && last in LATIN_STRONG_PREDICATES)
+            }
+        }
+    }
+
+    private fun containsSoftLineBreak(text: String): Boolean {
+        val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+        return SINGLE_LINE_BREAK.containsMatchIn(normalized)
     }
 
     private fun firstSourceLetter(text: String, language: String): Char? = text.firstOrNull { char ->
@@ -239,7 +296,8 @@ internal object OcrPunctuationRestorer {
 
     private fun terminalFor(language: String): Char = if (language in CJK_LANGUAGES) '。' else '.'
 
-    private val LINE_BREAK = Regex("\\r\\n|\\r|\\n")
+    private val PARAGRAPH_BREAK = Regex("(?:\\r\\n|\\r|\\n)[ \\t]*(?:\\r\\n|\\r|\\n)+")
+    private val SINGLE_LINE_BREAK = Regex("(?<!\\n)\\n(?!\\n)")
     private val LATIN_WORD = Regex("[\\p{L}]+(?:['’][\\p{L}]+)?")
     private val CODE_SIGNAL = Regex("(?:[{}=]|->|::|[/\\\\]{2,}|^[A-Z0-9_]{2,}$)")
     private val PAIRS = linkedMapOf(
@@ -256,21 +314,59 @@ internal object OcrPunctuationRestorer {
     private val TERMINAL_OR_BOUNDARY = setOf('.', '!', '?', '。', '！', '？', '…', ':', '：', ';', '；', ',', '，')
     private val NON_SENTENCE_TRAILING = setOf('/', '\\', '|', '=', '+', '-', '_', ':', '：', ';', '；', ',', '，')
     private val CJK_LANGUAGES = setOf("zh", "ja")
-    private val SHORT_SENTENCE_SIGNALS = setOf(
-        "a", "an", "the", "i", "you", "he", "she", "it", "we", "they",
-        "me", "him", "her", "us", "them", "is", "am", "are", "was", "were",
-        "be", "been", "do", "does", "did", "will", "would", "can", "could",
-        "should", "must", "open", "close", "select", "choose", "tap", "press",
-        "come", "go", "stop", "start", "try", "wait", "run", "save", "delete",
+    private val LATIN_AUXILIARIES = setOf(
+        "am", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would",
+        "can", "could", "shall", "should", "may", "might", "must",
     )
-    private val ZH_SENTENCE_SIGNALS = setOf(
-        "是", "有", "会", "将", "已", "正在", "可以", "需要", "请", "打开", "关闭",
-        "选择", "点击", "开始", "停止", "保持", "支持", "使用", "显示", "保存", "删除",
-        "允许", "确认", "检查", "安装", "访问", "查看", "翻译", "处理", "完成", "阅读",
+    private val LATIN_FINITE_VERBS = setOf(
+        "agree", "agrees", "agreed", "arrive", "arrives", "arrived",
+        "begin", "begins", "began", "complete", "completes", "completed",
+        "continue", "continues", "continued", "cross", "crosses", "crossed",
+        "end", "ends", "ended", "fail", "fails", "failed", "finish", "finishes", "finished",
+        "inspect", "inspects", "inspected", "keep", "keeps", "kept",
+        "preserve", "preserves", "preserved", "record", "records", "recorded",
+        "remain", "remains", "remained", "reopen", "reopens", "reopened",
+        "report", "reports", "reported", "run", "runs", "ran", "start", "starts", "started",
+        "stop", "stops", "stopped", "succeed", "succeeds", "succeeded",
+        "work", "works", "worked",
     )
+    private val LATIN_IMPERATIVE_VERBS = setOf(
+        "choose", "close", "confirm", "delete", "download", "install", "open",
+        "press", "read", "save", "select", "tap", "use", "visit", "wait",
+    )
+    private val LATIN_IMPERATIVE_OBJECT_LEADS = setOf(
+        "a", "an", "the", "this", "that", "these", "those", "your", "my", "our",
+    )
+    private val LATIN_SUBJECT_LEADS = LATIN_IMPERATIVE_OBJECT_LEADS + setOf(
+        "i", "you", "he", "she", "it", "we", "they", "there",
+    )
+    private val LATIN_STRONG_FINAL_VERBS = setOf(
+        "agreed", "arrived", "began", "completed", "continued", "ended", "failed",
+        "finished", "passed", "remained", "reported", "started", "stopped", "succeeded",
+    )
+    private val LATIN_STRONG_PREDICATES = setOf(
+        "active", "available", "closed", "complete", "done", "finished", "open",
+        "ready", "running", "stable", "stopped", "working",
+    )
+    private val ZH_CLAUSE_SIGNALS = setOf(
+        "已经", "正在", "仍然", "依然", "将会", "会", "将", "可以", "必须", "需要", "均已",
+    )
+    private val ZH_IMPERATIVE_PREFIXES = setOf(
+        "请打开", "请关闭", "请选择", "请点击", "请安装", "请访问",
+        "请查看", "请阅读", "请确认", "请等待", "请保持", "请使用", "请下载",
+    )
+    private val ZH_IMPERATIVE_VERBS = setOf(
+        "打开", "关闭", "选择", "点击", "安装", "访问", "查看", "阅读", "确认", "使用", "下载",
+    )
+    private val ZH_PREDICATE_ENDINGS = setOf(
+        "开始", "停止", "完成", "结束", "就绪", "生效", "失败", "成功", "解除", "恢复", "继续",
+    )
+    private val ZH_VALUE_PREDICATE_ENDINGS = setOf("为", "是", "达到", "约为", "等于", "保持在")
     private val ZH_SENTENCE_ENDINGS = setOf("了", "吗", "呢", "吧", "着", "过")
     private val JA_SENTENCE_ENDINGS = setOf(
-        "です", "ます", "でした", "ました", "ません", "ない", "ください", "する", "した",
+        "です", "ですか", "でした", "だった", "でしょう", "ます", "ますか",
+        "ました", "ません", "ませんでした", "ない", "なかった", "ください", "した",
     )
     private val HAN = Character.UnicodeScript.HAN
     private val HIRAGANA = Character.UnicodeScript.HIRAGANA
@@ -284,5 +380,5 @@ internal object OcrPunctuationRestorer {
     private const val MIN_ZH_LETTERS = 6
     private const val MIN_JA_LETTERS = 5
     private const val STRICT_CJK_LETTERS = 8
-    private const val SHORT_LATIN_LABEL_WORD_LIMIT = 6
+    internal const val MAX_INPUT_LENGTH = 65_536
 }

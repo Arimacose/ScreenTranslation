@@ -158,10 +158,12 @@ class FrameProcessor(
                             recognition.text.lineSequence().toList()
                         }
                     }
+                    val restoredBlocks = OcrPunctuationRestorer.restoreBlocks(
+                        recognitionBlocks,
+                        sourceLanguageTag,
+                    )
                     val filteredBlocks = SourceTextFilter.filterBlocks(
-                        blocks = recognitionBlocks.map { block ->
-                            OcrPunctuationRestorer.restore(block, sourceLanguageTag)
-                        },
+                        blocks = restoredBlocks,
                         sourceLanguageTag = sourceLanguageTag,
                         targetLanguageTag = targetLanguageTag,
                     )
