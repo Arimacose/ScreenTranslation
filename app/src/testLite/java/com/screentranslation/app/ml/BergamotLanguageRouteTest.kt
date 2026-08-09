@@ -374,17 +374,59 @@ class BergamotLanguageRouteTest {
         var checks = 0
 
         org.junit.Assert.assertThrows(IllegalStateException::class.java) {
-            resolveBergamotModelDownloadState(
+            isBergamotModelPreparedAndStable(
                 root = root,
-                spec = spec,
-                hasPartial = false,
-                checkActive = {
+                model = spec,
+                checkOpen = {
                     checks += 1
-                    check(checks < 3) { "inventory stopped" }
+                    // Calls 1-3 cover the stable-verifier and per-file setup;
+                    // call 4 enters the first 1 MiB hash chunk and call 5
+                    // proves cancellation is polled again before the next chunk.
+                    check(checks < 5) { "inventory stopped during hash" }
                 },
+                preparationIdentityProvider = { "stable-artifact" },
             )
         }
-        assertTrue(checks >= 3)
+        assertEquals(5, checks)
+    }
+
+    @Test
+    fun canonicalReadyStateWinsOverStalePartialArtifact() {
+        val root = temporaryFolder.newFolder("bergamot-ready-with-stale-part")
+        val bytes = byteArrayOf(2, 0, 2, 6)
+        val expectedHash = sha256(bytes)
+        val spec = BergamotModelSpec(
+            id = "ready-model",
+            baseUrl = "https://HOST/models/ready/exported",
+            files = listOf(
+                BergamotFileSpec(
+                    compressedName = "model.bin.gz",
+                    compressedSize = bytes.size.toLong(),
+                    compressedSha256 = expectedHash,
+                    outputName = "model.bin",
+                    outputSize = bytes.size.toLong(),
+                    outputSha256 = expectedHash,
+                ),
+            ),
+            configText = "models: []\n",
+        )
+        val directory = File(root, spec.id).apply { mkdirs() }
+        File(directory, spec.files.single().outputName).writeBytes(bytes)
+        File(directory, "${spec.files.single().outputName}.sha256").writeText(expectedHash)
+        File(directory, "${spec.files.single().compressedName}.part")
+            .writeBytes(byteArrayOf(1))
+
+        assertEquals(
+            ModelDownloadState.READY,
+            resolveBergamotModelDownloadState(root, spec, hasPartial = true),
+        )
+
+        File(directory, spec.files.single().outputName).writeBytes(byteArrayOf(6, 2, 0, 2))
+
+        assertEquals(
+            ModelDownloadState.PARTIAL,
+            resolveBergamotModelDownloadState(root, spec, hasPartial = true),
+        )
     }
 
     @Test

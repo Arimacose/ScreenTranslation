@@ -58,16 +58,14 @@ internal fun resolveBergamotModelDownloadState(
     checkActive: () -> Unit = {},
 ): ModelDownloadState {
     checkActive()
-    if (hasPartial) return ModelDownloadState.PARTIAL
-    return if (
-        isBergamotModelPreparedAndStable(
-            root = root,
-            model = spec,
-            checkOpen = checkActive,
-        )
-    ) {
-        ModelDownloadState.READY
-    } else {
-        ModelDownloadState.NOT_DOWNLOADED
+    val ready = isBergamotModelPreparedAndStable(
+        root = root,
+        model = spec,
+        checkOpen = checkActive,
+    )
+    return when {
+        ready -> ModelDownloadState.READY
+        hasPartial -> ModelDownloadState.PARTIAL
+        else -> ModelDownloadState.NOT_DOWNLOADED
     }
 }
