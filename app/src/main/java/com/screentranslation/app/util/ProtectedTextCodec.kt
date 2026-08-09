@@ -1,11 +1,13 @@
 package com.screentranslation.app.util
 
 import java.security.MessageDigest
+import java.util.Locale
+import java.util.TreeMap
 
 /**
  * Replaces translation-sensitive values with deterministic opaque tokens.
  *
- * OCR text often contains URLs, dates, prices, and software versions that are
+ * OCR text often contains URLs, dates, prices, decimals, and software versions that are
  * already meaningful in the target language. Keeping them outside the model
  * prevents punctuation changes, digit grouping changes, and accidental
  * localization. The original text remains available separately for display.
@@ -16,11 +18,49 @@ object ProtectedTextCodec {
         val encoded: String,
         private val replacements: List<Pair<String, String>>,
     ) {
+        private val exactTokens = replacements.mapTo(hashSetOf()) { it.first }
+        private val valuesByBody = replacements.associate { (token, value) ->
+            tokenBody(token).lowercase(Locale.ROOT) to value
+        }
+        private val tolerantToken = replacements.firstOrNull()?.first?.let { firstToken ->
+            val familyPrefix = tokenBody(firstToken).substringBeforeLast('_')
+            val bodyPattern = asciiCaseInsensitivePattern(familyPrefix) + "_[0-9]{4}"
+            Regex(
+                pattern = """(?:(?:⟦|\[|\(|\{)\s*($bodyPattern)\s*(?:⟧|\]|\)|\})|(?<![\p{L}\p{N}_])($bodyPattern)(?![\p{L}\p{N}_]))""",
+            )
+        }
+
         val hasReplacements: Boolean
             get() = replacements.isNotEmpty()
 
-        fun restore(translated: String): String = replacements.fold(translated) { text, item ->
-            restoreToken(text, item.first, item.second)
+        /** Removes only this instance's exact tokens for punctuation heuristics. */
+        internal fun withoutProtectedValues(text: String = encoded): String {
+            if (exactTokens.isEmpty()) return text
+
+            return buildString(text.length) {
+                var cursor = 0
+                while (cursor < text.length) {
+                    val open = text.indexOf(TOKEN_OPEN, cursor)
+                    if (open < 0) {
+                        append(text, cursor, text.length)
+                        break
+                    }
+                    append(text, cursor, open)
+                    val close = text.indexOf(TOKEN_CLOSE, open + TOKEN_OPEN.length)
+                    if (close < 0) {
+                        append(text, open, text.length)
+                        break
+                    }
+                    val tokenEnd = close + TOKEN_CLOSE.length
+                    val token = text.substring(open, tokenEnd)
+                    if (token in exactTokens) {
+                        append(' ')
+                    } else {
+                        append(token)
+                    }
+                    cursor = tokenEnd
+                }
+            }
         }
 
         /**
@@ -29,14 +69,12 @@ object ProtectedTextCodec {
          * body with either wrapper (or no wrapper) so internal STP markers
          * never leak into user-visible translations.
          */
-        private fun restoreToken(text: String, token: String, value: String): String {
-            val body = token.removePrefix(TOKEN_OPEN).removeSuffix(TOKEN_CLOSE)
-            val escapedBody = Regex.escape(body)
-            val tolerantToken = Regex(
-                pattern = """(?:(?:⟦|\[|\(|\{)\s*$escapedBody\s*(?:⟧|\]|\)|\})|(?<![\p{L}\p{N}_])$escapedBody(?![\p{L}\p{N}_]))""",
-                option = RegexOption.IGNORE_CASE,
-            )
-            return tolerantToken.replace(text) { value }
+        fun restore(translated: String): String {
+            val matcher = tolerantToken ?: return translated
+            return matcher.replace(translated) { match ->
+                val body = match.groups[1]?.value ?: match.groups[2]?.value
+                body?.lowercase(Locale.ROOT)?.let(valuesByBody::get) ?: match.value
+            }
         }
     }
 
@@ -49,10 +87,13 @@ object ProtectedTextCodec {
         if (text.isEmpty()) return ProtectedText(text, text, emptyList())
 
         val selected = mutableListOf<Match>()
-        PATTERNS.forEach { pattern ->
-            pattern.findAll(text).forEach { candidate ->
-                if (selected.none { it.range.overlaps(candidate.range) }) {
+        val acceptedRanges = TreeMap<Int, Int>()
+        patternLoop@ for (pattern in PATTERNS) {
+            for (candidate in pattern.findAll(text)) {
+                if (selected.size >= MAX_PROTECTED_VALUES) break@patternLoop
+                if (!acceptedRanges.overlaps(candidate.range)) {
                     selected += Match(candidate.range, candidate.value)
+                    acceptedRanges[candidate.range.first] = candidate.range.last
                 }
             }
         }
@@ -86,19 +127,41 @@ object ProtectedTextCodec {
         return prefix
     }
 
-    private fun IntRange.overlaps(other: IntRange): Boolean =
-        first <= other.last && other.first <= last
+    private fun TreeMap<Int, Int>.overlaps(range: IntRange): Boolean {
+        val before = floorEntry(range.first)
+        if (before != null && before.value >= range.first) return true
+        val after = ceilingEntry(range.first)
+        return after != null && after.key <= range.last
+    }
+
+    private fun tokenBody(token: String): String =
+        token.removePrefix(TOKEN_OPEN).removeSuffix(TOKEN_CLOSE)
+
+    /** Builds ASCII-only case matching without JVM-version-dependent Unicode folding. */
+    private fun asciiCaseInsensitivePattern(value: String): String = buildString(value.length * 2) {
+        value.forEach { character ->
+            when (character) {
+                in 'a'..'z' -> append('[').append(character.uppercaseChar()).append(character).append(']')
+                in 'A'..'Z' -> append('[').append(character).append(character.lowercaseChar()).append(']')
+                else -> append(Regex.escape(character.toString()))
+            }
+        }
+    }
 
     /** Earlier patterns win when two candidates overlap. */
     private val PATTERNS = listOf(
-        Regex("""(?i)\b(?:https?://|www\.)[^\s<>{}\[\]\"']*[A-Za-z0-9/#]"""),
-        Regex("""(?i)(?<![\p{L}\p{N}._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\p{L}\p{N}._%+-])"""),
-        Regex("""(?i)(?<![\p{L}\p{N}@._-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?:/[^\s<>{}\[\]\"']*)?(?![\p{L}\p{N}._-])"""),
+        Regex("""(?<![A-Za-z0-9])(?:[Hh][Tt][Tt][Pp][Ss]?://|[Ww][Ww][Ww]\.)[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]*[A-Za-z0-9/#]"""),
+        Regex("""(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9._%+-])"""),
+        Regex("""(?<![A-Za-z0-9@._-])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}(?:/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]*[A-Za-z0-9/#])?(?![A-Za-z0-9._-])"""),
         Regex("""(?<!\d)(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{4}年\d{1,2}月\d{1,2}日?)(?!\d)"""),
-        Regex("""(?i)(?:[$€£¥￥]\s?\d+(?:[,\s]\d{3})*(?:\.\d+)?|(?:CNY|RMB|USD|EUR|GBP|JPY)\s?\d+(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:[,\s]\d{3})*(?:\.\d+)?\s?(?:CNY|RMB|USD|EUR|GBP|JPY|元|円|日元|人民币|美元|欧元|英镑))"""),
-        Regex("""(?i)(?<![\p{L}\p{N}])v?\d+(?:\.\d+){1,4}(?:[-+][0-9A-Z.-]+)?(?![\p{L}\p{N}])"""),
+        Regex("""(?:[$€£¥￥]\s?\d+(?:[,\s]\d{3})*(?:\.\d+)?|(?:$ASCII_CURRENCY_CODE)\s?\d+(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:[,\s]\d{3})*(?:\.\d+)?\s?(?:$ASCII_CURRENCY_CODE|元|円|日元|人民币|美元|欧元|英镑))"""),
+        Regex("""(?<![0-9A-Za-z.])\d+\.\d+(?![0-9A-Za-z.])"""),
+        Regex("""(?<![0-9A-Za-z])[Vv]?\d+(?:\.\d+){1,4}(?:[-+][0-9A-Za-z.-]+)?(?![0-9A-Za-z])"""),
     )
 
+    private const val ASCII_CURRENCY_CODE =
+        "[Cc][Nn][Yy]|[Rr][Mm][Bb]|[Uu][Ss][Dd]|[Ee][Uu][Rr]|[Gg][Bb][Pp]|[Jj][Pp][Yy]"
+    private const val MAX_PROTECTED_VALUES = 2_048
     private const val TOKEN_DIGEST_BYTES = 4
     private const val TOKEN_OPEN = "⟦"
     private const val TOKEN_CLOSE = "⟧"

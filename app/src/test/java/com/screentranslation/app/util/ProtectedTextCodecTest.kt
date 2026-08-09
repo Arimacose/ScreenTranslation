@@ -30,6 +30,40 @@ class ProtectedTextCodecTest {
     }
 
     @Test
+    fun `stops an ascii url before adjacent CJK prose`() {
+        val original = "访问https://example.com/releases/2.0查看说明，误差为3.14"
+        val protected = ProtectedTextCodec.protect(original)
+
+        assertTrue(protected.hasReplacements)
+        assertTrue(protected.encoded.contains("查看说明，误差为"))
+        assertFalse(protected.encoded.contains("https://example.com/releases/2.0"))
+        assertEquals(original, protected.restore(protected.encoded))
+    }
+
+    @Test
+    fun `protects the complete zh regression payload on JDK 17 and newer`() {
+        val original = "请在2026-08-09安装v2.0.0，并访问https://example.com/releases/2.0查看说明，基准误差为3.14"
+        val protected = ProtectedTextCodec.protect(original)
+
+        listOf("2026-08-09", "v2.0.0", "https://example.com/releases/2.0", "3.14")
+            .forEach { value -> assertFalse("value leaked: $value", protected.encoded.contains(value)) }
+        assertTrue(protected.encoded.contains("访问"))
+        assertTrue(protected.encoded.contains("查看说明，基准误差为"))
+        assertEquals(original, protected.restore(protected.encoded))
+    }
+
+    @Test
+    fun `protects a bare domain between adjacent CJK prose`() {
+        val original = "访问example.com/docs查看说明"
+        val protected = ProtectedTextCodec.protect(original)
+
+        assertFalse(protected.encoded.contains("example.com/docs"))
+        assertTrue(protected.encoded.contains("访问"))
+        assertTrue(protected.encoded.contains("查看说明"))
+        assertEquals(original, protected.restore(protected.encoded))
+    }
+
+    @Test
     fun `restores a token after the translator normalizes its brackets`() {
         val protected = ProtectedTextCodec.protect(
             "Visit https://example.com/help for details.",

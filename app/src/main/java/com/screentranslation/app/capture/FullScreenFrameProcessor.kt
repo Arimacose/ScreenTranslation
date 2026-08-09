@@ -7,6 +7,7 @@ import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
+import com.screentranslation.app.util.OcrPunctuationRestorer
 import com.screentranslation.app.util.ProtectedTextCodec
 import com.screentranslation.app.util.SourceTextFilter
 import java.util.concurrent.CancellationException
@@ -194,7 +195,10 @@ class FullScreenFrameProcessor(
                     val grouped = tiles.associate { it.index to mutableListOf<ScreenTextBlock>() }
                     recognition.regions.forEach { region ->
                         val sourceText = SourceTextFilter.filter(
-                            text = region.text,
+                            text = OcrPunctuationRestorer.restore(
+                                region.text,
+                                sourceLanguageTag,
+                            ),
                             sourceLanguageTag = sourceLanguageTag,
                             targetLanguageTag = targetLanguageTag,
                         ) ?: return@forEach
@@ -267,7 +271,10 @@ class FullScreenFrameProcessor(
                 onSuccess = { recognition ->
                     tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
                         val sourceText = SourceTextFilter.filter(
-                            text = region.text,
+                            text = OcrPunctuationRestorer.restore(
+                                region.text,
+                                sourceLanguageTag,
+                            ),
                             sourceLanguageTag = sourceLanguageTag,
                             targetLanguageTag = targetLanguageTag,
                         ) ?: return@mapNotNull null

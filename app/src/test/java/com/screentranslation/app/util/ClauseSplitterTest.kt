@@ -1,5 +1,6 @@
 package com.screentranslation.app.util
 
+import kotlin.system.measureTimeMillis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -82,6 +83,28 @@ class ClauseSplitterTest {
     }
 
     @Test
+    fun `splits long English text at restored sentence terminators`() {
+        val text = "The storm crossed the northern valley before midnight while every station " +
+            "reported lower water levels. The rescue team reopened the mountain road after " +
+            "engineers inspected every bridge and radio relay."
+
+        val parts = ClauseSplitter.split(text)
+
+        assertEquals(2, parts.size)
+        assertTrue(parts.all { it.endsWith(".") })
+        assertEquals(text, parts.joinToString(" "))
+    }
+
+    @Test
+    fun `does not treat protected internal punctuation as clause boundaries`() {
+        val text = "During a deliberately extended inspection the measured value stayed at 3.14 " +
+            "beside release v2.0.0 located at https://example.com/releases/2.0 until the final " +
+            "review concluded with no separate semantic boundary"
+
+        assertEquals(listOf(text), ClauseSplitter.split(text))
+    }
+
+    @Test
     fun `prefers the longer connector over the one nested inside it`() {
         val text = "The app keeps working offline until you clear its data, in which case " +
             "the models have to be downloaded again from the network."
@@ -155,6 +178,50 @@ class ClauseSplitterTest {
             assertTrue("stub produced: '$part'", part.length >= 10)
         }
     }
+
+    @Test
+    fun `dense sentence input is selected in one monotonic pass`() {
+        val sentence = "The deterministic translation pipeline preserves every protected value " +
+            "throughout this deliberately extended sentence. "
+        val text = sentence.repeat(500).trim()
+        assertTrue(text.length in 40_000..ClauseSplitter.MAX_INPUT_LENGTH)
+
+        var parts = emptyList<String>()
+        val elapsedMs = measureTimeMillis { parts = ClauseSplitter.split(text) }
+
+        assertEquals(500, parts.size)
+        assertTrue("dense 50k sentence input took ${elapsedMs}ms", elapsedMs < 4_000)
+    }
+
+    @Test
+    fun `oversized OCR bypasses semantic scanning but never becomes a giant backend request`() {
+        val sentence = "The deterministic translation pipeline preserves every protected value " +
+            "throughout this deliberately extended sentence. "
+        val text = sentence.repeat(2_000).trim()
+        assertTrue(text.length > 200_000)
+
+        var parts = emptyList<String>()
+        val elapsedMs = measureTimeMillis { parts = ClauseSplitter.split(text) }
+
+        assertTrue(parts.size > 100)
+        assertTrue(parts.all { it.length <= ClauseSplitter.MAX_BACKEND_UNIT_LENGTH })
+        assertEquals(text.normalizeWhitespace(), parts.joinToString(" ").normalizeWhitespace())
+        assertTrue("238k bounded fallback took ${elapsedMs}ms", elapsedMs < 4_000)
+    }
+
+    @Test
+    fun `bounded fallback never cuts a protected token or value`() {
+        val url = "https://example.com/releases/2.0?channel=stable"
+        val text = ("word ".repeat(202) + url + " trailing ").repeat(80).trim()
+
+        val parts = ClauseSplitter.split(text)
+
+        assertTrue(parts.all { part -> !part.contains("STP_") })
+        assertEquals(80, parts.sumOf { part -> Regex(Regex.escape(url)).findAll(part).count() })
+        assertEquals(text.normalizeWhitespace(), parts.joinToString(" ").normalizeWhitespace())
+    }
+
+    private fun String.normalizeWhitespace(): String = trim().replace(Regex("\\s+"), " ")
 
     @Test
     fun `reassembles clauses inline while keeping OCR blocks on separate lines`() {

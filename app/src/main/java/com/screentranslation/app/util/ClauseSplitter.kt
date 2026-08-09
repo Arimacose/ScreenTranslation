@@ -58,13 +58,33 @@ object ClauseSplitter {
         val trimmed = text.trim()
         if (trimmed.length <= MAX_UNSPLIT_LENGTH) return listOf(trimmed)
 
-        val pieces = mutableListOf<String>()
-        var rest = trimmed
+        // Sentence punctuation inside URLs, decimals, dates, and versions must
+        // never become a semantic boundary. Split the encoded representation,
+        // then restore exact values independently in every resulting clause.
+        val protected = ProtectedTextCodec.protect(trimmed)
+        if (trimmed.length > MAX_INPUT_LENGTH) {
+            return chunkForBackend(protected.encoded).map(protected::restore)
+        }
 
-        while (rest.length > MAX_UNSPLIT_LENGTH) {
-            val cut = findCut(rest) ?: break
-            pieces += rest.substring(0, cut.first).trim()
-            rest = rest.substring(cut.second).trim()
+        val encoded = protected.encoded
+        val candidates = findCuts(encoded)
+        val pieces = mutableListOf<String>()
+        var cursor = 0
+        var candidateIndex = 0
+
+        while (encoded.length - cursor > MAX_UNSPLIT_LENGTH) {
+            val found = nextCut(
+                textLength = encoded.length,
+                candidates = candidates,
+                startIndex = candidateIndex,
+                cursor = cursor,
+                sentenceOnly = false,
+            ) ?: break
+            val cut = found.first
+            candidateIndex = found.second
+            pieces += encoded.substring(cursor, cut.leftEnd).trim()
+            cursor = cut.rightStart
+            while (cursor < encoded.length && encoded[cursor].isWhitespace()) cursor += 1
         }
 
         // Once a long CJK paragraph has needed splitting, keep the remaining
@@ -74,56 +94,167 @@ object ClauseSplitter {
         // above still leaves genuinely short input untouched.
         if (pieces.isNotEmpty()) {
             while (true) {
-                val cut = findCjkSentenceCut(rest) ?: break
-                pieces += rest.substring(0, cut.first).trim()
-                rest = rest.substring(cut.second).trim()
+                val found = nextCut(
+                    textLength = encoded.length,
+                    candidates = candidates,
+                    startIndex = candidateIndex,
+                    cursor = cursor,
+                    sentenceOnly = true,
+                ) ?: break
+                val cut = found.first
+                candidateIndex = found.second
+                pieces += encoded.substring(cursor, cut.leftEnd).trim()
+                cursor = cut.rightStart
+                while (cursor < encoded.length && encoded[cursor].isWhitespace()) cursor += 1
             }
         }
-        if (rest.isNotEmpty()) pieces += rest
+        if (cursor < encoded.length) pieces += encoded.substring(cursor).trim()
 
-        // Nothing usable was found; hand back the original rather than a
-        // single-element list built from a half-applied split.
-        return if (pieces.size < 2) listOf(trimmed) else pieces
+        val boundedPieces = if (pieces.size < 2) {
+            chunkForBackend(encoded)
+        } else {
+            pieces.flatMap(::chunkForBackend)
+        }
+        return boundedPieces.map(protected::restore)
     }
 
     /**
-     * Returns `end of left piece` to `start of right piece`, or null when no
-     * connector leaves both sides substantial enough to translate.
+     * Caps every backend request even for malformed or extremely long OCR.
+     * Whitespace is preferred; an unbroken run is hard-cut as a last resort.
+     * Opaque protected tokens are never cut in half.
      */
-    private fun findCut(text: String): Pair<Int, Int>? {
-        var best = findCjkSentenceCut(text)
+    private fun chunkForBackend(text: String): List<String> {
+        if (text.length <= MAX_BACKEND_UNIT_LENGTH) return listOf(text.trim())
 
-        for (marker in MARKERS) {
-            val at = text.indexOf(marker, startIndex = MIN_CLAUSE_LENGTH, ignoreCase = true)
-            if (at < 0) continue
+        val chunks = mutableListOf<String>()
+        var cursor = 0
+        while (text.length - cursor > MAX_BACKEND_UNIT_LENGTH) {
+            val target = cursor + MAX_BACKEND_UNIT_LENGTH
+            var cut = target
+            var whitespace = target
+            while (whitespace > cursor + MIN_HARD_CHUNK_LENGTH &&
+                !text[whitespace - 1].isWhitespace()
+            ) {
+                whitespace -= 1
+            }
+            if (whitespace > cursor + MIN_HARD_CHUNK_LENGTH) cut = whitespace
+            cut = movePastProtectedToken(text, cut)
 
-            // Drop the comma and whitespace, keep the connector itself with the
-            // right-hand clause: "and the model keeps working" reads as a clause,
-            // a bare "the model keeps working" loses the link to what precedes it.
-            val skip = if (marker.startsWith(",")) 2 else 1
-            val rightStart = at + skip
-            if (text.length - rightStart < MIN_CLAUSE_LENGTH) continue
-
-            if (best == null || at < best.first) best = at to rightStart
+            text.substring(cursor, cut).trim().takeIf(String::isNotEmpty)?.let(chunks::add)
+            cursor = cut
+            while (cursor < text.length && text[cursor].isWhitespace()) cursor += 1
         }
-        return best
+        text.substring(cursor).trim().takeIf(String::isNotEmpty)?.let(chunks::add)
+        return chunks
     }
 
-    private fun findCjkSentenceCut(text: String): Pair<Int, Int>? {
-        var best: Pair<Int, Int>? = null
-        for (terminator in CJK_SENTENCE_TERMINATORS) {
-            val at = text.indexOf(
-                terminator,
-                startIndex = MIN_CLAUSE_LENGTH,
-            )
-            if (at < 0) continue
-            val boundary = at + terminator.length
-            if (text.length - boundary < MIN_CLAUSE_LENGTH) continue
-            if (best == null || boundary < best.first) {
-                best = boundary to boundary
+    private fun movePastProtectedToken(text: String, proposedCut: Int): Int {
+        val open = text.lastIndexOf(PROTECTED_TOKEN_OPEN, startIndex = proposedCut - 1)
+        val close = text.lastIndexOf(PROTECTED_TOKEN_CLOSE, startIndex = proposedCut - 1)
+        if (open <= close) return proposedCut
+        val tokenEnd = text.indexOf(PROTECTED_TOKEN_CLOSE, startIndex = proposedCut)
+        return if (tokenEnd >= 0) tokenEnd + 1 else proposedCut
+    }
+
+    private data class Cut(
+        val leftEnd: Int,
+        val rightStart: Int,
+        val sentence: Boolean,
+        val priority: Int,
+    )
+
+    /**
+     * Finds all legal boundaries once. Selection below advances monotonically,
+     * avoiding the former repeated substring-and-rescan path on long text.
+     */
+    private fun findCuts(text: String): List<Cut> {
+        val cuts = mutableListOf<Cut>()
+        text.indices.forEach { at ->
+            val terminator = text[at]
+            if (terminator in SENTENCE_TERMINATORS) {
+                sentenceBoundary(text, at, terminator)?.let { boundary ->
+                    cuts += Cut(
+                        leftEnd = boundary.first,
+                        rightStart = boundary.second,
+                        sentence = true,
+                        priority = SENTENCE_PRIORITY,
+                    )
+                }
             }
         }
-        return best
+
+        MARKERS.forEachIndexed { priority, marker ->
+            var at = text.indexOf(marker, ignoreCase = true)
+            while (at >= 0) {
+                // Drop the comma and whitespace, keep the connector itself with
+                // the right clause so its relationship to the left is retained.
+                val skip = if (marker.startsWith(",")) 2 else 1
+                val rightStart = at + skip
+                if (text.length - rightStart >= MIN_CLAUSE_LENGTH) {
+                    cuts += Cut(
+                        leftEnd = at,
+                        rightStart = rightStart,
+                        sentence = false,
+                        priority = priority,
+                    )
+                }
+                at = text.indexOf(marker, startIndex = at + 1, ignoreCase = true)
+            }
+        }
+
+        return cuts.sortedWith(compareBy(Cut::leftEnd, Cut::priority, Cut::rightStart))
+    }
+
+    /** Returns the next boundary and the monotonic candidate cursor. */
+    private fun nextCut(
+        textLength: Int,
+        candidates: List<Cut>,
+        startIndex: Int,
+        cursor: Int,
+        sentenceOnly: Boolean,
+    ): Pair<Cut, Int>? {
+        var index = startIndex
+        while (index < candidates.size) {
+            val candidate = candidates[index]
+            index += 1
+            if (candidate.rightStart <= cursor) continue
+            if (candidate.leftEnd - cursor < MIN_CLAUSE_LENGTH) continue
+            if (textLength - candidate.rightStart < MIN_CLAUSE_LENGTH) continue
+            if (sentenceOnly && !candidate.sentence) continue
+            return candidate to index
+        }
+        return null
+    }
+
+    private fun sentenceBoundary(
+        text: String,
+        at: Int,
+        terminator: Char,
+    ): Pair<Int, Int>? {
+        if (terminator == '.' && isLatinAbbreviation(text, at)) return null
+
+        var leftEnd = at + 1
+        // Treat ellipses and trailing quotes/brackets as part of the left unit.
+        while (leftEnd < text.length && text[leftEnd] in REPEATED_TERMINATORS) leftEnd += 1
+        while (leftEnd < text.length && text[leftEnd] in SENTENCE_CLOSERS) leftEnd += 1
+
+        var rightStart = leftEnd
+        if (terminator in LATIN_SENTENCE_TERMINATORS) {
+            // A Latin full stop is a sentence boundary only when followed by
+            // whitespace. Protected values have already been tokenized, while
+            // this guard bounds false positives such as initials and filenames.
+            if (rightStart >= text.length || !text[rightStart].isWhitespace()) return null
+        }
+        while (rightStart < text.length && text[rightStart].isWhitespace()) rightStart += 1
+        if (text.length - rightStart < MIN_CLAUSE_LENGTH) return null
+        return leftEnd to rightStart
+    }
+
+    private fun isLatinAbbreviation(text: String, at: Int): Boolean {
+        var wordStart = at
+        while (wordStart > 0 && text[wordStart - 1].isLetter()) wordStart -= 1
+        val word = text.substring(wordStart, at).lowercase()
+        return word.length == 1 || word in LATIN_ABBREVIATIONS
     }
 
     /**
@@ -143,12 +274,27 @@ object ClauseSplitter {
         " and ", " but ", " so ", " yet ",
     )
 
-    /** Preserve Japanese/CJK sentence punctuation on the left-hand unit. */
-    private val CJK_SENTENCE_TERMINATORS = listOf("。", "！", "？")
+    /** Preserve sentence punctuation on the left-hand translation unit. */
+    private val SENTENCE_TERMINATORS = setOf('。', '！', '？', '.', '!', '?')
+    private val LATIN_SENTENCE_TERMINATORS = setOf('.', '!', '?')
+    private val REPEATED_TERMINATORS = setOf('.', '!', '?', '。', '！', '？', '…')
+    private val SENTENCE_CLOSERS = setOf('"', '\'', '”', '’', ')', ']', '}', '）', '］', '｝', '」', '』', '】', '》', '〉')
+    private val LATIN_ABBREVIATIONS = setOf(
+        "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
+        "fig", "no", "dept", "inc", "ltd",
+    )
 
     /** Below this the model was never in trouble, so leave the text intact. */
     private const val MAX_UNSPLIT_LENGTH = 90
 
     /** A fragment shorter than this carries too little context to translate. */
     private const val MIN_CLAUSE_LENGTH = 20
+
+    /** Above this, skip semantic scanning and go directly to bounded backend chunks. */
+    internal const val MAX_INPUT_LENGTH = 65_536
+    internal const val MAX_BACKEND_UNIT_LENGTH = 1_024
+    private const val MIN_HARD_CHUNK_LENGTH = MAX_BACKEND_UNIT_LENGTH / 2
+    private const val PROTECTED_TOKEN_OPEN = '⟦'
+    private const val PROTECTED_TOKEN_CLOSE = '⟧'
+    private const val SENTENCE_PRIORITY = -1
 }

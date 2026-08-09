@@ -30,6 +30,7 @@ go.sum text eol=lf
 Dockerfile text eol=lf
 .dockerignore text eol=lf
 *.txt text eol=lf
+*.tsv text eol=lf
 
 # Keep third-party license snapshots byte-for-byte identical to their upstream
 # sources. Some canonical notices intentionally contain trailing spaces or

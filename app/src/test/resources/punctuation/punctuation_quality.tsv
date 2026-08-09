@@ -1,0 +1,37 @@
+id	language	category	raw	expected	expected_clauses	protected_values
+en-paragraph	en	boundary	The storm had already crossed the northern valley before midnight when every weather station confirmed that the final warning had ended\n\nAt sunrise the rescue team had reopened the mountain road following a complete inspection after every safety check was complete	The storm had already crossed the northern valley before midnight when every weather station confirmed that the final warning had ended.\n\nAt sunrise the rescue team had reopened the mountain road following a complete inspection after every safety check was complete.	2	-
+en-curly-quote	en	pair	“The northern gate remains closed while engineers inspect the damaged bridge	“The northern gate remains closed while engineers inspect the damaged bridge.”	1	-
+en-parenthesis	en	pair	Use the advanced settings (recommended for large subtitles	Use the advanced settings (recommended for large subtitles).	1	-
+en-protected	en	protected	Please download version v2.0.0 on 2026-08-09 from https://example.com/releases/2.0?channel=stable at 3.14 MB per second	Please download version v2.0.0 on 2026-08-09 from https://example.com/releases/2.0?channel=stable at 3.14 MB per second.	1	v2.0.0|2026-08-09|https://example.com/releases/2.0?channel=stable|3.14
+en-label	en	false-positive	Privacy and security	Privacy and security	1	-
+en-existing	en	already-punctuated	The translation stays on the device and preserves the original sentence.	The translation stays on the device and preserves the original sentence.	1	-
+zh-paragraph	zh	boundary	暴雨已经越过北部山谷，沿途监测站确认主要河道水位稳定回落，居民面临的风险已经解除，当地交通和公共服务也已经恢复\n\n救援队在清晨重新开放了通往山区的道路，桥梁和应急供电设备的所有检查已经完成，全部记录和复核流程也已经完成	暴雨已经越过北部山谷，沿途监测站确认主要河道水位稳定回落，居民面临的风险已经解除，当地交通和公共服务也已经恢复。\n\n救援队在清晨重新开放了通往山区的道路，桥梁和应急供电设备的所有检查已经完成，全部记录和复核流程也已经完成。	2	-
+zh-curly-quote	zh	pair	“模型准备完成后，下一帧的识别和翻译已经完成	“模型准备完成后，下一帧的识别和翻译已经完成。”	1	-
+zh-book-bracket	zh	pair	请阅读《屏幕翻译项目的长期维护与发布指南	请阅读《屏幕翻译项目的长期维护与发布指南》。	1	-
+zh-protected	zh	protected	请在2026-08-09安装v2.0.0，并访问https://example.com/releases/2.0查看说明，基准误差为3.14	请在2026-08-09安装v2.0.0，并访问https://example.com/releases/2.0查看说明，基准误差为3.14。	1	2026-08-09|v2.0.0|https://example.com/releases/2.0|3.14
+zh-label	zh	false-positive	隐私和安全	隐私和安全	1	-
+zh-existing	zh	already-punctuated	模型准备完成后会自动开始翻译。	模型准备完成后会自动开始翻译。	1	-
+ja-paragraph	ja	boundary	強い雨は真夜中までに北部の谷を通過し、観測所は主要な河川の水位が安定して低下したことを確認しました\n\n救助隊は夜明けに山間部へ続く道路を再開し、橋と通信設備の動作状況を順番に確認しました	強い雨は真夜中までに北部の谷を通過し、観測所は主要な河川の水位が安定して低下したことを確認しました。\n\n救助隊は夜明けに山間部へ続く道路を再開し、橋と通信設備の動作状況を順番に確認しました。	2	-
+ja-corner-quote	ja	pair	「モデルの準備が完了したら翻訳を開始します	「モデルの準備が完了したら翻訳を開始します。」	1	-
+ja-parenthesis	ja	pair	詳細設定（大きな字幕と長い文章の認識に推奨	詳細設定（大きな字幕と長い文章の認識に推奨）	1	-
+ja-protected	ja	protected	2026-08-09にv2.0.0をインストールし、https://example.com/releases/2.0で説明を確認します。測定値は3.14です	2026-08-09にv2.0.0をインストールし、https://example.com/releases/2.0で説明を確認します。測定値は3.14です。	1	2026-08-09|v2.0.0|https://example.com/releases/2.0|3.14
+ja-label	ja	false-positive	プライバシー設定	プライバシー設定	1	-
+ja-existing	ja	already-punctuated	モデルの準備が完了したら翻訳を開始します。	モデルの準備が完了したら翻訳を開始します。	1	-
+ui-en-01	en	false-positive	Notifications and control center	Notifications and control center	1	-
+ui-en-02	en	false-positive	Advanced network internet connection sharing security settings	Advanced network internet connection sharing security settings	1	-
+ui-en-03	en	false-positive	Open source licenses and third party notices	Open source licenses and third party notices	1	-
+ui-en-04	en	false-positive	Display advanced network security settings	Display advanced network security settings	1	-
+ui-en-05	en	false-positive	Application battery background activity restrictions	Application battery background activity restrictions	1	-
+ui-zh-01	zh	false-positive	通知和控制中心	通知和控制中心	1	-
+ui-zh-02	zh	false-positive	显示与亮度设置	显示与亮度设置	1	-
+ui-zh-03	zh	false-positive	应用安装权限管理	应用安装权限管理	1	-
+ui-zh-04	zh	false-positive	已下载模型管理	已下载模型管理	1	-
+ui-zh-05	zh	false-positive	翻译语言和识别设置	翻译语言和识别设置	1	-
+ui-ja-01	ja	false-positive	ネットワークとインターネット	ネットワークとインターネット	1	-
+ui-ja-02	ja	false-positive	バックグラウンドで使用する	バックグラウンドで使用する	1	-
+ui-ja-03	ja	false-positive	モデルのダウンロード設定	モデルのダウンロード設定	1	-
+ui-ja-04	ja	false-positive	翻訳を開始するアプリの設定	翻訳を開始するアプリの設定	1	-
+ui-ja-05	ja	false-positive	プライバシーとセキュリティ	プライバシーとセキュリティ	1	-
+wrap-en	en	false-positive	The application automatically wraps this long explanatory text near the right edge\nAndroid sixteen continues rendering the same sentence on the next visual line	The application automatically wraps this long explanatory text near the right edge\nAndroid sixteen continues rendering the same sentence on the next visual line	1	-
+wrap-zh	zh	false-positive	这是一个因为屏幕宽度限制而自动换行的完整说明文本\n下一行仍然属于同一个句子并且没有新的语义边界	这是一个因为屏幕宽度限制而自动换行的完整说明文本\n下一行仍然属于同一个句子并且没有新的语义边界	1	-
+wrap-ja	ja	false-positive	これは画面の幅によって自動的に折り返された一つの説明文です\n次の行も同じ文章の続きであり新しい意味の境界ではありません	これは画面の幅によって自動的に折り返された一つの説明文です\n次の行も同じ文章の続きであり新しい意味の境界ではありません	1	-
