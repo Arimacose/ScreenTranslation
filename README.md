@@ -66,6 +66,7 @@
 | Online translation | OkHttp `5.4.0` + 用户配置的 OpenAI-compatible Chat Completions |
 | Benchmark baseline | ML Kit Translate `17.0.3` |
 | Low-bit translation PoC | Hy-MT2 1.8B STQ1_0 1.25-bit + llama.cpp PR `#22836` |
+| Provider policy | 类型化语言/输入/存储/取消/性能/归属画像与中间档门禁，见 [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md) |
 
 PP-OCRv6 检测模型、识别模型和字符表随 APK/AAB 打包，运行时无需下载 OCR
 权重。首次构建会从 PaddlePaddle 官方仓库获取约 31 MB 的固定 ONNX 资产，
@@ -82,7 +83,8 @@ ML Kit 互有胜负，但中位延迟更高且峰值 RSS 约 767.63 MiB。初始
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
 Hy-MT2 1.8B Q4_K_M 已进入 Full Experimental edition；STQ1_0
-1.25-bit 仍为 standalone PoC。Q4 是当前质量上限；1.25-bit 相对
+1.25-bit 仍为受 fail-closed gate 约束的 standalone PoC：只有 llama.cpp
+格式支持合并且应用 pin 到包含该支持的 commit 后才重新开放候选验收。Q4 是当前质量上限；1.25-bit 相对
 ML Kit/Bergamot 仍有 `6.9–9.5` BLEU 优势，但只保留 Q4 的
 `88.4–93.4%` BLEU，日中关键语义检查也低于 Bergamot。
 1.25-bit 模型为 440.46 MiB、进程 HWM 约 0.88 GiB，资源比 Q4 低约 59%，
@@ -109,7 +111,8 @@ app/src/main/java/com/screentranslation/app/
 ├── ml/
 │   ├── OcrEngine.kt                 # OCR 生命周期与结果契约
 │   ├── PpOcrv6Engine.kt             # PP-OCRv6 + ONNX Runtime 生产实现
-│   └── TranslationEngine.kt         # edition 翻译接口与工厂
+│   ├── TranslationEngine.kt         # edition 翻译接口与工厂
+│   └── TranslationProviderProfile.kt # 类型化能力、STQ gate 与中间档阈值
 ├── overlay/
 │   ├── OverlayController.kt         # 框选层和译文层
 │   └── RegionSelectionView.kt       # 区域交互

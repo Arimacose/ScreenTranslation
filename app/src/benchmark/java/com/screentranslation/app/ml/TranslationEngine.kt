@@ -18,6 +18,8 @@ class TranslationEngine(
     sourceLanguage: String,
     targetLanguage: String,
 ) : TranslationBackend {
+    override val profile: TranslationProviderProfile = TranslationProviderProfiles.mlKitBenchmark
+
     private val sourceLanguageCode = requireSupportedLanguage(sourceLanguage, "source")
     private val targetLanguageCode = requireSupportedLanguage(targetLanguage, "target")
     private val passThrough = sourceLanguageCode == targetLanguageCode

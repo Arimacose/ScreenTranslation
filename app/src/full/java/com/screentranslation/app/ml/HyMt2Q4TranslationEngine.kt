@@ -32,6 +32,8 @@ class HyMt2Q4TranslationEngine(
     sourceLanguage: String,
     targetLanguage: String,
 ) : TranslationBackend {
+    override val profile: TranslationProviderProfile = TranslationProviderProfiles.hyMt2Q4Full
+
     private val appContext = context.applicationContext
     private val sourceLanguageCode = sourceLanguage.trim().lowercase(Locale.ROOT)
     private val targetLanguageCode = targetLanguage.trim().lowercase(Locale.ROOT)

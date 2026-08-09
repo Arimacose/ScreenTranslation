@@ -39,6 +39,13 @@ in the APK; Lite and Full download pinned translation weights on demand. Online 
 stable region text or stable changed blocks—not screenshots or coordinates—to the HTTPS
 endpoint configured by the user.
 
+Every backend now publishes a typed profile for language routes and pivots, input limits,
+model storage, cancellation semantics, latency/memory class, and attribution. The daily
+middle-tier thresholds and the fail-closed HY-MT2 STQ gate are documented in
+[`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md). STQ remains
+outside every edition factory until its llama.cpp format support is merged and the app pins
+a runtime commit containing that support.
+
 ## Current features
 
 - User-approved default-display capture through `MediaProjection`; no Accessibility Service.
@@ -91,6 +98,7 @@ Core design notes:
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/FULL_SCREEN_INCREMENTAL_DESIGN.md`](docs/FULL_SCREEN_INCREMENTAL_DESIGN.md)
 - [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)
+- [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md)
 - [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - [`PRIVACY.md`](PRIVACY.md)

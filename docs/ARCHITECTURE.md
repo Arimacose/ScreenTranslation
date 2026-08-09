@@ -61,6 +61,7 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 | `OcrEngine` | 为帧处理层提供统一 OCR 接口；生产实现为 `PpOcrv6Engine` | 单工作线程串行推理；关闭时释放 ORT session 与线程 |
 | `StableTextGate` | 文本规范化、去空白抖动、稳定次数门限、重复抑制 | 纯 Kotlin，可单元测试 |
 | `TranslationBackend` | 为公共流水线定义模型准备、翻译、取消与关闭接口 | edition 实现使用单工作线程；切换语言对时使旧回调失效 |
+| `TranslationProviderProfile` | 类型化声明语言/pivot、输入限制、模型存储、取消、性能等级和 attribution | 不持有 `Context`；factory 校验 profile ID 与 edition 实例一致；中间档门禁见 [TRANSLATION_PROVIDER_PROFILES.md](TRANSLATION_PROVIDER_PROFILES.md) |
 | `BergamotTranslationEngine` | Lite 的 en→zh 与 ja→en→zh 路由、模型下载/校验和 Bergamot runner 生命周期 | 仅编入 Lite；模型位于应用私有 no-backup 目录 |
 | `HyMt2Q4TranslationEngine` | Full Experimental 的多语言→简体中文提示、GGUF 下载/校验和 llama.cpp 推理 | 仅编入 Full；模型位于应用私有 no-backup 目录 |
 | `OnlineLlmTranslationEngine` | 对用户配置的 OpenAI-compatible API 执行可取消 HTTPS 请求 | 仅编入 Online；不持久化原文或译文 |
@@ -152,7 +153,9 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 
 ### 3.3 翻译
 
-- 公共服务只依赖 `TranslationBackend` 接口，具体实现由 edition source set 提供。
+- 公共服务只依赖 `TranslationBackend` 接口，具体实现由 edition source set 提供；
+  backend 的输入模式来自不可变 `TranslationProviderProfile`，factory 会拒绝 profile ID
+  与 edition 不一致的反射实例。
 - 所有翻译路径在提交前保护 URL、邮箱、日期、金额和版本号，并在展示前恢复原值；
   缓存键仍使用原始文本，避免占位 token 泄漏到 UI。
 - Lite 的固定路由是 `en→zh` 和 `ja→en→zh`。后者依次加载日英、英中两组

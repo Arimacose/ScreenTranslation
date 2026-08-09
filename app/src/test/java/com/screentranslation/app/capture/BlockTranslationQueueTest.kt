@@ -3,6 +3,8 @@ package com.screentranslation.app.capture
 import com.screentranslation.app.ml.ModelPreparationProgress
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
+import com.screentranslation.app.ml.TranslationProviderProfile
+import com.screentranslation.app.ml.TranslationProviderProfiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -107,6 +109,8 @@ private class FakeTranslationBackend : TranslationBackend {
     )
 
     val requests = mutableListOf<Request>()
+
+    override val profile: TranslationProviderProfile = TranslationProviderProfiles.bergamotLite
 
     override fun prepare(
         requireWifi: Boolean,

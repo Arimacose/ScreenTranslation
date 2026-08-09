@@ -39,6 +39,8 @@ class BergamotTranslationEngine(
     sourceLanguage: String,
     targetLanguage: String,
 ) : TranslationBackend {
+    override val profile: TranslationProviderProfile = TranslationProviderProfiles.bergamotLite
+
     private val appContext = context.applicationContext
     private val route = BergamotLanguageRoute.requireSupported(
         sourceLanguage = sourceLanguage,
