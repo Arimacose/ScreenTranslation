@@ -123,6 +123,16 @@ jobs:
         run: |
           set -euo pipefail
           source "$RUNNER_TEMP/model-benchmark-venv/bin/activate"
+          original_gradle_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          fresh_gradle_home="$RUNNER_TEMP/fresh-online-gradle-home"
+          mkdir -p "$fresh_gradle_home"
+          for reusable_dir in caches wrapper; do
+            if [[ -d "$original_gradle_home/$reusable_dir" ]]; then
+              ln -s "$original_gradle_home/$reusable_dir" \
+                "$fresh_gradle_home/$reusable_dir"
+            fi
+          done
+          export GRADLE_USER_HOME="$fresh_gradle_home"
           python tools/model-benchmark/online_failure_evidence.py \
             --output app/build/model-benchmark/translation-regression/online-failure-evidence.json
 
