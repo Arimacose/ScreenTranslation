@@ -1,1 +1,66 @@
-{"baseline":true}
+{
+  "schema_version": 1,
+  "corpus_release": "2026.08-public-v1",
+  "scored_layer": "translation_raw",
+  "comparison": {
+    "maximum_bleu_drop": 2.0,
+    "maximum_chrf_pp_drop": 2.0,
+    "maximum_critical_check_rate_drop": 0.03
+  },
+  "human_review": {
+    "minimum_raters_per_output": 2,
+    "minimum_case_coverage": 1.0,
+    "maximum_critical_error_rate": 0.02
+  },
+  "editions": {
+    "lite": {
+      "en-zh": {
+        "minimum_bleu": 34.0,
+        "minimum_chrf_pp": 24.0,
+        "minimum_critical_check_rate": 0.60,
+        "minimum_mean_adequacy": 3.5,
+        "minimum_mean_fluency": 3.5
+      },
+      "ja-zh": {
+        "minimum_bleu": 28.0,
+        "minimum_chrf_pp": 20.0,
+        "minimum_critical_check_rate": 0.70,
+        "minimum_mean_adequacy": 3.5,
+        "minimum_mean_fluency": 3.5
+      }
+    },
+    "full": {
+      "en-zh": {
+        "minimum_bleu": 44.0,
+        "minimum_chrf_pp": 31.0,
+        "minimum_critical_check_rate": 0.62,
+        "minimum_mean_adequacy": 4.0,
+        "minimum_mean_fluency": 4.0
+      },
+      "ja-zh": {
+        "minimum_bleu": 38.0,
+        "minimum_chrf_pp": 28.0,
+        "minimum_critical_check_rate": 0.68,
+        "minimum_mean_adequacy": 4.0,
+        "minimum_mean_fluency": 4.0
+      }
+    },
+    "online": {
+      "en-zh": {
+        "minimum_bleu": 50.0,
+        "minimum_chrf_pp": 36.0,
+        "minimum_critical_check_rate": 0.72,
+        "minimum_mean_adequacy": 4.2,
+        "minimum_mean_fluency": 4.2
+      },
+      "ja-zh": {
+        "minimum_bleu": 45.0,
+        "minimum_chrf_pp": 34.0,
+        "minimum_critical_check_rate": 0.72,
+        "minimum_mean_adequacy": 4.2,
+        "minimum_mean_fluency": 4.2
+      },
+      "required_failure_contract": true
+    }
+  }
+}

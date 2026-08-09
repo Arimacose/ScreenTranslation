@@ -231,14 +231,9 @@ def main() -> None:
         )
 
         output_case = {
-            key: copy.deepcopy(baseline_case[key])
-            for key in (
-                "id",
-                "source_text",
-                "reference_translation",
-                "translation_scored",
-                "render",
-            )
+            key: copy.deepcopy(value)
+            for key, value in baseline_case.items()
+            if key not in {"translation_raw", "translation_pipeline", "end_to_end"}
         }
         output_case["ocr"] = copy.deepcopy(candidate_case["ocr"])
         output_case["translation_raw"] = {
@@ -288,6 +283,11 @@ def main() -> None:
             "target_prefix": args.target_prefix,
         },
         "method": {
+            **{
+                key: copy.deepcopy(value)
+                for key, value in baseline.get("method", {}).items()
+                if key.startswith("fixture_")
+            },
             "bergamot_commit": args.bergamot_commit,
             "configuration": str(args.config.resolve()),
             "workers": args.workers,

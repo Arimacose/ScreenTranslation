@@ -19,6 +19,20 @@ BLEU_ZH = BLEU(tokenize="zh", effective_order=True)
 CHRF_PP = CHRF(word_order=2)
 
 
+def fixture_metadata(source: dict[str, Any]) -> dict[str, Any]:
+    method = source.get("method", {})
+    return {
+        key: method[key]
+        for key in (
+            "fixture_schema_version",
+            "fixture_suite",
+            "fixture_corpus_release",
+            "fixture_sha256",
+        )
+        if key in method
+    }
+
+
 CRITICAL_CHECKS: dict[str, list[dict[str, Any]]] = {
     "issue18_long_compound": [
         {
@@ -394,6 +408,7 @@ def main() -> None:
         "source_result": str(args.result_json.resolve()),
         "device": source["device"],
         "engines": source["engines"],
+        "fixture": fixture_metadata(source),
         "ocr": score_ocr(cases),
         "translation": {
             layer: score_translation_layer(cases, layer)

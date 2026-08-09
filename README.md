@@ -82,6 +82,11 @@ ML Kit 互有胜负，但中位延迟更高且峰值 RSS 约 767.63 MiB。初始
 多元英/日中报告见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
+面向后续模型替换的 `2026.08-public-v1` 回归发布已扩充为 48 条英中与 48 条
+日中，逐条登记来源/许可并固定 SHA-256；Lite/Full/Online 的自动阈值、
+protected-span 硬门、双盲充分性/流畅性量表和无 API key 的 Online 失败回放见
+[`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md)。
+
 Hy-MT2 1.8B Q4_K_M 已进入 Full Experimental edition；STQ1_0
 1.25-bit 仍为受 fail-closed gate 约束的 standalone PoC：当前 llama.cpp PR
 `#22836` 是 `OPEN`，仓库 gitlink `caa596…` 也没有 merge-ancestry 证据；只有 PR

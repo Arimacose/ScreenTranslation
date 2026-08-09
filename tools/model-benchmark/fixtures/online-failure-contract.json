@@ -1,1 +1,52 @@
-{"baseline":true}
+{
+  "schema_version": 1,
+  "license_spdx": "Apache-2.0",
+  "description": "Project-authored, offline replay contract for Online translation failures. It contains no service credentials or captured provider payloads.",
+  "cases": [
+    {
+      "id": "http_401_invalid_key",
+      "stimulus": {"kind": "http", "status": 401, "headers": {}, "body_fixture": "invalid_api_key"},
+      "expected": {"classification": "credentials", "retry": false, "maximum_attempts": 1, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_403_model_access",
+      "stimulus": {"kind": "http", "status": 403, "headers": {}, "body_fixture": "model_access_denied"},
+      "expected": {"classification": "credentials", "retry": false, "maximum_attempts": 1, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_408_request_timeout",
+      "stimulus": {"kind": "http", "status": 408, "headers": {}, "body_fixture": "request_timeout"},
+      "expected": {"classification": "temporary_service", "retry": true, "maximum_attempts": 2, "minimum_retry_delay_ms": 500, "preserve_previous_translation": true}
+    },
+    {
+      "id": "socket_read_timeout",
+      "stimulus": {"kind": "transport", "exception": "read_timeout"},
+      "expected": {"classification": "timeout", "retry": false, "maximum_attempts": 1, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_429_retry_after_seconds",
+      "stimulus": {"kind": "http", "status": 429, "headers": {"Retry-After": "2"}, "body_fixture": "rate_limited"},
+      "expected": {"classification": "rate_limit", "retry": true, "maximum_attempts": 2, "minimum_retry_delay_ms": 2000, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_500_transient",
+      "stimulus": {"kind": "http", "status": 500, "headers": {}, "body_fixture": "server_error"},
+      "expected": {"classification": "server", "retry": false, "maximum_attempts": 1, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_503_transient",
+      "stimulus": {"kind": "http", "status": 503, "headers": {}, "body_fixture": "service_unavailable"},
+      "expected": {"classification": "temporary_service", "retry": true, "maximum_attempts": 2, "minimum_retry_delay_ms": 500, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_200_malformed_json",
+      "stimulus": {"kind": "http", "status": 200, "headers": {"Content-Type": "application/json"}, "body_fixture": "malformed_json"},
+      "expected": {"classification": "protocol", "retry": false, "maximum_attempts": 1, "preserve_previous_translation": true}
+    },
+    {
+      "id": "http_200_empty_translation",
+      "stimulus": {"kind": "http", "status": 200, "headers": {"Content-Type": "application/json"}, "body_fixture": "empty_assistant_content"},
+      "expected": {"classification": "empty_output", "retry": false, "maximum_attempts": 1, "preserve_previous_translation": true}
+    }
+  ]
+}

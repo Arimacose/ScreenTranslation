@@ -107,6 +107,9 @@ Core design notes:
 - [`docs/FULL_SCREEN_INCREMENTAL_DESIGN.md`](docs/FULL_SCREEN_INCREMENTAL_DESIGN.md)
 - [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)
 - [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md)
+- [`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md) —
+  pinned public English/Japanese-to-Chinese fixtures, executable edition thresholds,
+  protected-span gates, blinded adequacy/fluency review, and key-free failure replay.
 - [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - [`PRIVACY.md`](PRIVACY.md)

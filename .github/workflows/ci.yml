@@ -40,6 +40,21 @@ jobs:
           python -B -m unittest tools/provider-admission/test_verify_translation_admission.py -v
           python -B tools/provider-admission/verify_translation_admission.py --check
 
+      - name: Verify public translation regression fixtures and gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/model-benchmark-venv"
+          source "$RUNNER_TEMP/model-benchmark-venv/bin/activate"
+          python -m pip install --disable-pip-version-check \
+            -r tools/model-benchmark/requirements.txt
+          python tools/model-benchmark/translation_regression.py validate \
+            --output app/build/model-benchmark/translation-regression/validation.json
+          python tools/model-benchmark/translation_regression.py smoke \
+            --output app/build/model-benchmark/translation-regression/harness-smoke.json
+          python -m unittest discover \
+            -s tools/model-benchmark -p "test_*.py" -v
+
       - name: Verify versioned third-party license bundle
         shell: bash
         run: |
@@ -288,6 +303,7 @@ jobs:
             app/build/outputs/mapping/liteRelease/
             app/build/outputs/mapping/fullRelease/
             app/build/outputs/mapping/onlineRelease/
+            app/build/model-benchmark/translation-regression/
           if-no-files-found: warn
           retention-days: 14
 

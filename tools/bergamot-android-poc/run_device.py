@@ -329,6 +329,11 @@ def assemble_candidate(
         )
 
     candidate["method"] = {
+        **{
+            key: copy.deepcopy(value)
+            for key, value in baseline.get("method", {}).items()
+            if key.startswith("fixture_")
+        },
         "translation_only": True,
         "translation_repetitions": runtime_meta["repetitions"],
         "latency_clock": "std::chrono::steady_clock in native process",

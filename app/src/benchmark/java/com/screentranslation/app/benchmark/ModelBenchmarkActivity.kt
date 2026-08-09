@@ -27,6 +27,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -243,6 +244,11 @@ class ModelBenchmarkActivity : Activity() {
                         .put("tags", JSONArray(fixture.tags))
                         .put("risk", fixture.risk)
                         .put("provenance", fixture.provenance)
+                        .put("provenance_id", fixture.provenanceId)
+                        .put(
+                            "reference_license_spdx",
+                            fixture.referenceLicenseSpdx,
+                        )
                         .put(
                             "critical_checks",
                             JSONArray(fixture.criticalChecks.toString()),
@@ -325,6 +331,8 @@ class ModelBenchmarkActivity : Activity() {
                         .put("translation_repetitions", repetitions)
                         .put("fixture_schema_version", fixtureSuite.schemaVersion)
                         .put("fixture_suite", fixtureSuite.id)
+                        .put("fixture_corpus_release", fixtureSuite.corpusRelease)
+                        .put("fixture_sha256", fixtureSuite.assetSha256)
                         .put(
                             "latency_clock",
                             "SystemClock.elapsedRealtimeNanos",
@@ -371,9 +379,23 @@ class ModelBenchmarkActivity : Activity() {
             "Invalid target language code: $targetLanguage"
         }
         val requestedSuite = intent.getStringExtra(EXTRA_FIXTURE_SUITE)?.trim()
-        val document = assets.open(TRANSLATION_FIXTURES_ASSET)
+        val documentText = assets.open(TRANSLATION_FIXTURES_ASSET)
             .bufferedReader(Charsets.UTF_8)
-            .use { reader -> JSONObject(reader.readText()) }
+            .use { reader -> reader.readText() }
+        val document = JSONObject(documentText)
+        val assetSha256 = MessageDigest.getInstance("SHA-256")
+            .digest(documentText.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+        val pinFields = assets.open(TRANSLATION_FIXTURES_SHA256_ASSET)
+            .bufferedReader(Charsets.US_ASCII)
+            .use { reader -> reader.readText().trim().split(Regex("\\s+")) }
+        require(
+            pinFields.size == 2 &&
+                pinFields[0] == assetSha256 &&
+                pinFields[1] == TRANSLATION_FIXTURES_ASSET,
+        ) {
+            "Translation fixture SHA-256 pin does not match packaged corpus"
+        }
         val schemaVersion = document.getInt("schema_version")
         require(schemaVersion == TRANSLATION_FIXTURE_SCHEMA_VERSION) {
             "Unsupported translation fixture schema: $schemaVersion"
@@ -426,6 +448,10 @@ class ModelBenchmarkActivity : Activity() {
                                 "provenance",
                                 "synthetic",
                             ),
+                            provenanceId = fixture.getString("provenance_id"),
+                            referenceLicenseSpdx = fixture.getString(
+                                "reference_license_spdx",
+                            ),
                             source = fixture.getString("source_text"),
                             referenceTranslations = references,
                             criticalChecks = fixture.optJSONArray(
@@ -448,6 +474,8 @@ class ModelBenchmarkActivity : Activity() {
             return TranslationFixtureSuite(
                 id = suiteId,
                 schemaVersion = schemaVersion,
+                corpusRelease = suite.getString("corpus_release"),
+                assetSha256 = assetSha256,
                 cases = fixtures,
             )
         }
@@ -835,6 +863,8 @@ class ModelBenchmarkActivity : Activity() {
     private data class TranslationFixtureSuite(
         val id: String,
         val schemaVersion: Int,
+        val corpusRelease: String,
+        val assetSha256: String,
         val cases: List<TranslationFixture>,
     )
 
@@ -844,6 +874,8 @@ class ModelBenchmarkActivity : Activity() {
         val tags: List<String>,
         val risk: String,
         val provenance: String,
+        val provenanceId: String,
+        val referenceLicenseSpdx: String,
         val source: String,
         val referenceTranslations: List<String>,
         val criticalChecks: JSONArray,
@@ -868,6 +900,7 @@ class ModelBenchmarkActivity : Activity() {
         const val REPETITIONS = 3
         const val MAX_TRANSLATION_REPETITIONS = 100
         const val TRANSLATION_FIXTURES_ASSET = "translation-fixtures.json"
+        const val TRANSLATION_FIXTURES_SHA256_ASSET = "translation-fixtures.sha256"
         const val TRANSLATION_FIXTURE_SCHEMA_VERSION = 2
         const val MODEL_TIMEOUT_SECONDS = 300L
         const val INFERENCE_TIMEOUT_SECONDS = 60L

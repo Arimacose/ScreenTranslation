@@ -54,8 +54,8 @@ This mode loads the requested suite from
 strings, and records model preparation, warm-up, translation latency, and
 process memory snapshots. The retained suites are:
 
-- `en-zh-diverse-v2`: 40 English-to-Chinese cases;
-- `ja-zh-diverse-v1`: 40 Japanese-to-Chinese cases.
+- `en-zh-diverse-v2`: 48 English-to-Chinese cases;
+- `ja-zh-diverse-v1`: 48 Japanese-to-Chinese cases.
 
 The default writes `translation-mlkit-en-zh-android.json`. Run Japanese to
 Chinese explicitly:
@@ -104,6 +104,29 @@ The scorer emits:
 BLEU/chrF++ use every available project-authored reference for a fixture and
 remain directional comparison signals rather than standalone acceptance
 criteria. Critical checks and human review remain release gates.
+
+## Public translation regression release
+
+The version-locked `2026.08-public-v1` corpus expands both retained language
+pairs to 48 cases and records SPDX/provenance for every source and Chinese
+reference. It adds explicit protected-span, subtitle, commerce, compact-UI,
+and long exception-policy cases plus a key-free Online failure replay.
+
+Validate the corpus hash, provenance, executable edition thresholds, critical
+checks, and failure contract, then run the deterministic harness smoke:
+
+```powershell
+python .\tools\model-benchmark\translation_regression.py validate
+python .\tools\model-benchmark\translation_regression.py smoke `
+  --output .\app\build\model-benchmark\translation-regression\harness-smoke.json
+```
+
+The smoke intentionally reports `release_ready: false`: reference replay tests
+the harness but is not model evidence. Real candidate promotion also requires
+the paired incumbent results and two-rater blinded adequacy/fluency review.
+The complete candidate JSON contract, Lite/Full/Online thresholds, blind bundle
+commands, rating rubric, and Online replay schema are documented in
+[`docs/TRANSLATION_QUALITY_REGRESSION.md`](../../docs/TRANSLATION_QUALITY_REGRESSION.md).
 
 ## Candidate-engine contract
 

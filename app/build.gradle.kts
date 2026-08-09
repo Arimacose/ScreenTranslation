@@ -251,6 +251,9 @@ android {
         getByName("main").assets.srcDir(
             rootProject.file("third_party/licenses/common"),
         )
+        getByName("testOnline").resources.srcDir(
+            rootProject.file("tools/model-benchmark/fixtures"),
+        )
         getByName("lite").assets.srcDir(
             rootProject.file("third_party/licenses/lite"),
         )
