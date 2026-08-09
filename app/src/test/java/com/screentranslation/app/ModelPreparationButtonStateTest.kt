@@ -167,6 +167,40 @@ class ModelPreparationButtonStateTest {
         assertEquals(1, verifier.closeCount.get())
     }
 
+    @Test
+    fun `generation completion is one shot and requires released verifier`() {
+        val controller = GenerationOwnedResourceController<CountingCloseable>()
+        val generation = controller.begin()
+        val verifier = CountingCloseable()
+
+        assertTrue(controller.install(generation, verifier))
+        assertFalse(controller.finish(generation))
+        assertTrue(controller.inFlight)
+
+        controller.release(verifier)
+
+        assertEquals(1, verifier.closeCount.get())
+        assertTrue(controller.finish(generation))
+        assertFalse(controller.finish(generation))
+        assertFalse(controller.inFlight)
+    }
+
+    @Test
+    fun `installing the same verifier twice is idempotent`() {
+        val controller = GenerationOwnedResourceController<CountingCloseable>()
+        val generation = controller.begin()
+        val verifier = CountingCloseable()
+
+        assertTrue(controller.install(generation, verifier))
+        assertTrue(controller.install(generation, verifier))
+        assertEquals(0, verifier.closeCount.get())
+
+        controller.release(verifier)
+
+        assertEquals(1, verifier.closeCount.get())
+        assertTrue(controller.finish(generation))
+    }
+
     private class CountingCloseable : AutoCloseable {
         val closeCount = AtomicInteger()
 

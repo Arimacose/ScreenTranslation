@@ -189,11 +189,14 @@ internal class GenerationOwnedResourceController<T : AutoCloseable> {
 
     fun install(expectedGeneration: Int, candidate: T): Boolean {
         val installed = synchronized(lock) {
-            if (generation == expectedGeneration && running && resource == null) {
-                resource = candidate
-                true
-            } else {
-                false
+            when {
+                generation != expectedGeneration || !running -> false
+                resource == null -> {
+                    resource = candidate
+                    true
+                }
+                resource === candidate -> true
+                else -> false
             }
         }
         if (!installed) close(candidate)
@@ -213,11 +216,11 @@ internal class GenerationOwnedResourceController<T : AutoCloseable> {
     }
 
     fun finish(expectedGeneration: Int): Boolean = synchronized(lock) {
-        if (generation != expectedGeneration) {
-            false
-        } else {
+        if (generation == expectedGeneration && running && resource == null) {
             running = false
             true
+        } else {
+            false
         }
     }
 
