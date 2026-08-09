@@ -129,6 +129,14 @@ lazy 隔离，不会在日常 factory 初始化时加载候选 admission。
 [#46](https://github.com/Arimacose/ScreenTranslation/issues/46) 的公开回归套件提供；
 本策略先固定门槛，避免看完候选结果后再移动判定线。
 
+当前 admission 明确绑定 corpus release
+`2026.08-public-v2-original-references`（SHA-256
+`043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72`）：
+英中与日中 suite 均为 48 cases，并分别从 canonical corpus 派生 64 与 62 个
+critical check IDs。source declaration、canonical JSON、SHA-256 sidecar 和生成 Kotlin
+常量由同一 verifier 产生；suite 数量、case 数量、critical ID 或 corpus bytes 任一漂移
+都会保持 fail-closed。
+
 ### 当前 STQ 证据映射
 
 | 门槛 | 当前证据 | 结论 |

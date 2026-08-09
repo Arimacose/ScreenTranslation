@@ -28,6 +28,10 @@
   路由、输入限制、模型存储、取消/关闭语义、逐路由性能与 attribution；HY-MT2 STQ
   中间档候选改由 CI 重算的 canonical PR/gitlink/ancestry/artifact admission 记录约束，
   当前缺测与 Open PR 均保持 fail-closed，未进入 factory 或模型下载路径。
+- 新增 `2026.08-public-v2-original-references` 英→中/日→中公开质量回归发布：
+  每方向 48 条、逐条来源/许可、原创参考审计、语料 SHA-256、category/tag
+  protected 硬门、Lite/Full/Online 全字段阈值、候选哈希绑定盲评，以及由生产
+  Kotlin policy/parser 执行生成的 Online 失败证据。
 
 ### Changed
 
@@ -49,6 +53,9 @@
 
 - 本阶段先完成 JVM、Lint、Release 构建和 CI；全屏覆盖的 HyperOS 行为、位置、功耗、
   温升与持续运行保留到 Issue #38 的签名 Release 真机门禁。
+- 翻译回归工具对 96 条公开语料、126 个关键检查和 9 个 Online 失败场景完成确定性
+  harness smoke；参考译文回放明确标记为非模型证据，正式发布仍强制真实候选输出和
+  至少两名盲评者。
 
 ## [0.3.1] - 2026-08-03
 

@@ -105,6 +105,37 @@ class TranslationCoordinatorTest {
     }
 
     @Test
+    fun `failed latest request does not replace the last successful translation`() {
+        val clock = FakeClock()
+        val scheduler = FakeScheduler(clock)
+        val backend = FakeBackend()
+        val published = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        val coordinator = TranslationCoordinator(
+            backend = backend,
+            debounceMillis = 0L,
+            minimumRequestIntervalMillis = 0L,
+            clockMillis = { clock.now },
+            scheduler = scheduler,
+            onTranslation = { original, translated ->
+                published += "$original=$translated"
+            },
+            onError = errors::add,
+        )
+
+        coordinator.submit("first")
+        scheduler.runCurrent()
+        backend.succeed("第一条译文")
+        coordinator.submit("second")
+        scheduler.runCurrent()
+        backend.fail(IllegalStateException("provider timeout"))
+
+        assertEquals(listOf("first=第一条译文"), published)
+        assertEquals("provider timeout", errors.single().message)
+        coordinator.close()
+    }
+
+    @Test
     fun `reset cancels active work and publishes nothing`() {
         val clock = FakeClock()
         val scheduler = FakeScheduler(clock)
@@ -228,6 +259,12 @@ private class FakeBackend : TranslationBackend {
         val request = checkNotNull(pending)
         pending = null
         request.callback(Result.success(text))
+    }
+
+    fun fail(error: Throwable) {
+        val request = checkNotNull(pending)
+        pending = null
+        request.callback(Result.failure(error))
     }
 
     override fun close() = Unit

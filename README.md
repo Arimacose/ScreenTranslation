@@ -82,6 +82,15 @@ ML Kit 互有胜负，但中位延迟更高且峰值 RSS 约 767.63 MiB。初始
 多元英/日中报告见
 [`docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md`](docs/TRANSLATION_BENCHMARK_EN_JA_ZH_2026-07-29.md)。
 
+面向后续模型替换的 `2026.08-public-v2-original-references` 回归发布包含 48 条
+英中与 48 条日中，逐条登记来源/许可并固定 SHA-256；候选采用 canonical corpus
+join 的最小严格 schema，并检测 Unicode/不可见字符/标点变体覆盖至少 90% 的 replay。
+Lite/Full/Online 自动阈值、category/tag protected 硬门、从原始评分重算且双向绑定
+candidate+baseline 的盲评、绑定完整执行链但仅证明当前 checkout 新鲜度的 Kotlin Online
+challenge，以及伪名评分者尚未验签、缺少 canonical incumbent pin / authenticated reviewers /
+可信 runner attestation 时 `release_ready: false` 的边界见
+[`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md)。
+
 Hy-MT2 1.8B Q4_K_M 已进入 Full Experimental edition；STQ1_0
 1.25-bit 仍为受 fail-closed gate 约束的 standalone PoC：当前 llama.cpp PR
 `#22836` 是 `OPEN`，仓库 gitlink `caa596…` 也没有 merge-ancestry 证据；只有 PR

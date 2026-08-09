@@ -81,9 +81,9 @@ internal object TranslationAdmissionRecordParser {
         "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7"
     private const val EXPECTED_TRANSFORMATION_MANIFEST_SHA256 =
         "b4713fdb0e95c74446688597d7c0bab6cc217379379115dc535c2e89f599f284"
-    private const val EXPECTED_CORPUS_ID = "translation-diverse-2026-07-29"
+    private const val EXPECTED_CORPUS_ID = "2026.08-public-v2-original-references"
     private const val EXPECTED_CORPUS_SHA256 =
-        "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657"
+        "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72"
     private const val EXPECTED_SOURCE_PATH =
         "docs/evidence/hymt2-stq-admission-source-v1.json"
     private const val EXPECTED_VERIFIER_PATH =
@@ -281,6 +281,8 @@ internal object TranslationAdmissionRecordParser {
             "actual_sha256",
             "expected_suite_ids",
             "actual_suite_ids",
+            "expected_suite_case_counts",
+            "actual_suite_case_counts",
             "verified",
         )
         require(corpus.requireString("corpus_id") == EXPECTED_CORPUS_ID)
@@ -292,8 +294,22 @@ internal object TranslationAdmissionRecordParser {
             .requireUniqueStringList("bindings.corpus.expected_suite_ids")
         val actualSuites = corpus.requireArray("actual_suite_ids")
             .requireUniqueStringList("bindings.corpus.actual_suite_ids")
-        require(expectedSuites == listOf("en-zh-diverse-v2", "ja-zh-diverse-v1"))
-        val corpusVerified = corpusExpected == corpusActual && expectedSuites == actualSuites
+        val canonicalSuites = listOf("en-zh-diverse-v2", "ja-zh-diverse-v1")
+        require(expectedSuites == canonicalSuites)
+        val expectedCaseCountsObject = corpus.requireObject("expected_suite_case_counts")
+            .requireExactKeys(*canonicalSuites.toTypedArray())
+        val actualCaseCountsObject = corpus.requireObject("actual_suite_case_counts")
+            .requireExactKeys(*canonicalSuites.toTypedArray())
+        val expectedCaseCounts = canonicalSuites.associateWith { suiteId ->
+            expectedCaseCountsObject.requireInt(suiteId)
+        }
+        val actualCaseCounts = canonicalSuites.associateWith { suiteId ->
+            actualCaseCountsObject.requireInt(suiteId)
+        }
+        require(expectedCaseCounts == canonicalSuites.associateWith { 48 })
+        val corpusVerified = corpusExpected == corpusActual &&
+            expectedSuites == actualSuites &&
+            expectedCaseCounts == actualCaseCounts
         require(corpus.requireBoolean("verified") == corpusVerified)
 
         val candidate = value.requireObject("candidate").requireExactKeys(
@@ -462,7 +478,7 @@ internal object TranslationAdmissionRecordParser {
                 else -> error("Unexpected canonical route: $routeId")
             })
             val expectedCriticalCount = route.requireInt("expected_critical_check_count")
-            require(expectedCriticalCount == if (routeId == "en-zh") 54 else 52)
+            require(expectedCriticalCount == if (routeId == "en-zh") 64 else 62)
             val expectedCriticalIds = route.requireArray("expected_critical_check_ids")
                 .requireUniqueStringList("routes.$routeId.expected_critical_check_ids")
             require(expectedCriticalIds.size == expectedCriticalCount)

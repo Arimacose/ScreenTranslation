@@ -45,6 +45,47 @@ internal fun selectionOverlayWindowFlags(): Int =
     overlayWindowFlags() and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv() and
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
 
+internal data class RegionOverlayContent(
+    val original: String,
+    val translation: String,
+)
+
+/**
+ * Region-mode requests are latest-wins, but a transient Online failure must
+ * not erase the last useful translation while the next source is pending.
+ * Keeping this transition pure lets the production failure contract exercise
+ * the same state rule without constructing an Android window in a JVM test.
+ */
+internal object RegionOverlayContentPolicy {
+    fun success(
+        original: String,
+        translation: String,
+    ): RegionOverlayContent = RegionOverlayContent(
+        original = original,
+        translation = translation,
+    )
+
+    @Suppress("UNUSED_PARAMETER")
+    fun pending(
+        currentOriginal: String,
+        currentTranslation: String,
+        nextOriginal: String,
+    ): RegionOverlayContent = RegionOverlayContent(
+        // The latest source belongs to an unfinished request. Keep the last
+        // successful pair atomic until that request produces its translation.
+        original = currentOriginal,
+        translation = currentTranslation,
+    )
+
+    fun failure(
+        currentOriginal: String,
+        currentTranslation: String,
+    ): RegionOverlayContent = RegionOverlayContent(
+        original = currentOriginal,
+        translation = currentTranslation,
+    )
+}
+
 /**
  * Owns exactly one TYPE_APPLICATION_OVERLAY window.
  *
@@ -227,27 +268,37 @@ class OverlayController(
     }
 
     fun updateContent(original: String, translation: String) {
+        val successful = RegionOverlayContentPolicy.success(original, translation)
         runOnMain {
-            currentOriginal = original
-            currentTranslation = translation
-            originalView?.text = original.ifBlank {
+            currentOriginal = successful.original
+            currentTranslation = successful.translation
+            originalView?.text = successful.original.ifBlank {
                 appContext.getString(R.string.overlay_waiting_for_text)
             }
-            translationView?.text = translation.ifBlank {
+            translationView?.text = successful.translation.ifBlank {
                 appContext.getString(R.string.overlay_waiting_for_translation)
             }
-            copyOriginalButton?.isEnabled = original.isNotBlank()
-            copyTranslationButton?.isEnabled = translation.isNotBlank()
+            copyOriginalButton?.isEnabled = successful.original.isNotBlank()
+            copyTranslationButton?.isEnabled = successful.translation.isNotBlank()
             rootView?.post { dispatchOverlayBounds() }
         }
     }
 
     fun updateOriginal(text: String) {
-        updateContent(text, currentTranslation)
+        val pending = RegionOverlayContentPolicy.pending(
+            currentOriginal = currentOriginal,
+            currentTranslation = currentTranslation,
+            nextOriginal = text,
+        )
+        updateContent(pending.original, pending.translation)
     }
 
-    fun updateTranslation(text: String) {
-        updateContent(currentOriginal, text)
+    fun preserveContentAfterFailure() {
+        val preserved = RegionOverlayContentPolicy.failure(
+            currentOriginal = currentOriginal,
+            currentTranslation = currentTranslation,
+        )
+        updateContent(preserved.original, preserved.translation)
     }
 
     fun updateStatus(status: String) {

@@ -524,7 +524,11 @@ def main() -> None:
             "target_language": baseline["engines"]["target_language"],
         },
         "method": {
-            "fixture_suite": baseline.get("method", {}).get("fixture_suite"),
+            **{
+                key: copy.deepcopy(value)
+                for key, value in baseline.get("method", {}).items()
+                if key.startswith("fixture_")
+            },
             "model_repo": args.model_repo,
             "model_revision": args.model_revision,
             "model_file": {

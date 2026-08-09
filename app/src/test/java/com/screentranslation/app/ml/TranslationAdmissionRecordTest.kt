@@ -120,6 +120,24 @@ class TranslationAdmissionRecordTest {
         parseWithRecomputedPin(root)
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun staleCorpusCaseCountIsRejectedEvenWithRecomputedPin() {
+        val root = canonicalObject()
+        root.getJSONObject("bindings")
+            .getJSONObject("corpus")
+            .getJSONObject("actual_suite_case_counts")
+            .put("en-zh-diverse-v2", 47)
+        parseWithRecomputedPin(root)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun staleCriticalCheckCountIsRejectedEvenWithRecomputedPin() {
+        val root = canonicalObject()
+        root.getJSONArray("routes").getJSONObject(0)
+            .put("expected_critical_check_count", 54)
+        parseWithRecomputedPin(root)
+    }
+
     private fun canonicalObject(): JSONObject =
         JSONObject(GeneratedTranslationAdmissionEvidence.JSON)
 

@@ -107,6 +107,14 @@ Core design notes:
 - [`docs/FULL_SCREEN_INCREMENTAL_DESIGN.md`](docs/FULL_SCREEN_INCREMENTAL_DESIGN.md)
 - [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)
 - [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md)
+- [`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md) —
+  pinned public English/Japanese-to-Chinese fixtures, strict canonical-join candidate
+  evidence with 90%-suite format-only replay detection, executable edition thresholds,
+  category/tag protected-span gates, raw-rating recomputation bound to both candidate
+  and incumbent outputs while reviewer identities remain unauthenticated, hash-pinned
+  current-checkout Kotlin Online evidence (not external attestation), and fail-closed
+  admission until a canonical incumbent pin, authenticated reviewers, and fresh/attested
+  runner provenance all exist.
 - [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - [`PRIVACY.md`](PRIVACY.md)

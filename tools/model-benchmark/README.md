@@ -54,8 +54,8 @@ This mode loads the requested suite from
 strings, and records model preparation, warm-up, translation latency, and
 process memory snapshots. The retained suites are:
 
-- `en-zh-diverse-v2`: 40 English-to-Chinese cases;
-- `ja-zh-diverse-v1`: 40 Japanese-to-Chinese cases.
+- `en-zh-diverse-v2`: 48 English-to-Chinese cases;
+- `ja-zh-diverse-v1`: 48 Japanese-to-Chinese cases.
 
 The default writes `translation-mlkit-en-zh-android.json`. Run Japanese to
 Chinese explicitly:
@@ -104,6 +104,56 @@ The scorer emits:
 BLEU/chrF++ use every available project-authored reference for a fixture and
 remain directional comparison signals rather than standalone acceptance
 criteria. Critical checks and human review remain release gates.
+
+## Public translation regression release
+
+The version-locked `2026.08-public-v2-original-references` corpus expands both retained language
+pairs to 48 cases and records SPDX/provenance for every source and Chinese
+reference. It adds explicit protected-span, subtitle, commerce, compact-UI,
+and long exception-policy cases. All six Chinese references paired with the
+three public-domain source excerpts were independently rewritten and checked
+against retired exact/near-duplicate fingerprints.
+
+Validate the corpus hash, provenance, executable edition thresholds, critical
+checks, and failure contract, then run the deterministic harness smoke:
+
+```powershell
+python .\tools\model-benchmark\translation_regression.py validate
+python .\tools\model-benchmark\translation_regression.py smoke `
+  --output .\app\build\model-benchmark\translation-regression\harness-smoke.json
+```
+
+The smoke intentionally reports `release_ready: false`: synthetic reference
+playback tests the harness but formal validation rejects it. Formal candidates
+use an exact-key minimal schema containing only case/source identity, output,
+latency, strict runner metadata, and structural record hashes; source text,
+references, tags, categories and checks are joined only from the hash-pinned
+corpus. NFKC/default-ignorable/whitespace/punctuation fingerprints reject
+format-only reference or source replay once it reaches 90% of a suite.
+
+Promotion recomputes human results from the blind sheet, an external identity
+key, canonical rubric, and at least two complete raw rating documents. It binds
+every candidate **and incumbent** sheet output and evidence hash back to the
+actual JSON; a saved aggregate summary is not a gate input. Online promotion
+creates a one-use random challenge and runs the production Kotlin HTTP
+policy/parser plus the region reducer through Gradle inside the gate, rather
+than accepting a caller evidence JSON. The challenge binds a deterministic
+manifest of the producer, protocol, production policy/parser, reducer, Gradle
+build/wrapper and Python helper; implicit Gradle init scripts and common JVM /
+Gradle option injection variables are rejected. This establishes freshness for
+one hash-pinned local checkout, **not** a signature, isolated-worker proof, or
+CI attestation. Public producer/source/record hashes likewise establish
+structural consistency, not inference authenticity; until a fresh device-runner
+response or verified external attestation is supplied, runner provenance is
+fail-closed. The caller baseline is also diagnostic-only until it matches a
+repository-pinned edition incumbent manifest. Distinct pseudonymous rater IDs
+establish document uniqueness, not distinct human identities; reviewer
+authenticity remains blocked until trusted signatures or protected approvals
+are verified. Therefore `automated_passed` and `release_ready` remain false in
+the current local/CI workflow.
+The complete candidate JSON contract, Lite/Full/Online thresholds, blind bundle
+commands, external private-key handling, rating rubric, and Online evidence schema are documented in
+[`docs/TRANSLATION_QUALITY_REGRESSION.md`](../../docs/TRANSLATION_QUALITY_REGRESSION.md).
 
 ## Candidate-engine contract
 

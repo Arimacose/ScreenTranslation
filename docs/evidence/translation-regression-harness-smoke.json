@@ -1,0 +1,586 @@
+{
+  "schema_version": 2,
+  "report_kind": "deterministic_harness_smoke_not_model_evidence",
+  "validation": {
+    "schema_version": 2,
+    "corpus_release": "2026.08-public-v2-original-references",
+    "fixture_sha256": "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
+    "fixture_license": "Apache-2.0",
+    "suite_stats": {
+      "en-zh": {
+        "suite_id": "en-zh-diverse-v2",
+        "case_count": 48,
+        "category_count": 15,
+        "categories": [
+          "commerce",
+          "conversation",
+          "idiom",
+          "literary",
+          "long_form",
+          "negation_logic",
+          "numbers",
+          "ocr_robustness",
+          "protected_span",
+          "runtime",
+          "safety_domain",
+          "subtitle",
+          "system",
+          "technical",
+          "ui"
+        ],
+        "critical_check_count": 64,
+        "public_domain_source_cases": 2,
+        "protected_gate_cases": 3
+      },
+      "ja-zh": {
+        "suite_id": "ja-zh-diverse-v1",
+        "case_count": 48,
+        "category_count": 15,
+        "categories": [
+          "commerce",
+          "conversation",
+          "idiom",
+          "literary",
+          "long_form",
+          "negation_logic",
+          "numbers",
+          "politeness",
+          "protected_span",
+          "safety_domain",
+          "subtitle",
+          "system",
+          "technical",
+          "ui",
+          "word_sense"
+        ],
+        "critical_check_count": 62,
+        "public_domain_source_cases": 1,
+        "protected_gate_cases": 3
+      }
+    },
+    "failure_contract": {
+      "case_count": 9,
+      "classifications": [
+        "credentials",
+        "rate_limit",
+        "response",
+        "server",
+        "temporary_service",
+        "timeout"
+      ]
+    },
+    "calibration": {
+      "entry_count": 6,
+      "entry_ids": [
+        "full-hymt2-q4-en-zh-2026-07-30",
+        "full-hymt2-q4-ja-zh-2026-07-30",
+        "lite-bergamot-en-zh-2026-07-29",
+        "lite-bergamot-ja-zh-2026-07-29",
+        "online-deepseek-v4-flash-en-zh-2026-08-01",
+        "online-deepseek-v4-flash-ja-zh-2026-08-01"
+      ]
+    },
+    "threshold_editions": [
+      "lite",
+      "full",
+      "online"
+    ]
+  },
+  "editions": {
+    "lite": {
+      "report_kind": "harness_smoke_not_model_evidence",
+      "automated_passed": true,
+      "release_ready": false,
+      "pairs": {
+        "en-zh": {
+          "passed": true,
+          "candidate": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 64,
+            "critical_checks_total": 64,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "baseline": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 64,
+            "critical_checks_total": 64,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "checks": [
+            {
+              "name": "minimum BLEU",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 34.0,
+              "passed": true
+            },
+            {
+              "name": "minimum chrF++",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 24.0,
+              "passed": true
+            },
+            {
+              "name": "minimum critical-check rate",
+              "actual": 1.0,
+              "relation": ">=",
+              "expected": 0.6,
+              "passed": true
+            },
+            {
+              "name": "all category/tag protected checks",
+              "actual": true,
+              "relation": "==",
+              "expected": true,
+              "passed": true
+            },
+            {
+              "name": "BLEU regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "chrF++ regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "critical-check regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 0.03,
+              "passed": true
+            }
+          ]
+        },
+        "ja-zh": {
+          "passed": true,
+          "candidate": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 62,
+            "critical_checks_total": 62,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "baseline": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 62,
+            "critical_checks_total": 62,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "checks": [
+            {
+              "name": "minimum BLEU",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 28.0,
+              "passed": true
+            },
+            {
+              "name": "minimum chrF++",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 20.0,
+              "passed": true
+            },
+            {
+              "name": "minimum critical-check rate",
+              "actual": 1.0,
+              "relation": ">=",
+              "expected": 0.7,
+              "passed": true
+            },
+            {
+              "name": "all category/tag protected checks",
+              "actual": true,
+              "relation": "==",
+              "expected": true,
+              "passed": true
+            },
+            {
+              "name": "BLEU regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "chrF++ regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "critical-check regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 0.03,
+              "passed": true
+            }
+          ]
+        }
+      },
+      "failure_contract": {
+        "required": false,
+        "passed": true,
+        "status": "contract_schema_only_not_production_execution"
+      },
+      "human_review": {
+        "passed": false,
+        "status": "not_run_in_harness_smoke"
+      }
+    },
+    "full": {
+      "report_kind": "harness_smoke_not_model_evidence",
+      "automated_passed": true,
+      "release_ready": false,
+      "pairs": {
+        "en-zh": {
+          "passed": true,
+          "candidate": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 64,
+            "critical_checks_total": 64,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "baseline": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 64,
+            "critical_checks_total": 64,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "checks": [
+            {
+              "name": "minimum BLEU",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 44.0,
+              "passed": true
+            },
+            {
+              "name": "minimum chrF++",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 31.0,
+              "passed": true
+            },
+            {
+              "name": "minimum critical-check rate",
+              "actual": 1.0,
+              "relation": ">=",
+              "expected": 0.62,
+              "passed": true
+            },
+            {
+              "name": "all category/tag protected checks",
+              "actual": true,
+              "relation": "==",
+              "expected": true,
+              "passed": true
+            },
+            {
+              "name": "BLEU regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "chrF++ regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "critical-check regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 0.03,
+              "passed": true
+            }
+          ]
+        },
+        "ja-zh": {
+          "passed": true,
+          "candidate": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 62,
+            "critical_checks_total": 62,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "baseline": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 62,
+            "critical_checks_total": 62,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "checks": [
+            {
+              "name": "minimum BLEU",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 38.0,
+              "passed": true
+            },
+            {
+              "name": "minimum chrF++",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 28.0,
+              "passed": true
+            },
+            {
+              "name": "minimum critical-check rate",
+              "actual": 1.0,
+              "relation": ">=",
+              "expected": 0.68,
+              "passed": true
+            },
+            {
+              "name": "all category/tag protected checks",
+              "actual": true,
+              "relation": "==",
+              "expected": true,
+              "passed": true
+            },
+            {
+              "name": "BLEU regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "chrF++ regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "critical-check regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 0.03,
+              "passed": true
+            }
+          ]
+        }
+      },
+      "failure_contract": {
+        "required": false,
+        "passed": true,
+        "status": "contract_schema_only_not_production_execution"
+      },
+      "human_review": {
+        "passed": false,
+        "status": "not_run_in_harness_smoke"
+      }
+    },
+    "online": {
+      "report_kind": "harness_smoke_not_model_evidence",
+      "automated_passed": true,
+      "release_ready": false,
+      "pairs": {
+        "en-zh": {
+          "passed": true,
+          "candidate": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 64,
+            "critical_checks_total": 64,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "baseline": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 64,
+            "critical_checks_total": 64,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "checks": [
+            {
+              "name": "minimum BLEU",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 50.0,
+              "passed": true
+            },
+            {
+              "name": "minimum chrF++",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 36.0,
+              "passed": true
+            },
+            {
+              "name": "minimum critical-check rate",
+              "actual": 1.0,
+              "relation": ">=",
+              "expected": 0.72,
+              "passed": true
+            },
+            {
+              "name": "all category/tag protected checks",
+              "actual": true,
+              "relation": "==",
+              "expected": true,
+              "passed": true
+            },
+            {
+              "name": "BLEU regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "chrF++ regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "critical-check regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 0.03,
+              "passed": true
+            }
+          ]
+        },
+        "ja-zh": {
+          "passed": true,
+          "candidate": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 62,
+            "critical_checks_total": 62,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "baseline": {
+            "bleu": 100.0,
+            "chrf_pp": 100.0,
+            "critical_checks_passed": 62,
+            "critical_checks_total": 62,
+            "critical_check_rate": 1.0,
+            "protected_span_checks_passed": true,
+            "protected_case_count": 3,
+            "case_count": 48
+          },
+          "checks": [
+            {
+              "name": "minimum BLEU",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 45.0,
+              "passed": true
+            },
+            {
+              "name": "minimum chrF++",
+              "actual": 100.0,
+              "relation": ">=",
+              "expected": 34.0,
+              "passed": true
+            },
+            {
+              "name": "minimum critical-check rate",
+              "actual": 1.0,
+              "relation": ">=",
+              "expected": 0.72,
+              "passed": true
+            },
+            {
+              "name": "all category/tag protected checks",
+              "actual": true,
+              "relation": "==",
+              "expected": true,
+              "passed": true
+            },
+            {
+              "name": "BLEU regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "chrF++ regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 2.0,
+              "passed": true
+            },
+            {
+              "name": "critical-check regression versus incumbent",
+              "actual": 0.0,
+              "relation": "<=",
+              "expected": 0.03,
+              "passed": true
+            }
+          ]
+        }
+      },
+      "failure_contract": {
+        "required": true,
+        "passed": true,
+        "status": "contract_schema_only_not_production_execution"
+      },
+      "human_review": {
+        "passed": false,
+        "status": "not_run_in_harness_smoke"
+      }
+    }
+  },
+  "passed": true,
+  "release_ready": false,
+  "release_ready_reason": "Synthetic references validate plumbing only; real inference, Kotlin failure evidence and blind ratings are absent."
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "description": "Synthetic and public-domain translation-only fixtures for directional mobile model comparison. References are project-authored.",
+  "description": "Redistributable, version-locked translation regression fixtures for mobile English-to-Chinese and Japanese-to-Chinese evaluation. Chinese references are project-authored.",
   "suites": [
     {
       "id": "en-zh-diverse-v2",
@@ -37,7 +37,9 @@
                 "(继续|仍然|保持|持续).*(工作|运行|可用)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "literary_long_sentence",
@@ -50,10 +52,12 @@
           "provenance": "public_domain",
           "source_text": "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
           "reference_translations": [
-            "凡是有钱的单身汉，总想娶位太太，这已经成了一条举世公认的真理。",
-            "一个拥有丰厚财产的单身男子必定想娶妻，这是一条举世公认的真理。"
+            "大家似乎都认定：一个家境殷实而尚未成婚的男人，必然想找一位妻子。",
+            "世人普遍有这样的看法：手握丰厚财产的单身男子，总该有成家的打算。"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "jane-austen-pride-prejudice-1813-public-domain",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "notification_recovery",
@@ -82,7 +86,9 @@
                 "(翻译|转换)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "numbers_and_symbols",
@@ -113,7 +119,9 @@
                 "(£|英镑)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "offline_status",
@@ -147,7 +155,9 @@
                 "(仍|继续|保持).{0,8}(运行|工作)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "low_contrast_confusables",
@@ -170,7 +180,9 @@
                 "minirnum"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "version_amount_date",
@@ -201,7 +213,9 @@
                 "(¥|日元|人民币)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "dynamic_alpha",
@@ -215,7 +229,9 @@
           "reference_translations": [
             "翻译服务正在处理 alpha 样本，同时目标应用仍保持可见。"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "dynamic_beta",
@@ -242,7 +258,9 @@
                 "(保持|仍然|依然).{0,6}(运行|活跃|存活)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "dickens_611",
@@ -256,8 +274,8 @@
           "provenance": "public_domain",
           "source_text": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.",
           "reference_translations": [
-            "这是最好的时代，也是最坏的时代；这是智慧的时代，也是愚蠢的时代；这是信仰的时期，也是怀疑的时期；这是光明的季节，也是黑暗的季节；这是希望之春，也是绝望之冬；我们面前应有尽有，我们面前一无所有；我们都将直上天堂，我们都将直下地狱——简而言之，那个时代与现在如此相似，以至于当时最喧嚣的权威坚持认为，无论好坏，都只能用最高级来形容它。",
-            "那是最美好的时代，也是最糟糕的时代；那是智慧的年头，也是愚昧的年头；那是信仰的时期，也是怀疑的时期；那是光明的季节，也是黑暗的季节；那是希望之春，也是绝望之冬。我们面前无所不有，我们面前一无所有；我们都在直奔天堂，我们都在直奔相反的方向。总之，那个时代与当今如此相像，以至于最喧嚣的权威坚持认为，无论善恶，只能用最高级来评价它。"
+            "那个年代一面极为美好，一面又最为糟糕；人们既显得智慧，也尽显愚昧；信念高涨，却又疑虑重重；光明与黑暗并存；希望像春天萌发，绝望又如寒冬笼罩。前方仿佛万物齐备，却也像是什么都没有；众人以为自己正走向天堂，也可能正奔向完全相反的去处。总之，它与我们所处的年代十分相像，以至于最喧闹的评论者坚持，无论褒贬，都只能用最高程度来概括。",
+            "那时既是美好的顶峰，也是最糟糕的谷底；既崇尚智慧，又充满愚昧；既笃信不疑，又处处怀疑；光明的时节紧邻黑暗的时节，希望的春意伴着绝望的寒冬。我们眼前似乎应有尽有，也似乎一无所有；所有人都像在直奔天堂，又像在朝它的反方向前进。归根结底，那段时期和当下相差无几，声音最大的权威因此认定，对它作好坏评判时只能使用最高级。"
           ],
           "critical_checks": [
             {
@@ -281,7 +299,9 @@
                 "绝望"
               ]
             }
-          ]
+          ],
+          "provenance_id": "charles-dickens-tale-two-cities-1859-public-domain",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ui_unsaved_changes",
@@ -310,7 +330,9 @@
                 "(放弃|舍弃|丢弃).{0,4}(更改|修改)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ui_permission_once",
@@ -339,7 +361,9 @@
                 "(录制|记录)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ui_delete_irreversible",
@@ -363,7 +387,9 @@
                 "(不可撤销|无法恢复|不能恢复|无法还原)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ui_sync_paused",
@@ -391,7 +417,9 @@
                 "(继续|恢复)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "system_airplane_exception",
@@ -422,7 +450,9 @@
                 "蓝牙"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "system_battery_schedule",
@@ -448,7 +478,9 @@
                 "23(:|时|小时)30"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "system_security_update",
@@ -474,7 +506,9 @@
                 "安装"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "system_approximate_location",
@@ -504,7 +538,9 @@
                 "(关闭|未开启)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "numbers_temperature_range",
@@ -528,7 +564,9 @@
                 "72%"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "numbers_route_summary",
@@ -557,7 +595,9 @@
                 "(元|¥)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "numbers_discount_coupon",
@@ -584,7 +624,9 @@
                 "(30%|七折)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "numbers_download_progress",
@@ -608,7 +650,9 @@
                 "31.3%"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "numbers_timezone_deadline",
@@ -635,7 +679,9 @@
                 "15:30"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "logic_unless_backup",
@@ -656,10 +702,12 @@
               "all_regex": [
                 "除非",
                 "(否则|要不然)",
-                "继续.{0,8}上传"
+                "继续.{0,24}上传"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "logic_not_every_warning",
@@ -690,7 +738,9 @@
                 "失败"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "logic_not_uncommon",
@@ -718,7 +768,9 @@
                 "(不够准确|准确度较低|精度较低)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "logic_only_if_permission",
@@ -742,7 +794,9 @@
                 "再次.{0,4}(授予|允许)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "logic_no_longer_supported",
@@ -772,7 +826,9 @@
                 "(仍|继续).{0,6}(运行|工作|可用)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "conversation_sarcastic_update",
@@ -788,7 +844,9 @@
             "太好了，又一次修复一个错误、再引入两个错误的更新。",
             "真棒，又来了一个修好一个问题却新增两个问题的更新。"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "conversation_bank_context",
@@ -811,7 +869,9 @@
                 "(存|存入).{0,4}支票"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "conversation_pronoun_ambiguity",
@@ -826,7 +886,9 @@
           "reference_translations": [
             "玛雅把钥匙给了莉娜，因为她要提前离开。"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "conversation_fragment_choice",
@@ -842,7 +904,9 @@
             "跟我们走，还是留在这里？",
             "你是和我们一起去，还是待在这儿？"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "idiom_break_the_ice",
@@ -864,7 +928,9 @@
                 "(活跃气氛|打破冷场|缓和气氛)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "idiom_spill_the_beans",
@@ -888,7 +954,9 @@
                 "(泄露|说出去|透露)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "idiom_under_the_weather",
@@ -917,7 +985,9 @@
                 "(在家办公|在家工作|居家办公)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "idiom_bite_the_bullet",
@@ -941,7 +1011,9 @@
                 "整个.{0,4}模块"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "technical_worker_main_thread",
@@ -965,7 +1037,9 @@
                 "(界面|UI)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "technical_cache_not_data",
@@ -996,7 +1070,9 @@
                 "(删除|移除)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "safety_medication_limit",
@@ -1035,7 +1111,9 @@
                 "(每日|每天).{0,6}(两次|2次)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "safety_refund_exception",
@@ -1068,8 +1146,275 @@
                 "(不适用|除外|不予)"
               ]
             }
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
+        },
+        {
+          "id": "en_protected_url_email",
+          "category": "protected_span",
+          "tags": [
+            "url",
+            "email",
+            "identifier",
+            "protected_span"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "Open https://example.org/help?q=screen-translation, then email ticket+mobile@example.org and quote case ID ST-2048.",
+          "reference_translations": [
+            "打开 https://example.org/help?q=screen-translation，然后发送邮件至 ticket+mobile@example.org，并注明案例编号 ST-2048。"
+          ],
+          "critical_checks": [
+            {
+              "name": "URL email and case ID remain exact",
+              "all_literals": [
+                "https://example.org/help?q=screen-translation",
+                "ticket+mobile@example.org",
+                "ST-2048"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_protected_template_version",
+          "category": "protected_span",
+          "tags": [
+            "placeholder",
+            "version",
+            "host",
+            "protected_span"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "Deploy ${APP_NAME} v2.0.0 to HOST:8443; keep token {{SESSION_TOKEN}} unchanged.",
+          "reference_translations": [
+            "将 ${APP_NAME} v2.0.0 部署到 HOST:8443；保持令牌 {{SESSION_TOKEN}} 不变。"
+          ],
+          "critical_checks": [
+            {
+              "name": "template values remain exact",
+              "all_literals": [
+                "${APP_NAME}",
+                "v2.0.0",
+                "HOST:8443",
+                "{{SESSION_TOKEN}}"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_subtitle_interruption",
+          "category": "subtitle",
+          "tags": [
+            "subtitle",
+            "dialogue",
+            "negation",
+            "punctuation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "Wait—don't open that door! I heard someone on the other side.",
+          "reference_translations": [
+            "等等——别打开那扇门！我听到门那边有人。",
+            "等一下，别开那扇门！我听见另一边有人。"
+          ],
+          "critical_checks": [
+            {
+              "name": "warning and heard person preserved",
+              "all_regex": [
+                "(别|不要).{0,5}(打开|开)",
+                "(听到|听见).{0,8}(人|有人)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_subtitle_speakers",
+          "category": "subtitle",
+          "tags": [
+            "subtitle",
+            "speaker",
+            "line_break",
+            "time"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "MIA: We leave at dawn.\nNOAH: Then we have six hours to find the map.",
+          "reference_translations": [
+            "MIA：我们黎明出发。\nNOAH：那么我们有六个小时找到地图。"
+          ],
+          "critical_checks": [
+            {
+              "name": "speakers and deadline preserved",
+              "all_literals": [
+                "MIA",
+                "NOAH"
+              ],
+              "all_regex": [
+                "(黎明|天亮)",
+                "(六|6).{0,4}(小时)",
+                "地图"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_commerce_flash_sale",
+          "category": "commerce",
+          "tags": [
+            "commerce",
+            "countdown",
+            "currency",
+            "percentage",
+            "returns"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "Flash sale ends in 00:15:30. Pay ¥399.00 now and save 20%; returns accepted within 7 days.",
+          "reference_translations": [
+            "限时促销将在 00:15:30 后结束。现在支付 ¥399.00 可节省 20%；7 天内可退货。"
+          ],
+          "critical_checks": [
+            {
+              "name": "countdown amount discount and return window preserved",
+              "all_literals": [
+                "00:15:30"
+              ],
+              "all_compact_literals": [
+                "¥399.00",
+                "20%"
+              ],
+              "all_regex": [
+                "7.{0,3}天",
+                "(退货|退回)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_commerce_subscription",
+          "category": "commerce",
+          "tags": [
+            "commerce",
+            "subscription",
+            "currency",
+            "date",
+            "unless"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "After the 30-day trial, your plan renews at US$8.99/month unless you cancel before 2026-09-01.",
+          "reference_translations": [
+            "30 天试用期结束后，套餐将按每月 US$8.99 自动续订，除非你在 2026-09-01 前取消。"
+          ],
+          "critical_checks": [
+            {
+              "name": "trial renewal price and cancellation condition preserved",
+              "all_literals": [
+                "US$8.99",
+                "2026-09-01"
+              ],
+              "all_regex": [
+                "30.{0,3}天",
+                "(续订|续费)",
+                "(除非|如果).{0,16}取消"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_ui_compact_labels",
+          "category": "ui",
+          "tags": [
+            "ui",
+            "compact",
+            "label"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "Mute · Report · Block user",
+          "reference_translations": [
+            "静音 · 举报 · 屏蔽用户"
+          ],
+          "critical_checks": [
+            {
+              "name": "all compact actions translated",
+              "all_regex": [
+                "静音",
+                "举报",
+                "(屏蔽|拉黑)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "en_long_exception_policy",
+          "category": "long_form",
+          "tags": [
+            "long",
+            "commerce",
+            "privacy",
+            "exception",
+            "protected_span"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "If your order remains pending for more than 48 hours, contact support with order ID ORD-7788; unless the payment provider confirms a completed charge, the app will not create a duplicate payment, and no diagnostic text will be uploaded except the error code shown on screen.",
+          "reference_translations": [
+            "如果订单待处理超过 48 小时，请携订单编号 ORD-7788 联系支持；除非支付服务商确认扣款已完成，否则应用不会重复付款，并且除屏幕上显示的错误代码外，不会上传任何诊断文本。"
+          ],
+          "critical_checks": [
+            {
+              "name": "order and elapsed time preserved",
+              "all_literals": [
+                "48",
+                "ORD-7788"
+              ]
+            },
+            {
+              "name": "no duplicate payment without confirmation",
+              "all_regex": [
+                "(除非|未经).{0,18}(确认|完成)",
+                "(不会|不).{0,8}(重复付款|重复支付)"
+              ]
+            },
+            {
+              "name": "diagnostic upload exception preserved",
+              "all_regex": [
+                "(除|除了).{0,12}错误代码",
+                "(不会|不).{0,8}上传.{0,8}(诊断|文本)"
+              ]
+            }
           ]
         }
+      ],
+      "corpus_release": "2026.08-public-v2-original-references",
+      "reference_language": "zh-Hans",
+      "default_license_spdx": "Apache-2.0",
+      "required_review_domains": [
+        "protected_span",
+        "long",
+        "ui",
+        "subtitle",
+        "commerce",
+        "failure_contract"
       ]
     },
     {
@@ -1106,7 +1451,9 @@
                 "(丢失|消失)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_ui_permission_once",
@@ -1136,7 +1483,9 @@
                 "(录制|记录)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_ui_delete_irreversible",
@@ -1160,7 +1509,9 @@
                 "(无法恢复|不可还原|不可撤销)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_ui_sync_paused",
@@ -1183,7 +1534,9 @@
                 "(恢复|重新开始|继续)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_ui_storage_warning",
@@ -1209,7 +1562,9 @@
                 "(至少|最少)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_system_airplane_exception",
@@ -1234,7 +1589,9 @@
                 "(仍|可以|可)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_system_battery_schedule",
@@ -1260,7 +1617,9 @@
                 "23(:|时|小时)30"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_system_earthquake_alert",
@@ -1289,7 +1648,9 @@
                 "(确保|保护).{0,6}(自己|自身|人身)?.{0,2}安全"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_system_train_door",
@@ -1313,7 +1674,9 @@
                 "(车门|门)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_system_approximate_location",
@@ -1344,7 +1707,9 @@
                 "(关闭|未开启|保持关闭)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_numbers_order",
@@ -1375,7 +1740,9 @@
                 "(英镑|£)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_numbers_temperature",
@@ -1402,7 +1769,9 @@
                 "(零下|负)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_numbers_era_date",
@@ -1424,11 +1793,13 @@
               "name": "era date and time",
               "all_regex": [
                 "令和.{0,3}(8|八)",
-                "8月1日",
+                "8\\s*月\\s*1\\s*日",
                 "(9:30|九点半)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_numbers_download",
@@ -1455,7 +1826,9 @@
                 "(GiB|GIB|吉布)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_numbers_reservation",
@@ -1480,7 +1853,9 @@
                 "2026(年|-)?0?8(月|-)?0?3日?"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_logic_unless_backup",
@@ -1501,10 +1876,12 @@
               "all_regex": [
                 "除非",
                 "(否则|要不然)",
-                "继续.{0,8}上传"
+                "继续.{0,24}上传"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_logic_not_all",
@@ -1535,7 +1912,9 @@
                 "失败"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_logic_not_uncommon",
@@ -1563,7 +1942,9 @@
                 "(不准确|不正确|不够准确|精度较低)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_logic_only_if_permission",
@@ -1587,7 +1968,9 @@
                 "再次.{0,4}(授予|允许)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_logic_no_longer_supported",
@@ -1617,7 +2000,9 @@
                 "(仍|继续).{0,6}(运行|工作)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_honorific_request",
@@ -1633,7 +2018,9 @@
             "劳驾，能请您填写这份文件吗？",
             "不好意思，可以请您填写一下这份资料吗？"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_honorific_sensei",
@@ -1657,7 +2044,9 @@
                 "大家"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_omitted_subject_sent",
@@ -1686,7 +2075,9 @@
                 "(请确认|请查收|请查看|请检查)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_benefactive_kureta",
@@ -1711,7 +2102,9 @@
                 "(给.{0,2}我|发来)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_conversation_surprise",
@@ -1727,7 +2120,9 @@
             "咦，已经结束了吗？",
             "啊，这就结束了？"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_conversation_litotes",
@@ -1756,7 +2151,9 @@
                 "(不想|不要).{0,4}(每天|天天)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_conversation_iketara",
@@ -1772,7 +2169,9 @@
             "有空的话我会去。",
             "如果去得了，我就去。"
           ],
-          "critical_checks": []
+          "critical_checks": [],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_conversation_soft_refusal",
@@ -1795,7 +2194,9 @@
                 "(可能有点(难|困难)|恐怕.{0,4}困难|也许.{0,4}难)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_idiom_cat_hand",
@@ -1817,7 +2218,9 @@
                 "(忙得|非常忙|很忙|太忙|忙到)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_idiom_three_years",
@@ -1840,7 +2243,9 @@
                 "(坚持|耐心|功到自然成|持之以恒)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_idiom_slip_tongue",
@@ -1864,7 +2269,9 @@
                 "(秘密|泄露)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_idiom_after_rain",
@@ -1887,7 +2294,9 @@
                 "(风波|风雨|困难).{0,8}(更牢固|更稳固|更好)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_technical_callback",
@@ -1911,7 +2320,9 @@
                 "UI"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_technical_cache_not_data",
@@ -1942,7 +2353,9 @@
                 "删除"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_technical_offline_model",
@@ -1971,7 +2384,9 @@
                 "继续.{0,5}(处理|运行|工作)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_technical_keys_logs",
@@ -2000,7 +2415,9 @@
                 "(绝不|永不|不会|从未).{0,5}写入.{0,3}日志"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_safety_medication",
@@ -2039,7 +2456,9 @@
                 "(请勿|不得|不可|不要).{0,6}超过"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_safety_refund",
@@ -2071,7 +2490,9 @@
                 "退款"
               ]
             }
-          ]
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_literary_wagahai",
@@ -2084,18 +2505,20 @@
           "provenance": "public_domain",
           "source_text": "吾輩は猫である。名前はまだ無い。",
           "reference_translations": [
-            "我是猫。名字还没有。",
-            "咱家是猫，尚且没有名字。"
+            "说来，我是一只猫，到现在仍没人给我取名。",
+            "我这家伙是只猫，至今还没有一个名字。"
           ],
           "critical_checks": [
             {
               "name": "cat identity and unnamed",
               "all_regex": [
-                "(我是(一只)?猫|咱家是猫)",
-                "(没有名字|还没名字|尚且没有名字|名字还没有)"
+                "我.{0,6}是.{0,3}猫",
+                "(没有.{0,4}名字|还没.{0,4}名字|没人.{0,4}取名|尚未.{0,4}取名)"
               ]
             }
-          ]
+          ],
+          "provenance_id": "natsume-soseki-wagahai-1905-public-domain",
+          "reference_license_spdx": "Apache-2.0"
         },
         {
           "id": "ja_ambiguity_hashi",
@@ -2120,9 +2543,318 @@
                 "筷子"
               ]
             }
+          ],
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0"
+        },
+        {
+          "id": "ja_protected_url_email",
+          "category": "protected_span",
+          "tags": [
+            "url",
+            "email",
+            "identifier",
+            "protected_span"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "https://example.org/help?q=画面翻訳を開き、ticket+mobile@example.org宛てに整理番号ST-2048を送ってください。",
+          "reference_translations": [
+            "请打开 https://example.org/help?q=画面翻訳，并将受理编号 ST-2048 发送至 ticket+mobile@example.org。"
+          ],
+          "critical_checks": [
+            {
+              "name": "URL email and case ID remain exact",
+              "all_literals": [
+                "https://example.org/help?q=画面翻訳",
+                "ticket+mobile@example.org",
+                "ST-2048"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_protected_template_version",
+          "category": "protected_span",
+          "tags": [
+            "placeholder",
+            "version",
+            "host",
+            "protected_span"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "${APP_NAME} v2.0.0をHOST:8443へ配置し、{{SESSION_TOKEN}}は変更しないでください。",
+          "reference_translations": [
+            "请将 ${APP_NAME} v2.0.0 部署到 HOST:8443，并保持 {{SESSION_TOKEN}} 不变。"
+          ],
+          "critical_checks": [
+            {
+              "name": "template values remain exact",
+              "all_literals": [
+                "${APP_NAME}",
+                "v2.0.0",
+                "HOST:8443",
+                "{{SESSION_TOKEN}}"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_subtitle_interruption",
+          "category": "subtitle",
+          "tags": [
+            "subtitle",
+            "dialogue",
+            "negation",
+            "punctuation"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "待って——その扉を開けないで！向こう側に誰かいる音がした。",
+          "reference_translations": [
+            "等等——别打开那扇门！我听到另一边有人。",
+            "等一下，不要开那扇门！门的另一边好像有人。"
+          ],
+          "critical_checks": [
+            {
+              "name": "warning and person on other side preserved",
+              "all_regex": [
+                "(别|不要).{0,5}(打开|开)",
+                "(另一边|对面|门外).{0,8}(人|有人)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_subtitle_speakers",
+          "category": "subtitle",
+          "tags": [
+            "subtitle",
+            "speaker",
+            "line_break",
+            "time"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "ミア：夜明けに出発する。\nノア：それなら地図を探す時間はあと6時間だ。",
+          "reference_translations": [
+            "米娅：我们黎明出发。\n诺亚：那么只剩六个小时寻找地图。"
+          ],
+          "critical_checks": [
+            {
+              "name": "speakers and deadline preserved",
+              "all_regex": [
+                "(米娅|ミア)",
+                "(诺亚|ノア)",
+                "(黎明|天亮)",
+                "(六|6).{0,4}(小时)",
+                "地图"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_commerce_flash_sale",
+          "category": "commerce",
+          "tags": [
+            "commerce",
+            "countdown",
+            "currency",
+            "percentage",
+            "returns"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "タイムセール終了まで00:15:30。今なら¥399.00で20%引き、返品は7日以内です。",
+          "reference_translations": [
+            "限时促销还剩 00:15:30。现在价格为 ¥399.00，优惠 20%，可在 7 天内退货。"
+          ],
+          "critical_checks": [
+            {
+              "name": "countdown amount discount and return window preserved",
+              "all_literals": [
+                "00:15:30"
+              ],
+              "all_compact_literals": [
+                "¥399.00",
+                "20%"
+              ],
+              "all_regex": [
+                "7.{0,3}天",
+                "(退货|退回)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_commerce_subscription",
+          "category": "commerce",
+          "tags": [
+            "commerce",
+            "subscription",
+            "currency",
+            "date",
+            "unless"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "30日間の無料体験後、2026-09-01までに解約しない限り、月額US$8.99で自動更新されます。",
+          "reference_translations": [
+            "30 天免费试用后，除非在 2026-09-01 前取消，否则将按每月 US$8.99 自动续订。"
+          ],
+          "critical_checks": [
+            {
+              "name": "trial renewal price and cancellation condition preserved",
+              "all_literals": [
+                "US$8.99",
+                "2026-09-01"
+              ],
+              "all_regex": [
+                "30.{0,3}天",
+                "(续订|续费)",
+                "(除非|如果).{0,16}取消"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_ui_compact_labels",
+          "category": "ui",
+          "tags": [
+            "ui",
+            "compact",
+            "label"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "ミュート・報告・ユーザーをブロック",
+          "reference_translations": [
+            "静音 · 举报 · 屏蔽用户"
+          ],
+          "critical_checks": [
+            {
+              "name": "all compact actions translated",
+              "all_regex": [
+                "静音",
+                "举报",
+                "(屏蔽|拉黑)"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ja_long_exception_policy",
+          "category": "long_form",
+          "tags": [
+            "long",
+            "commerce",
+            "privacy",
+            "exception",
+            "protected_span"
+          ],
+          "risk": "general",
+          "provenance": "synthetic",
+          "provenance_id": "project-authored-apache-2.0",
+          "reference_license_spdx": "Apache-2.0",
+          "source_text": "注文が48時間を超えて保留中の場合は、注文番号ORD-7788を添えてサポートへ連絡してください。決済事業者が請求完了を確認しない限り、アプリが重複して支払うことはなく、画面に表示されたエラーコードを除く診断テキストもアップロードされません。",
+          "reference_translations": [
+            "如果订单待处理超过 48 小时，请携订单编号 ORD-7788 联系支持。除非支付服务商确认扣款完成，否则应用不会重复付款，并且除屏幕显示的错误代码外，也不会上传诊断文本。"
+          ],
+          "critical_checks": [
+            {
+              "name": "order and elapsed time preserved",
+              "all_literals": [
+                "48",
+                "ORD-7788"
+              ]
+            },
+            {
+              "name": "no duplicate payment without confirmation",
+              "all_regex": [
+                "(除非|未经).{0,18}(确认|完成)",
+                "(不会|不).{0,8}(重复付款|重复支付)"
+              ]
+            },
+            {
+              "name": "diagnostic upload exception preserved",
+              "all_regex": [
+                "(除|除了).{0,12}错误代码",
+                "(不会|不).{0,8}上传.{0,8}(诊断|文本)"
+              ]
+            }
           ]
         }
+      ],
+      "corpus_release": "2026.08-public-v2-original-references",
+      "reference_language": "zh-Hans",
+      "default_license_spdx": "Apache-2.0",
+      "required_review_domains": [
+        "protected_span",
+        "long",
+        "ui",
+        "subtitle",
+        "commerce",
+        "failure_contract"
       ]
+    }
+  ],
+  "corpus_release": "2026.08-public-v2-original-references",
+  "license": {
+    "default_spdx": "Apache-2.0",
+    "default_scope": "Project-authored synthetic source text, Chinese reference translations, semantic checks, and metadata.",
+    "exceptions": "Source excerpts whose provenance_id resolves to a public-domain registry entry remain public-domain material; project-authored Chinese references remain Apache-2.0.",
+    "notice_file": "translation-fixtures.LICENSE.md"
+  },
+  "provenance_registry": [
+    {
+      "id": "project-authored-apache-2.0",
+      "kind": "synthetic",
+      "title": "ScreenTranslation project-authored regression text",
+      "creator": "ScreenTranslation contributors",
+      "source_uri": "https://github.com/Arimacose/ScreenTranslation",
+      "license_spdx": "Apache-2.0"
+    },
+    {
+      "id": "jane-austen-pride-prejudice-1813-public-domain",
+      "kind": "public_domain",
+      "title": "Pride and Prejudice (1813)",
+      "creator": "Jane Austen",
+      "source_uri": "https://www.gutenberg.org/ebooks/1342",
+      "license_spdx": "LicenseRef-Public-Domain",
+      "rights_note": "The Project Gutenberg record identifies this 1813 work as public domain in the USA; the fixture contains one attributed sentence."
+    },
+    {
+      "id": "charles-dickens-tale-two-cities-1859-public-domain",
+      "kind": "public_domain",
+      "title": "A Tale of Two Cities (1859)",
+      "creator": "Charles Dickens",
+      "source_uri": "https://www.gutenberg.org/ebooks/98",
+      "license_spdx": "LicenseRef-Public-Domain",
+      "rights_note": "The Project Gutenberg record identifies this 1859 work as public domain in the USA; the fixture contains one attributed sentence."
+    },
+    {
+      "id": "natsume-soseki-wagahai-1905-public-domain",
+      "kind": "public_domain",
+      "title": "吾輩は猫である (1905)",
+      "creator": "夏目漱石",
+      "source_uri": "https://www.aozora.gr.jp/cards/000148/card789.html",
+      "license_spdx": "LicenseRef-Public-Domain",
+      "rights_note": "The Aozora Bunko record identifies the 1905 publication and author Natsume Soseki (1867-1916); the fixture contains two attributed sentences."
     }
   ]
 }

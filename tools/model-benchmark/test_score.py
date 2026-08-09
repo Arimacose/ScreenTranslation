@@ -86,6 +86,26 @@ class CriticalCheckTest(unittest.TestCase):
         text = "版本 v.1.0，构建 37，金额 12 345.67 英镑，日期 2026-07-31。"
         self.assertEqual([False], self.evaluate_case("version_amount_date", text))
 
+    def test_fixture_metadata_is_copied_into_score_reports(self) -> None:
+        source = {
+            "method": {
+                "fixture_schema_version": 2,
+                "fixture_suite": "en-zh-diverse-v2",
+                "fixture_corpus_release": "2026.08-public-v2-original-references",
+                "fixture_sha256": "a" * 64,
+                "model_file": "not-fixture-metadata",
+            },
+        }
+        self.assertEqual(
+            {
+                "fixture_schema_version": 2,
+                "fixture_suite": "en-zh-diverse-v2",
+                "fixture_corpus_release": "2026.08-public-v2-original-references",
+                "fixture_sha256": "a" * 64,
+            },
+            score.fixture_metadata(source),
+        )
+
 
 class BergamotInputTest(unittest.TestCase):
     def test_pipeline_parts_reuse_full_baseline_plan(self) -> None:
@@ -162,7 +182,7 @@ class DiverseFixtureTest(unittest.TestCase):
         }
         self.assertEqual({("en", "zh"), ("ja", "zh")}, set(suites))
         for suite in suites.values():
-            self.assertEqual(40, len(suite["cases"]))
+            self.assertEqual(48, len(suite["cases"]))
             self.assertGreaterEqual(
                 len({case["category"] for case in suite["cases"]}),
                 10,
@@ -178,6 +198,8 @@ class DiverseFixtureTest(unittest.TestCase):
             for case in suite["cases"]:
                 identifiers.append(case["id"])
                 self.assertTrue(case["source_text"].strip())
+                self.assertTrue(case["provenance_id"].strip())
+                self.assertEqual("Apache-2.0", case["reference_license_spdx"])
                 self.assertTrue(case["reference_translations"])
                 self.assertTrue(
                     all(

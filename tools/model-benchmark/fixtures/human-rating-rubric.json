@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "license_spdx": "Apache-2.0",
+  "instructions": [
+    "Rate outputs without seeing engine or edition names.",
+    "Judge adequacy against the source text, not against personal stylistic preference.",
+    "Judge fluency as standalone Simplified Chinese.",
+    "Mark one critical_error value whenever an error reverses meaning, changes negation or a quantity, corrupts a protected span, creates an unsafe instruction, or leaves the material untranslated."
+  ],
+  "adequacy": {
+    "1": "Unrelated, contradictory, or the central meaning is missing.",
+    "2": "A major proposition, participant, condition, or intent is wrong or missing.",
+    "3": "The main meaning is present, with one material omission or mistranslation.",
+    "4": "All important meaning is preserved; only minor nuance is lost.",
+    "5": "Complete and precise preservation of meaning, logic, entities, and tone."
+  },
+  "fluency": {
+    "1": "Incomprehensible Chinese.",
+    "2": "Hard to understand because of pervasive grammar or word-choice errors.",
+    "3": "Understandable but noticeably awkward or fragmented.",
+    "4": "Natural Chinese with only a minor awkward phrase.",
+    "5": "Native-quality, coherent, and appropriate for the screen context."
+  },
+  "critical_error_values": [
+    "none",
+    "meaning_reversal",
+    "negation_or_condition",
+    "quantity_or_time",
+    "protected_span",
+    "unsafe_instruction",
+    "untranslated"
+  ]
+}
