@@ -2,6 +2,20 @@
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
+## 签名 Release 验收门禁
+
+`.github/workflows/release.yml` 同时提供两条严格分离的入口：
+
+- 推送与 `versionName` 一致的 `v*.*.*` 标签时，构建、校验并发布正式 Release；
+- 在 Actions 中手动运行时，只接受 `main`，执行相同的三 edition Release/R8
+  构建、证书摘要、16 KiB 对齐、包名/版本、ABI、许可证和 SHA-256 校验，但不创建
+  标签或 Release。签名 APK/AAB 与 `SHA256SUMS` 作为 14 天短期 artifact 保存。
+
+正式发布前先运行手动入口，下载完整 artifact，并在目标真机依次验收 Lite、Full、
+Online。最终标签发布后必须重新下载公开 Release 资产，逐项复核校验和与签名，并用
+公开 APK 完成安装/升级、冷启动和核心链路烟测；手动验收 artifact 只用于发布门禁，
+不能替代公开产物的最终复核。
+
 ## 2026-08-03 ONNX Runtime Android 1.28.0 升级验收
 
 ### 范围与方法

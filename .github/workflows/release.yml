@@ -1,9 +1,10 @@
-name: Signed release
+name: Signed release and acceptance
 
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -111,7 +112,7 @@ jobs:
           test -s "$key_store"
           chmod 600 "$key_store"
 
-      - name: Verify tag and base app version
+      - name: Verify source and base app version
         id: version
         shell: bash
         run: |
@@ -121,8 +122,13 @@ jobs:
           version_code="$(printf '%s\n' "$version_info" | sed -n 's/^versionCode=//p')"
           [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
-          if [[ "$GITHUB_REF_NAME" != "v$version_name" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match base version $version_name"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ "$GITHUB_REF_NAME" != "v$version_name" ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match base version $version_name"
+              exit 1
+            fi
+          elif [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Manual signed acceptance must run from main"
             exit 1
           fi
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
@@ -366,6 +372,14 @@ jobs:
             [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 9 ]]
           )
 
+      - name: Preserve signed acceptance bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-signed-acceptance-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Preserve Lite R8 mapping
         uses: actions/upload-artifact@v7
         with:
@@ -403,6 +417,7 @@ jobs:
           retention-days: 90
 
       - name: Create GitHub release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
