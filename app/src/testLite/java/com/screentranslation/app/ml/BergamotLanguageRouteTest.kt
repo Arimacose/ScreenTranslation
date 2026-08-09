@@ -1,13 +1,18 @@
 package com.screentranslation.app.ml
 
+import com.screentranslation.app.RetainedModelReadiness
+import com.screentranslation.app.retainedReadinessMatches
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.InputStream
 import java.io.InterruptedIOException
 import java.io.Reader
@@ -96,6 +101,173 @@ class BergamotLanguageRouteTest {
                 file.length(),
                 expectedHash,
             ),
+        )
+    }
+
+    @Test
+    fun coldReadinessChecksEveryPinnedFileInTheSelectedRoute() {
+        val root = temporaryFolder.newFolder("bergamot-ready")
+        val route = BergamotLanguageRoute.requireSupported("ja", "zh")
+        route.modelIds.forEach { File(root, it).mkdirs() }
+        val checked = mutableListOf<String>()
+
+        val ready = isBergamotRoutePreparedAndStable(
+            root = root,
+            route = route,
+            preparationIdentityProvider = { "unchanged-route" },
+            fileVerifier = { file, marker, expectedSize, expectedSha256, _ ->
+                checked += file.name
+                assertEquals("${file.name}.sha256", marker.name)
+                assertTrue(expectedSize > 0L)
+                assertEquals(64, expectedSha256.length)
+                true
+            },
+        )
+
+        assertTrue(ready)
+        assertEquals(
+            route.modelIds
+                .flatMap { id ->
+                    bergamotModelSpecs().first { it.id == id }.files.map { it.outputName }
+                }
+                .toSet(),
+            checked.toSet(),
+        )
+    }
+
+    @Test
+    fun coldReadinessFailsWhenAnyCascadedModelFileFailsVerification() {
+        val root = temporaryFolder.newFolder("bergamot-corrupt")
+        val route = BergamotLanguageRoute.requireSupported("ja", "zh")
+        route.modelIds.forEach { File(root, it).mkdirs() }
+
+        assertFalse(
+            isBergamotRoutePreparedAndStable(
+                root = root,
+                route = route,
+                preparationIdentityProvider = { "unchanged-route" },
+                fileVerifier = { file, _, _, _, _ ->
+                    file.name != "model.jaen.intgemm.alphas.bin"
+                },
+            ),
+        )
+    }
+
+    @Test
+    fun coldReadinessRejectsRouteChangedDuringFullHashing() {
+        val root = temporaryFolder.newFolder("bergamot-toctou")
+        val route = BergamotLanguageRoute.requireSupported("en", "zh")
+        route.modelIds.forEach { File(root, it).mkdirs() }
+        var identityReads = 0
+        var verifiedFiles = 0
+
+        val ready = isBergamotRoutePreparedAndStable(
+            root = root,
+            route = route,
+            preparationIdentityProvider = {
+                identityReads += 1
+                if (identityReads == 1) "before-full-hash" else "after-full-hash"
+            },
+            fileVerifier = { _, _, _, _, _ ->
+                verifiedFiles += 1
+                true
+            },
+        )
+
+        assertFalse(ready)
+        assertTrue(verifiedFiles > 0)
+        assertEquals(2, identityReads)
+    }
+
+    @Test
+    fun retainedIdentityRejectsDeletedOrSameSizeReplacedModelOutput() {
+        val root = temporaryFolder.newFolder("bergamot-identity")
+        val route = BergamotLanguageRoute.requireSupported("en", "zh")
+        var fileNumber = 0
+        route.modelIds.forEach { modelId ->
+            val directory = File(root, modelId).apply { mkdirs() }
+            val model = bergamotModelSpecs().first { it.id == modelId }
+            model.files.forEach { spec ->
+                File(directory, spec.outputName).writeBytes(
+                    ByteArray(32) { offset -> (fileNumber + offset).toByte() },
+                )
+                File(directory, "${spec.outputName}.sha256").writeText(
+                    "${spec.outputSha256}\n",
+                )
+                fileNumber += 1
+            }
+        }
+        val testFileIdentity = { file: File, _: Long ->
+            file.preparationFileIdentity(file.length())
+        }
+        val initialIdentity = bergamotRoutePreparationIdentity(
+            root = root,
+            route = route,
+            fileIdentity = testFileIdentity,
+        ) ?: error("test route identity was not created")
+        val selectedPair = route.sourceLanguage to route.targetLanguage
+        val retained = RetainedModelReadiness(
+            pair = selectedPair,
+            identity = initialIdentity,
+            generation = 1L,
+        )
+        assertTrue(retainedReadinessMatches(retained, selectedPair, initialIdentity))
+
+        val firstSpec = bergamotModelSpecs()
+            .first { it.id == route.modelIds.first() }
+            .files.first()
+        val victim = File(File(root, route.modelIds.first()), firstSpec.outputName)
+        val originalSize = victim.length()
+        assertTrue(victim.delete())
+        val deletedIdentity = bergamotRoutePreparationIdentity(
+            root = root,
+            route = route,
+            fileIdentity = testFileIdentity,
+        )
+        assertNull(deletedIdentity)
+        assertFalse(retainedReadinessMatches(retained, selectedPair, deletedIdentity))
+        assertNull(resolveCurrentPreparationIdentity(initialIdentity, deletedIdentity))
+
+        victim.writeBytes(ByteArray(originalSize.toInt()) { 0x5a.toByte() })
+        val replacedIdentity = bergamotRoutePreparationIdentity(
+            root = root,
+            route = route,
+            fileIdentity = testFileIdentity,
+        ) ?: error("replacement route identity was not created")
+        assertNotEquals(initialIdentity, replacedIdentity)
+        assertFalse(retainedReadinessMatches(retained, selectedPair, replacedIdentity))
+        assertNull(resolveCurrentPreparationIdentity(initialIdentity, replacedIdentity))
+    }
+
+    @Test
+    fun retainedIdentityRequiresThePinnedHashMarker() {
+        val root = temporaryFolder.newFolder("bergamot-marker-identity")
+        val route = BergamotLanguageRoute.requireSupported("en", "zh")
+        route.modelIds.forEach { modelId ->
+            val directory = File(root, modelId).apply { mkdirs() }
+            val model = bergamotModelSpecs().first { it.id == modelId }
+            model.files.forEach { spec ->
+                File(directory, spec.outputName).writeBytes(byteArrayOf(1, 2, 3, 4))
+                File(directory, "${spec.outputName}.sha256").writeText(spec.outputSha256)
+            }
+        }
+        val identityProvider = { file: File, _: Long ->
+            file.preparationFileIdentity(file.length())
+        }
+        assertTrue(
+            bergamotRoutePreparationIdentity(root, route, fileIdentity = identityProvider) != null,
+        )
+
+        val firstSpec = bergamotModelSpecs()
+            .first { it.id == route.modelIds.first() }
+            .files.first()
+        File(
+            File(root, route.modelIds.first()),
+            "${firstSpec.outputName}.sha256",
+        ).writeText("not-the-pinned-hash")
+
+        assertNull(
+            bergamotRoutePreparationIdentity(root, route, fileIdentity = identityProvider),
         )
     }
 

@@ -62,6 +62,11 @@ class BergamotTranslationEngine(
      */
     private var preparedConfigs: List<File>? = null
 
+    override fun isPrepared(): Boolean = modelStore.isRouteReady(route)
+
+    override fun currentPreparationIdentity(): String? =
+        modelStore.currentRouteIdentity(route)
+
     override fun prepare(
         requireWifi: Boolean,
         warmRuntime: Boolean,
@@ -412,6 +417,39 @@ private class BergamotModelStore(
     private val closed: AtomicBoolean,
 ) {
     private val root = File(context.noBackupFilesDir, "models/bergamot-lite")
+    @Volatile
+    private var lastVerifiedRoute: BergamotLanguageRoute? = null
+    @Volatile
+    private var lastVerifiedIdentity: String? = null
+
+    fun isRouteReady(route: BergamotLanguageRoute): Boolean {
+        checkOpen()
+        val ready = isBergamotRoutePreparedAndStable(
+            root = root,
+            route = route,
+            checkOpen = ::checkOpen,
+            onVerifiedIdentity = { identity ->
+                lastVerifiedRoute = route
+                lastVerifiedIdentity = identity
+            },
+        )
+        if (!ready) {
+            lastVerifiedRoute = null
+            lastVerifiedIdentity = null
+        }
+        return ready
+    }
+
+    fun currentRouteIdentity(route: BergamotLanguageRoute): String? {
+        checkOpen()
+        val freshIdentity = bergamotRoutePreparationIdentity(
+            root = root,
+            route = route,
+            checkOpen = ::checkOpen,
+        )
+        val verifiedIdentity = lastVerifiedIdentity.takeIf { lastVerifiedRoute == route }
+        return resolveCurrentPreparationIdentity(verifiedIdentity, freshIdentity)
+    }
 
     fun ensureRoute(
         route: BergamotLanguageRoute,
@@ -761,6 +799,117 @@ private class BergamotModelStore(
     }
 }
 
+internal fun isBergamotRoutePrepared(
+    root: File,
+    route: BergamotLanguageRoute,
+    checkOpen: () -> Unit = {},
+    fileVerifier: (
+        file: File,
+        marker: File,
+        expectedSize: Long,
+        expectedSha256: String,
+        checkOpen: () -> Unit,
+    ) -> Boolean = BergamotCachedFileVerifier::isReusable,
+): Boolean = route.modelIds.all { modelId ->
+    val model = BergamotModelStore.MODEL_SPECS.getValue(modelId)
+    val directory = File(root, model.id)
+    directory.isDirectory && model.files.all { spec ->
+        checkOpen()
+        fileVerifier(
+            File(directory, spec.outputName),
+            File(directory, "${spec.outputName}.sha256"),
+            spec.outputSize,
+            spec.outputSha256,
+            checkOpen,
+        )
+    }
+}
+
+/**
+ * Performs the complete pinned SHA-256 verification used after a cold start,
+ * while rejecting a route whose cheap process identity changes during that
+ * potentially long read. The identity is only a TOCTOU/configuration-change
+ * guard; [isBergamotRoutePrepared] remains the integrity decision.
+ */
+internal fun isBergamotRoutePreparedAndStable(
+    root: File,
+    route: BergamotLanguageRoute,
+    checkOpen: () -> Unit = {},
+    preparationIdentityProvider: () -> String? = {
+        bergamotRoutePreparationIdentity(root, route, checkOpen)
+    },
+    onVerifiedIdentity: (String) -> Unit = {},
+    fileVerifier: (
+        file: File,
+        marker: File,
+        expectedSize: Long,
+        expectedSha256: String,
+        checkOpen: () -> Unit,
+    ) -> Boolean = BergamotCachedFileVerifier::isReusable,
+): Boolean {
+    checkOpen()
+    val identityBefore = preparationIdentityProvider() ?: return false
+    if (
+        !isBergamotRoutePrepared(
+            root = root,
+            route = route,
+            checkOpen = checkOpen,
+            fileVerifier = fileVerifier,
+        )
+    ) {
+        return false
+    }
+    checkOpen()
+    val identityAfter = preparationIdentityProvider()
+    if (identityBefore != identityAfter) return false
+    onVerifiedIdentity(identityBefore)
+    return true
+}
+
+/**
+ * Builds a cheap identity for a route that has already passed full SHA-256
+ * verification in this process. Each pinned output contributes its expected
+ * hash, validated marker and a metadata/content sample identity. A missing or
+ * changed file/marker therefore invalidates the retained readiness snapshot.
+ */
+internal fun bergamotRoutePreparationIdentity(
+    root: File,
+    route: BergamotLanguageRoute,
+    checkOpen: () -> Unit = {},
+    fileIdentity: (file: File, expectedSize: Long) -> String? =
+        { file, expectedSize -> file.preparationFileIdentity(expectedSize) },
+): String? {
+    val parts = mutableListOf(
+        "bergamot-lite-preparation-v1",
+        route.sourceLanguage,
+        route.targetLanguage,
+    )
+    for (modelId in route.modelIds) {
+        checkOpen()
+        val model = BergamotModelStore.MODEL_SPECS.getValue(modelId)
+        val directory = File(root, model.id)
+        if (!directory.isDirectory) return null
+        parts += model.id
+        for (spec in model.files) {
+            checkOpen()
+            val output = File(directory, spec.outputName)
+            val marker = File(directory, "${spec.outputName}.sha256")
+            val markerHash = try {
+                if (!marker.isFile || marker.length() > 256L) return null
+                marker.readText(Charsets.UTF_8).trim()
+            } catch (_: Exception) {
+                return null
+            }
+            if (!markerHash.equals(spec.outputSha256, ignoreCase = true)) return null
+            val outputIdentity = fileIdentity(output, spec.outputSize) ?: return null
+            parts += spec.outputName
+            parts += spec.outputSha256
+            parts += outputIdentity
+        }
+    }
+    return stablePreparationIdentity(parts)
+}
+
 internal data class BergamotPartialDownloadDecision(
     val reuseComplete: Boolean,
     val existingBytes: Long,
@@ -839,6 +988,7 @@ internal object BergamotCachedFileVerifier {
     ): Boolean {
         if (
             !marker.isFile ||
+            marker.length() > 256L ||
             !marker.readText(Charsets.UTF_8).trim().equals(expectedSha256, true)
         ) {
             return false

@@ -2,7 +2,12 @@ package com.screentranslation.app.ml
 
 import android.content.Context
 import com.screentranslation.app.BuildConfig
+import java.io.File
+import java.io.RandomAccessFile
 import java.lang.reflect.InvocationTargetException
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
+import java.security.MessageDigest
 
 enum class ModelPreparationStage {
     PREPARING,
@@ -41,6 +46,23 @@ interface TranslationBackend : AutoCloseable {
     val cacheIdentity: String
         get() = javaClass.name
 
+    /**
+     * Performs a read-only check of the already stored model/configuration.
+     *
+     * Local implementations must validate the pinned bytes rather than trust
+     * an Activity-lifetime flag. Callers run this potentially expensive check
+     * off the main thread. Online implementations validate the complete saved
+     * BYOK configuration without issuing a translation request.
+     */
+    fun isPrepared(): Boolean = false
+
+    /**
+     * Cheap, process-local identity for a previously verified preparation.
+     * This is used only across configuration changes; it never replaces the
+     * complete [isPrepared] verification performed after a cold start.
+     */
+    fun currentPreparationIdentity(): String? = null
+
     fun prepare(
         requireWifi: Boolean = false,
         warmRuntime: Boolean = true,
@@ -52,6 +74,73 @@ interface TranslationBackend : AutoCloseable {
         text: String,
         onResult: (Result<String>) -> Unit,
     ): TranslationCall
+}
+
+internal fun stablePreparationIdentity(parts: Iterable<String>): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    parts.forEach { part ->
+        val bytes = part.toByteArray(Charsets.UTF_8)
+        digest.update(bytes.size.toString().toByteArray(Charsets.US_ASCII))
+        digest.update(0.toByte())
+        digest.update(bytes)
+        digest.update(0.toByte())
+    }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
+
+/**
+ * A backend that just completed a full integrity check may cache that exact
+ * identity for TOCTOU protection, but every caller must still observe the
+ * current artifact. Deletion or replacement after the hash therefore yields
+ * null instead of publishing stale readiness.
+ */
+internal fun resolveCurrentPreparationIdentity(
+    lastVerifiedIdentity: String?,
+    freshlyObservedIdentity: String?,
+): String? = if (lastVerifiedIdentity == null) {
+    freshlyObservedIdentity
+} else {
+    freshlyObservedIdentity?.takeIf { it == lastVerifiedIdentity }
+}
+
+/**
+ * Samples file content and metadata to invalidate a retained configuration-
+ * change cache after deletion, replacement, truncation or ordinary updates.
+ * It is deliberately not an integrity proof; cold-start integrity uses the
+ * edition's complete SHA-256 verifier.
+ */
+internal fun File.preparationFileIdentity(expectedSize: Long): String? {
+    if (!isFile || length() != expectedSize) return null
+    return runCatching {
+        val attributes = Files.readAttributes(toPath(), BasicFileAttributes::class.java)
+        val sampleDigest = MessageDigest.getInstance("SHA-256")
+        RandomAccessFile(this, "r").use { input ->
+            val sampleSize = 4 * 1024
+            val offsets = linkedSetOf(
+                0L,
+                ((expectedSize - sampleSize).coerceAtLeast(0L) / 2L),
+                (expectedSize - sampleSize).coerceAtLeast(0L),
+            )
+            val buffer = ByteArray(sampleSize)
+            offsets.forEach { offset ->
+                input.seek(offset)
+                val count = input.read(buffer)
+                if (count > 0) sampleDigest.update(buffer, 0, count)
+            }
+        }
+        check(isFile && length() == expectedSize) {
+            "Preparation artifact changed while its identity was sampled"
+        }
+        stablePreparationIdentity(
+            listOf(
+                canonicalPath,
+                expectedSize.toString(),
+                attributes.lastModifiedTime().toMillis().toString(),
+                attributes.fileKey()?.toString().orEmpty(),
+                sampleDigest.digest().joinToString("") { byte -> "%02x".format(byte) },
+            ),
+        )
+    }.getOrNull()
 }
 
 /**

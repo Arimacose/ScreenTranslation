@@ -56,6 +56,11 @@ class HyMt2Q4TranslationEngine(
         }
     }
 
+    override fun isPrepared(): Boolean = modelStore.isModelReady()
+
+    override fun currentPreparationIdentity(): String? =
+        modelStore.currentPreparationIdentity()
+
     override fun prepare(
         requireWifi: Boolean,
         warmRuntime: Boolean,
@@ -312,6 +317,31 @@ private class HyMt2Q4ModelStore(
     private val modelFile = File(modelDirectory, MODEL_FILE_NAME)
     private val partialFile = File(modelDirectory, "$MODEL_FILE_NAME.part")
     private val verifiedMarker = File(modelDirectory, "$MODEL_FILE_NAME.sha256")
+    @Volatile
+    private var lastVerifiedIdentity: String? = null
+
+    fun isModelReady(): Boolean {
+        checkOpen()
+        val verification = HyMt2Q4ModelVerifier.verify(
+            modelFile = modelFile,
+            markerFile = verifiedMarker,
+            expectedSize = MODEL_SIZE_BYTES,
+            expectedSha256 = MODEL_SHA256,
+            checkActive = ::checkOpen,
+        )
+        lastVerifiedIdentity = verification.identity.takeIf { verification.ready }
+        return verification.ready
+    }
+
+    fun currentPreparationIdentity(): String? {
+        checkOpen()
+        val freshIdentity = HyMt2Q4ModelVerifier.currentIdentity(
+            modelFile = modelFile,
+            expectedSize = MODEL_SIZE_BYTES,
+            expectedSha256 = MODEL_SHA256,
+        )
+        return resolveCurrentPreparationIdentity(lastVerifiedIdentity, freshIdentity)
+    }
 
     fun ensureModel(
         onProgress: (ModelPreparationProgress) -> Unit = {},
@@ -518,6 +548,103 @@ private class HyMt2Q4ModelStore(
         const val BUFFER_SIZE = 1024 * 1024
         const val PROGRESS_INTERVAL_NS = 500_000_000L
     }
+}
+
+internal fun isHyMt2Q4ModelPrepared(
+    file: File,
+    expectedSize: Long,
+    expectedSha256: String,
+    sha256: (File) -> String,
+): Boolean = HyMt2Q4ModelVerifier.verify(
+    modelFile = file,
+    markerFile = null,
+    expectedSize = expectedSize,
+    expectedSha256 = expectedSha256,
+    sha256 = sha256,
+).ready
+
+internal data class HyMt2Q4ModelVerification(
+    val ready: Boolean,
+    val identity: String?,
+    val markerMatches: Boolean,
+)
+
+/**
+ * Canonical Full-edition readiness verifier shared by the home screen and the
+ * model-management inventory. A marker records a previous successful download
+ * for diagnostics, but it never substitutes for hashing the current GGUF.
+ */
+internal object HyMt2Q4ModelVerifier {
+    fun verify(
+        modelFile: File,
+        markerFile: File?,
+        expectedSize: Long,
+        expectedSha256: String,
+        checkActive: () -> Unit = {},
+        sha256: ((File) -> String)? = null,
+    ): HyMt2Q4ModelVerification {
+        checkActive()
+        val markerMatches = markerFile?.let { marker ->
+            runCatching {
+                marker.isFile && marker.length() <= MAX_MARKER_BYTES &&
+                    marker.readText(Charsets.UTF_8).trim()
+                        .equals(expectedSha256, ignoreCase = true)
+            }.getOrDefault(false)
+        } ?: false
+        val identityBefore = currentIdentity(modelFile, expectedSize, expectedSha256)
+            ?: return HyMt2Q4ModelVerification(
+                ready = false,
+                identity = null,
+                markerMatches = markerMatches,
+            )
+        checkActive()
+        val actualSha256 = sha256?.invoke(modelFile)
+            ?: hashFile(modelFile, checkActive)
+        checkActive()
+        val identityAfter = currentIdentity(modelFile, expectedSize, expectedSha256)
+        val ready = actualSha256.equals(expectedSha256, ignoreCase = true) &&
+            identityAfter != null && identityAfter == identityBefore
+        return HyMt2Q4ModelVerification(
+            ready = ready,
+            identity = identityAfter.takeIf { ready },
+            markerMatches = markerMatches,
+        )
+    }
+
+    fun currentIdentity(
+        modelFile: File,
+        expectedSize: Long,
+        expectedSha256: String,
+    ): String? = modelFile.preparationFileIdentity(expectedSize)?.let { fileIdentity ->
+        stablePreparationIdentity(
+            listOf(
+                "hymt2-q4",
+                expectedSize.toString(),
+                expectedSha256.lowercase(Locale.ROOT),
+                fileIdentity,
+            ),
+        )
+    }
+
+    private fun hashFile(file: File, checkActive: () -> Unit): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered(HASH_BUFFER_SIZE).use { input ->
+            val buffer = ByteArray(HASH_BUFFER_SIZE)
+            while (true) {
+                checkActive()
+                check(!Thread.currentThread().isInterrupted) {
+                    "Hy-MT2 Q4 integrity verification was cancelled"
+                }
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private const val HASH_BUFFER_SIZE = 1024 * 1024
+    private const val MAX_MARKER_BYTES = 256L
 }
 
 internal enum class HyMt2Q4CandidateState {

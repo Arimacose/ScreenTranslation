@@ -2,6 +2,8 @@ package com.screentranslation.app.model
 
 import android.content.Context
 import com.screentranslation.app.ml.HyMt2Q4ModelDescriptor
+import com.screentranslation.app.ml.HyMt2Q4ModelVerifier
+import com.screentranslation.app.service.ScreenTranslationService
 import java.io.File
 
 class HyMt2ModelStorageManager(context: Context) : ModelStorageManager {
@@ -12,18 +14,27 @@ class HyMt2ModelStorageManager(context: Context) : ModelStorageManager {
         val model = File(root, HyMt2Q4ModelDescriptor.MODEL_FILE_NAME)
         val partial = File(root, "${HyMt2Q4ModelDescriptor.MODEL_FILE_NAME}.part")
         val marker = File(root, "${HyMt2Q4ModelDescriptor.MODEL_FILE_NAME}.sha256")
-        val ready = model.isFile &&
-            model.length() == HyMt2Q4ModelDescriptor.MODEL_SIZE_BYTES &&
-            marker.isFile &&
-            marker.readText(Charsets.UTF_8).trim()
-                .equals(HyMt2Q4ModelDescriptor.MODEL_SHA256, ignoreCase = true)
+        val verification = HyMt2Q4ModelVerifier.verify(
+            modelFile = model,
+            markerFile = marker,
+            expectedSize = HyMt2Q4ModelDescriptor.MODEL_SIZE_BYTES,
+            expectedSha256 = HyMt2Q4ModelDescriptor.MODEL_SHA256,
+            checkActive = {
+                check(!ScreenTranslationService.isRunning) {
+                    "Hy-MT2 Q4 inventory verification paused while capture is running"
+                }
+                check(!Thread.currentThread().isInterrupted) {
+                    "Hy-MT2 Q4 inventory verification was cancelled"
+                }
+            },
+        )
         return listOf(
             ManagedModel(
                 id = "hymt2-q4",
                 displayName = "HY-MT2 1.8B Q4_K_M Experimental",
                 revision = HyMt2Q4ModelDescriptor.MODEL_REVISION,
                 state = when {
-                    ready -> ModelDownloadState.READY
+                    verification.ready -> ModelDownloadState.READY
                     partial.isFile || model.isFile -> ModelDownloadState.PARTIAL
                     else -> ModelDownloadState.NOT_DOWNLOADED
                 },

@@ -44,6 +44,23 @@ class OnlineLlmTranslationEngine(
         }
     }
 
+    override fun isPrepared(): Boolean = runCatching {
+        checkOpen()
+        repository.requireReady()
+    }.isSuccess
+
+    override fun currentPreparationIdentity(): String? = runCatching {
+        checkOpen()
+        val ready = repository.requireReady()
+        onlinePreparationIdentity(
+            baseUrl = ready.endpoint.baseUrl,
+            modelId = ready.modelId,
+            consentHost = ready.config.consentHost,
+            consentVersion = ready.config.consentVersion,
+            apiKey = ready.apiKey,
+        )
+    }.getOrNull()
+
     override fun prepare(
         requireWifi: Boolean,
         warmRuntime: Boolean,
@@ -127,4 +144,32 @@ class OnlineLlmTranslationEngine(
         retryScheduler.shutdownNow()
         OnlineHttpClientFactory.closeAsync(httpClient)
     }
+}
+
+/**
+ * Binds a retained Online-ready snapshot to the exact canonical BYOK
+ * configuration. The secret itself never appears in the returned identity;
+ * only a domain-separated SHA-256 digest of it is included.
+ */
+internal fun onlinePreparationIdentity(
+    baseUrl: String,
+    modelId: String,
+    consentHost: String,
+    consentVersion: Int,
+    apiKey: String?,
+): String? {
+    val presentApiKey = apiKey?.takeIf(String::isNotBlank) ?: return null
+    val apiKeyHash = stablePreparationIdentity(
+        listOf("online-api-key-v1", presentApiKey),
+    )
+    return stablePreparationIdentity(
+        listOf(
+            "online-byok-preparation-v1",
+            baseUrl,
+            modelId,
+            consentHost,
+            consentVersion.toString(),
+            apiKeyHash,
+        ),
+    )
 }

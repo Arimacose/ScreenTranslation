@@ -1,14 +1,20 @@
 package com.screentranslation.app
 
 import android.app.Activity
+import android.app.Application
 import android.os.Bundle
 import android.text.format.Formatter
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Button
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import com.screentranslation.app.model.ManagedModel
 import com.screentranslation.app.model.ModelDownloadState
 import com.screentranslation.app.model.ModelStorageManager
@@ -16,6 +22,92 @@ import com.screentranslation.app.model.ModelStorageManagerFactory
 import com.screentranslation.app.model.UiStyle
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.RejectedExecutionException
+
+internal fun shouldStartModelInventoryScan(
+    activityStarted: Boolean,
+    deletionInProgress: Boolean,
+    serviceRunning: Boolean,
+): Boolean = activityStarted && !deletionInProgress && !serviceRunning
+
+internal enum class ModelDeletionPhase {
+    IDLE,
+    RUNNING,
+    SUCCEEDED,
+    FAILED,
+}
+
+internal data class ModelDeletionSnapshot(
+    val generation: Int = 0,
+    val phase: ModelDeletionPhase = ModelDeletionPhase.IDLE,
+    val deletedBytes: Long = 0L,
+    val errorMessage: String? = null,
+)
+
+internal class ModelManagementViewModel(application: Application) : AndroidViewModel(application) {
+    private val manager = ModelStorageManagerFactory.create(application)
+    private val deletionExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "model-storage-deletion").apply { isDaemon = true }
+    }
+    private val mutableDeletionState = MutableLiveData(ModelDeletionSnapshot())
+    val deletionState: LiveData<ModelDeletionSnapshot> = mutableDeletionState
+
+    val isDeletionRunning: Boolean
+        get() = mutableDeletionState.value?.phase == ModelDeletionPhase.RUNNING
+
+    fun deleteModels() {
+        if (isDeletionRunning) return
+        val generation = (mutableDeletionState.value?.generation ?: 0) + 1
+        mutableDeletionState.value = ModelDeletionSnapshot(
+            generation = generation,
+            phase = ModelDeletionPhase.RUNNING,
+        )
+        try {
+            deletionExecutor.execute {
+                val result = runCatching {
+                    check(!ScreenTranslationService.isRunning) {
+                        getApplication<Application>().getString(
+                            R.string.model_delete_service_running,
+                        )
+                    }
+                    manager.deleteDownloadedModels()
+                }
+                mutableDeletionState.postValue(
+                    result.fold(
+                        onSuccess = { bytes ->
+                            ModelDeletionSnapshot(
+                                generation = generation,
+                                phase = ModelDeletionPhase.SUCCEEDED,
+                                deletedBytes = bytes,
+                            )
+                        },
+                        onFailure = { error ->
+                            ModelDeletionSnapshot(
+                                generation = generation,
+                                phase = ModelDeletionPhase.FAILED,
+                                errorMessage = error.localizedMessage
+                                    ?: error.javaClass.simpleName,
+                            )
+                        },
+                    ),
+                )
+            }
+        } catch (error: RejectedExecutionException) {
+            mutableDeletionState.value = ModelDeletionSnapshot(
+                generation = generation,
+                phase = ModelDeletionPhase.FAILED,
+                errorMessage = error.localizedMessage ?: error.javaClass.simpleName,
+            )
+        }
+    }
+
+    override fun onCleared() {
+        deletionExecutor.shutdownNow()
+        super.onCleared()
+    }
+}
 
 class ModelManagementActivity : AppCompatActivity() {
     companion object {
@@ -24,7 +116,20 @@ class ModelManagementActivity : AppCompatActivity() {
 
     private lateinit var manager: ModelStorageManager
     private lateinit var summaryView: TextView
+    private lateinit var prepareButton: Button
+    private lateinit var refreshButton: Button
     private lateinit var deleteButton: Button
+    private val modelManagementViewModel: ModelManagementViewModel by viewModels()
+    private val inventoryExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "model-inventory-verifier").apply { isDaemon = true }
+    }
+    private var inventoryFuture: Future<*>? = null
+    private var inventoryGeneration = 0
+    private var activityStarted = false
+    private var deletionInProgress = false
+    private var pendingInventoryMessage: String? = null
+    private var lastRenderedTerminalGeneration = 0
+    private lateinit var deletionBackCallback: OnBackPressedCallback
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val uiStyle = UiStyleController.apply(this)
@@ -41,32 +146,134 @@ class ModelManagementActivity : AppCompatActivity() {
 
         manager = ModelStorageManagerFactory.create(this)
         summaryView = findViewById(R.id.text_model_inventory)
+        prepareButton = findViewById(R.id.button_prepare_models)
+        refreshButton = findViewById(R.id.button_refresh_models)
         deleteButton = findViewById(R.id.button_delete_models)
         applySystemBarInsets()
-        findViewById<Button>(R.id.button_prepare_models).setOnClickListener {
+        prepareButton.setOnClickListener {
             setResult(Activity.RESULT_OK)
             finish()
         }
-        findViewById<Button>(R.id.button_refresh_models).setOnClickListener { refresh() }
+        refreshButton.setOnClickListener { refresh() }
         deleteButton.setOnClickListener { confirmDeletion() }
+        deletionBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                summaryView.setText(R.string.model_deleting)
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, deletionBackCallback)
+        modelManagementViewModel.deletionState.observe(this) { state ->
+            renderDeletionState(state)
+        }
     }
 
-    override fun onResume() {
-        super.onResume()
-        refresh()
+    override fun onStart() {
+        super.onStart()
+        activityStarted = true
+        val deletionState = modelManagementViewModel.deletionState.value
+            ?: ModelDeletionSnapshot()
+        when (deletionState.phase) {
+            ModelDeletionPhase.IDLE -> refresh()
+            ModelDeletionPhase.RUNNING -> renderDeletionState(deletionState)
+            ModelDeletionPhase.SUCCEEDED,
+            ModelDeletionPhase.FAILED,
+            -> renderDeletionState(deletionState, forceTerminal = true)
+        }
+    }
+
+    override fun onStop() {
+        activityStarted = false
+        cancelInventoryScan()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        cancelInventoryScan()
+        inventoryExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onSupportNavigateUp(): Boolean {
+        if (modelManagementViewModel.isDeletionRunning) {
+            summaryView.setText(R.string.model_deleting)
+            return true
+        }
         finish()
         return true
     }
 
-    private fun refresh() {
-        val snapshots = manager.scan()
+    private fun refresh(completionMessage: String? = null) {
+        if (completionMessage != null) pendingInventoryMessage = completionMessage
+        val serviceRunning = ScreenTranslationService.isRunning
+        if (
+            !shouldStartModelInventoryScan(
+                activityStarted = activityStarted,
+                deletionInProgress = deletionInProgress,
+                serviceRunning = serviceRunning,
+            )
+        ) {
+            if (!serviceRunning) return
+            cancelInventoryScan()
+            summaryView.setText(R.string.model_inventory_service_running)
+            prepareButton.isEnabled = false
+            refreshButton.isEnabled = false
+            deleteButton.visibility = View.VISIBLE
+            deleteButton.isEnabled = false
+            return
+        }
+
+        cancelInventoryScan()
+        val generation = inventoryGeneration
+        summaryView.setText(R.string.model_inventory_loading)
+        refreshButton.isEnabled = true
+        deleteButton.isEnabled = false
+        try {
+            inventoryFuture = inventoryExecutor.submit {
+                val result = runCatching { manager.scan() }
+                runOnUiThread {
+                    if (
+                        !activityStarted || isDestroyed ||
+                        generation != inventoryGeneration
+                    ) {
+                        return@runOnUiThread
+                    }
+                    inventoryFuture = null
+                    result.fold(
+                        onSuccess = { snapshots -> applyInventory(snapshots) },
+                        onFailure = { error ->
+                            summaryView.text = getString(
+                                R.string.model_inventory_failed,
+                                error.localizedMessage ?: error.javaClass.simpleName,
+                            )
+                            prepareButton.isEnabled = true
+                            refreshButton.isEnabled = true
+                            deleteButton.isEnabled = false
+                        },
+                    )
+                    pendingInventoryMessage?.let { message ->
+                        summaryView.append("\n\n$message")
+                        pendingInventoryMessage = null
+                    }
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            // Activity destruction owns executor shutdown and the UI is no longer relevant.
+        }
+    }
+
+    private fun applyInventory(snapshots: List<ManagedModel>) {
         summaryView.text = buildSummary(snapshots)
         val hasDownloadedFiles = snapshots.any { it.downloadedBytes > 0L }
+        prepareButton.isEnabled = !ScreenTranslationService.isRunning
+        refreshButton.isEnabled = !ScreenTranslationService.isRunning
         deleteButton.visibility = if (snapshots.isEmpty()) View.GONE else View.VISIBLE
         deleteButton.isEnabled = hasDownloadedFiles && !ScreenTranslationService.isRunning
+    }
+
+    private fun cancelInventoryScan() {
+        inventoryGeneration += 1
+        inventoryFuture?.cancel(true)
+        inventoryFuture = null
     }
 
     private fun buildSummary(models: List<ManagedModel>): String = buildString {
@@ -117,39 +324,54 @@ class ModelManagementActivity : AppCompatActivity() {
     }
 
     private fun deleteModels() {
-        deleteButton.isEnabled = false
-        summaryView.setText(R.string.model_deleting)
-        Thread {
-            val result = runCatching {
-                check(!ScreenTranslationService.isRunning) {
-                    getString(R.string.model_delete_service_running)
-                }
-                manager.deleteDownloadedModels()
+        cancelInventoryScan()
+        modelManagementViewModel.deleteModels()
+    }
+
+    private fun renderDeletionState(
+        state: ModelDeletionSnapshot,
+        forceTerminal: Boolean = false,
+    ) {
+        when (state.phase) {
+            ModelDeletionPhase.IDLE -> {
+                deletionInProgress = false
+                deletionBackCallback.isEnabled = false
             }
-            runOnUiThread {
-                result.fold(
-                    onSuccess = { bytes ->
-                        setResult(RESULT_MODELS_CHANGED)
-                        refresh()
-                        summaryView.append(
-                            "\n\n" + getString(
-                                R.string.model_delete_success,
-                                Formatter.formatFileSize(this, bytes),
-                            ),
-                        )
-                    },
-                    onFailure = { error ->
-                        refresh()
-                        summaryView.append(
-                            "\n\n" + getString(
-                                R.string.model_delete_failed,
-                                error.localizedMessage ?: error.javaClass.simpleName,
-                            ),
-                        )
-                    },
+            ModelDeletionPhase.RUNNING -> {
+                deletionInProgress = true
+                deletionBackCallback.isEnabled = true
+                cancelInventoryScan()
+                prepareButton.isEnabled = false
+                refreshButton.isEnabled = false
+                deleteButton.isEnabled = false
+                summaryView.setText(R.string.model_deleting)
+            }
+            ModelDeletionPhase.SUCCEEDED -> {
+                deletionInProgress = false
+                deletionBackCallback.isEnabled = false
+                setResult(RESULT_MODELS_CHANGED)
+                if (!forceTerminal && lastRenderedTerminalGeneration == state.generation) return
+                lastRenderedTerminalGeneration = state.generation
+                refresh(
+                    getString(
+                        R.string.model_delete_success,
+                        Formatter.formatFileSize(this, state.deletedBytes),
+                    ),
                 )
             }
-        }.start()
+            ModelDeletionPhase.FAILED -> {
+                deletionInProgress = false
+                deletionBackCallback.isEnabled = false
+                if (!forceTerminal && lastRenderedTerminalGeneration == state.generation) return
+                lastRenderedTerminalGeneration = state.generation
+                refresh(
+                    getString(
+                        R.string.model_delete_failed,
+                        state.errorMessage ?: getString(R.string.unknown_error),
+                    ),
+                )
+            }
+        }
     }
 
     private fun applySystemBarInsets() {

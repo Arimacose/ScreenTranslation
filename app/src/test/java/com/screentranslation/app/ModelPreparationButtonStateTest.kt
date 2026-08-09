@@ -1,6 +1,7 @@
 package com.screentranslation.app
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,5 +43,81 @@ class ModelPreparationButtonStateTest {
 
         assertFalse(state.isReady)
         assertFalse(state.isEnabled)
+    }
+
+    @Test
+    fun `delayed initial spinner callback does not invalidate restored readiness`() {
+        assertFalse(
+            hasSelectedLanguagePairChanged(
+                persistedSource = "en",
+                persistedTarget = "zh",
+                selectedSource = "en",
+                selectedTarget = "zh",
+            ),
+        )
+    }
+
+    @Test
+    fun `real language selection invalidates readiness`() {
+        assertTrue(
+            hasSelectedLanguagePairChanged(
+                persistedSource = "en",
+                persistedTarget = "zh",
+                selectedSource = "ja",
+                selectedTarget = "zh",
+            ),
+        )
+    }
+
+    @Test
+    fun `retained readiness requires the same pair and current artifact identity`() {
+        val pair = "en" to "zh"
+        val snapshot = RetainedModelReadiness(pair, "artifact-v1", generation = 4L)
+
+        assertTrue(retainedReadinessMatches(snapshot, pair, "artifact-v1"))
+        assertFalse(retainedReadinessMatches(snapshot, "ja" to "zh", "artifact-v1"))
+        assertFalse(retainedReadinessMatches(snapshot, pair, "artifact-v2"))
+        assertFalse(retainedReadinessMatches(snapshot, pair, null))
+    }
+
+    @Test
+    fun `deleted model or configuration cannot leave a retained false ready state`() {
+        val pair = "en" to "zh"
+        val viewModel = ModelReadinessViewModel()
+        assertTrue(viewModel.markReady(pair, "present-model"))
+        val retained = viewModel.snapshot
+
+        assertFalse(retainedReadinessMatches(retained, pair, currentIdentity = null))
+        viewModel.invalidate()
+        assertNull(viewModel.snapshot)
+    }
+
+    @Test
+    fun `stale verifier generation cannot publish readiness after cancellation`() {
+        val pair = "en" to "zh"
+        val viewModel = ModelReadinessViewModel()
+        val verifierGeneration = viewModel.beginVerification()
+
+        viewModel.invalidate()
+
+        assertFalse(viewModel.markReady(pair, "stale", verifierGeneration))
+        assertNull(viewModel.snapshot)
+    }
+
+    @Test
+    fun `readiness verifier is started only while activity is started and backend is idle`() {
+        assertTrue(shouldStartModelReadinessCheck(true, false, true, false))
+        assertFalse(shouldStartModelReadinessCheck(false, false, true, false))
+        assertFalse(shouldStartModelReadinessCheck(true, true, true, false))
+        assertFalse(shouldStartModelReadinessCheck(true, false, false, false))
+        assertFalse(shouldStartModelReadinessCheck(true, false, true, true))
+    }
+
+    @Test
+    fun `model inventory never hashes while hidden deleting or capture service is running`() {
+        assertTrue(shouldStartModelInventoryScan(true, false, false))
+        assertFalse(shouldStartModelInventoryScan(false, false, false))
+        assertFalse(shouldStartModelInventoryScan(true, true, false))
+        assertFalse(shouldStartModelInventoryScan(true, false, true))
     }
 }

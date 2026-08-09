@@ -51,6 +51,50 @@ class AppleLayoutContractTest {
         assertNotEquals(source("src/online/res/layout/activity_online_settings.xml"), online)
     }
 
+    @Test
+    fun `font scale sensitive controls use compact complete labels in every style`() {
+        val mainStrings = source("src/main/res/values/strings.xml")
+        val onlineStrings = source("src/online/res/values/strings.xml")
+        val standardOnline = source("src/online/res/layout/activity_online_settings.xml")
+        val appleOnline = source("src/online/res/layout/activity_online_settings_apple.xml")
+
+        assertEquals(
+            "全屏增量覆盖（实验）",
+            stringValue(mainStrings, "capture_mode_full_screen"),
+        )
+        assertEquals(
+            "Base URL（如 https://HOST/v1）",
+            stringValue(onlineStrings, "online_base_url_hint"),
+        )
+        assertEquals(
+            "API Key（留空保留已保存密钥）",
+            stringValue(onlineStrings, "online_api_key_hint"),
+        )
+        listOf(standardOnline, appleOnline).forEach { layout ->
+            assertTrue("@string/online_base_url_hint" in layout)
+            assertTrue("@string/online_api_key_hint" in layout)
+        }
+        assertTrue("/models" in stringValue(onlineStrings, "online_endpoint_path_help"))
+        assertTrue("/chat/completions" in stringValue(onlineStrings, "online_endpoint_path_help"))
+    }
+
+    @Test
+    fun `ready preparation button uses explicit neutral disabled colors in every style`() {
+        val activity = source(
+            "src/main/java/com/screentranslation/app/MainActivity.kt",
+        )
+
+        assertTrue("if (prepareState.isReady)" in activity)
+        assertTrue("colorSurfaceVariant" in activity)
+        assertTrue("colorOnSurfaceVariant" in activity)
+        assertTrue(
+            "prepareModelsButton.backgroundTintList = prepareModelsButtonDefaultTint" in activity,
+        )
+        assertTrue(
+            "prepareModelsButton.setTextColor(prepareModelsButtonDefaultTextColors)" in activity,
+        )
+    }
+
     private fun assertLayoutParity(standard: String, apple: String) {
         assertEquals(viewIds(source(standard)), viewIds(source(apple)))
     }
@@ -58,6 +102,11 @@ class AppleLayoutContractTest {
     private fun viewIds(layout: String): Set<String> = ID_PATTERN
         .findAll(layout)
         .mapTo(linkedSetOf()) { it.groupValues[1] }
+
+    private fun stringValue(resources: String, name: String): String = Regex(
+        """<string name="$name">([^<]+)</string>""",
+    ).find(resources)?.groupValues?.get(1)
+        ?: error("Could not locate string resource: $name")
 
     private fun source(relativePath: String): String {
         val candidates = listOf(
