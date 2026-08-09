@@ -1,5 +1,6 @@
 package com.screentranslation.app.online
 
+import com.screentranslation.app.ml.OnlineByokProviderContract
 import com.screentranslation.app.ml.TranslationCall
 import okhttp3.Call
 import okhttp3.Callback
@@ -192,9 +193,9 @@ internal class OnlineChatClient(
     private fun retryJitterMillis(): Long =
         ThreadLocalRandom.current().nextLong(MIN_RETRY_JITTER_MILLIS, MAX_RETRY_JITTER_MILLIS + 1L)
 
-    private companion object {
+    internal companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-        const val MAX_INPUT_CHARACTERS = 6_000
+        const val MAX_INPUT_CHARACTERS = OnlineByokProviderContract.MAX_INPUT_CHARACTERS
         const val MIN_RETRY_JITTER_MILLIS = 300L
         const val MAX_RETRY_JITTER_MILLIS = 800L
     }

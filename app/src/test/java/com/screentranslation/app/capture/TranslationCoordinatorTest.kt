@@ -3,6 +3,8 @@ package com.screentranslation.app.capture
 import com.screentranslation.app.ml.ModelPreparationProgress
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
+import com.screentranslation.app.ml.TranslationProviderProfile
+import com.screentranslation.app.ml.TranslationProviderProfiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -191,6 +193,7 @@ private class FakeBackend : TranslationBackend {
     var cancelCount = 0
     private var pending: Pending? = null
 
+    override val profile: TranslationProviderProfile = TranslationProviderProfiles.bergamotLite
     override val cacheIdentity: String = "fake"
 
     override fun prepare(

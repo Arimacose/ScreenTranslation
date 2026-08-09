@@ -32,8 +32,10 @@ fun interface TranslationCall {
 
 /** Common asynchronous contract shared by local and online backends. */
 interface TranslationBackend : AutoCloseable {
+    val profile: TranslationProviderProfile
+
     val inputMode: TranslationInputMode
-        get() = TranslationInputMode.CLAUSE_PLAN
+        get() = profile.input.mode
 
     /** Separates in-memory cache entries when endpoint/model settings change. */
     val cacheIdentity: String
@@ -57,16 +59,37 @@ interface TranslationBackend : AutoCloseable {
  * backend boundary in the shared capture pipeline.
  */
 object TranslationBackendFactory {
+    val profile: TranslationProviderProfile
+        get() {
+            val configured = buildList {
+                if (BuildConfig.ONLINE_LLM) add(TranslationProviderProfiles.onlineByok)
+                if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+                    add(TranslationProviderProfiles.hyMt2Q4Full)
+                }
+                if (BuildConfig.BERGAMOT_LITE) add(TranslationProviderProfiles.bergamotLite)
+            }
+            check(configured.size == 1) {
+                "Exactly one translation provider must be configured for this edition"
+            }
+            return configured.single().also { selected ->
+                check(selected.isSelectable) {
+                    "Configured translation provider is blocked by its capability/evaluation gate: " +
+                        selected.id
+                }
+            }
+        }
+
     fun create(
         context: Context,
         sourceLanguage: String,
         targetLanguage: String,
     ): TranslationBackend {
-        val backendClassName = when {
-            BuildConfig.ONLINE_LLM -> ONLINE_BACKEND_CLASS
-            BuildConfig.HYMT2_Q4_EXPERIMENTAL -> HYMT2_BACKEND_CLASS
-            BuildConfig.BERGAMOT_LITE -> BERGAMOT_BACKEND_CLASS
-            else -> error("No translation backend is configured for this edition")
+        val selectedProfile = profile
+        val backendClassName = when (selectedProfile.id) {
+            TranslationProviderId.ONLINE_BYOK -> ONLINE_BACKEND_CLASS
+            TranslationProviderId.HY_MT2_Q4_FULL -> HYMT2_BACKEND_CLASS
+            TranslationProviderId.BERGAMOT_LITE -> BERGAMOT_BACKEND_CLASS
+            else -> error("No translation backend class exists for ${selectedProfile.id}")
         }
 
         try {
@@ -76,11 +99,17 @@ object TranslationBackendFactory {
                 String::class.java,
                 String::class.java,
             )
-            return constructor.newInstance(
+            val backend = constructor.newInstance(
                 context.applicationContext,
                 sourceLanguage,
                 targetLanguage,
             ) as TranslationBackend
+            requireSelectedProfileSingleton(selectedProfile, backend.profile)
+            check(backend.profile.isSelectable) {
+                "Translation backend returned a provider whose admission is not satisfied: " +
+                    backend.profile.id
+            }
+            return backend
         } catch (error: InvocationTargetException) {
             throw error.targetException
         } catch (error: ReflectiveOperationException) {
@@ -97,4 +126,15 @@ object TranslationBackendFactory {
         "com.screentranslation.app.ml.BergamotTranslationEngine"
     private const val ONLINE_BACKEND_CLASS =
         "com.screentranslation.app.ml.OnlineLlmTranslationEngine"
+}
+
+/** Prevents an ID-matching copy from bypassing the selected singleton's admission record. */
+internal fun requireSelectedProfileSingleton(
+    selectedProfile: TranslationProviderProfile,
+    backendProfile: TranslationProviderProfile,
+) {
+    check(backendProfile === selectedProfile) {
+        "Translation backend/profile singleton mismatch: selected=${selectedProfile.id}, " +
+            "actual=${backendProfile.id}"
+    }
 }

@@ -39,6 +39,21 @@ in the APK; Lite and Full download pinned translation weights on demand. Online 
 stable region text or stable changed blocks—not screenshots or coordinates—to the HTTPS
 endpoint configured by the user.
 
+Every backend now publishes a typed profile for language routes and pivots, input limits,
+model storage, per-request cancellation, close-time PREEMPT/DRAIN behavior, route-keyed
+latency/memory observations, and attribution. The daily
+middle-tier thresholds and the fail-closed HY-MT2 STQ gate are documented in
+[`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md). STQ remains
+outside every edition factory while llama.cpp PR #22836 is OPEN. Promotion additionally
+requires the repository verifier to prove that the real gitlink contains the eventual merge and
+to hash the exact runnable GGUF and transformation manifest. The source declaration and the
+strict record recomputed from live PR/gitlink/artifact state are pinned in
+[`docs/evidence/hymt2-stq-admission-source-v1.json`](docs/evidence/hymt2-stq-admission-source-v1.json)
+and [`docs/evidence/hymt2-stq-admission-v1.json`](docs/evidence/hymt2-stq-admission-v1.json).
+CI regenerates the record, sidecar, and Kotlin source. Application code consumes only that fixed
+record; caller-supplied ancestor/verified booleans and `NOT_MEASURED` strings are rejected, while
+currently missing Release and thermal measurements remain JSON `null` and block selection.
+
 ## Current features
 
 - User-approved default-display capture through `MediaProjection`; no Accessibility Service.
@@ -91,6 +106,7 @@ Core design notes:
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/FULL_SCREEN_INCREMENTAL_DESIGN.md`](docs/FULL_SCREEN_INCREMENTAL_DESIGN.md)
 - [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)
+- [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md)
 - [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - [`PRIVACY.md`](PRIVACY.md)

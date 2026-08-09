@@ -15,6 +15,8 @@ class OnlineLlmTranslationEngine(
     sourceLanguage: String,
     targetLanguage: String,
 ) : TranslationBackend {
+    override val profile: TranslationProviderProfile = TranslationProviderProfiles.onlineByok
+
     private val sourceLanguageCode = sourceLanguage.trim().lowercase(Locale.ROOT)
     private val targetLanguageCode = targetLanguage.trim().lowercase(Locale.ROOT)
     private val repository = OnlineTranslationConfigRepository(context.applicationContext)
@@ -27,8 +29,6 @@ class OnlineLlmTranslationEngine(
 
     @Volatile
     private var chatClient: OnlineChatClient? = null
-
-    override val inputMode: TranslationInputMode = TranslationInputMode.WHOLE_REGION
 
     override val cacheIdentity: String
         get() = repository.load().cacheIdentity(

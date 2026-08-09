@@ -35,6 +35,31 @@ class BergamotLanguageRouteTest {
     }
 
     @Test
+    fun runtimeRouteAndCloseContractsMatchLiteProfile() {
+        val profile = TranslationProviderProfiles.bergamotLite
+
+        BergamotLiteProviderContract.modelIdsByRoute.forEach { (declaredRoute, modelIds) ->
+            val runtimeRoute = BergamotLanguageRoute.requireSupported(
+                declaredRoute.sourceLanguageTag,
+                declaredRoute.targetLanguageTag,
+            )
+            assertEquals(modelIds, runtimeRoute.modelIds)
+            assertEquals(declaredRoute, profile.languages.routeFor(
+                runtimeRoute.sourceLanguage,
+                runtimeRoute.targetLanguage,
+            ))
+        }
+        assertEquals(
+            TranslationPerRequestCancellation.NO_PER_REQUEST_CANCEL,
+            profile.cancellation.perRequest,
+        )
+        assertEquals(
+            TranslationCloseBehavior.PREEMPT_ACTIVE_AND_DISCARD_QUEUED,
+            profile.cancellation.onClose,
+        )
+    }
+
+    @Test
     fun unsupportedPairNamesLiteAndSupportedRoutes() {
         val error = runCatching {
             BergamotLanguageRoute.requireSupported("ko", "zh")
