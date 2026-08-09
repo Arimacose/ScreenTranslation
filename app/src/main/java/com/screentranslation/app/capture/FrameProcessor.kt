@@ -8,6 +8,7 @@ import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationInputMode
 import com.screentranslation.app.util.ClauseSplitter
+import com.screentranslation.app.util.OcrPunctuationRestorer
 import com.screentranslation.app.util.ProtectedTextCodec
 import com.screentranslation.app.util.SourceTextFilter
 import com.screentranslation.app.util.StableTextGate
@@ -158,7 +159,9 @@ class FrameProcessor(
                         }
                     }
                     val filteredBlocks = SourceTextFilter.filterBlocks(
-                        blocks = recognitionBlocks,
+                        blocks = recognitionBlocks.map { block ->
+                            OcrPunctuationRestorer.restore(block, sourceLanguageTag)
+                        },
                         sourceLanguageTag = sourceLanguageTag,
                         targetLanguageTag = targetLanguageTag,
                     )

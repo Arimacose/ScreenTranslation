@@ -58,8 +58,13 @@ object ClauseSplitter {
         val trimmed = text.trim()
         if (trimmed.length <= MAX_UNSPLIT_LENGTH) return listOf(trimmed)
 
+        // Sentence punctuation inside URLs, decimals, dates, and versions must
+        // never become a semantic boundary. Split the encoded representation,
+        // then restore exact values independently in every resulting clause.
+        val protected = ProtectedTextCodec.protect(trimmed)
+
         val pieces = mutableListOf<String>()
-        var rest = trimmed
+        var rest = protected.encoded
 
         while (rest.length > MAX_UNSPLIT_LENGTH) {
             val cut = findCut(rest) ?: break
@@ -74,7 +79,7 @@ object ClauseSplitter {
         // above still leaves genuinely short input untouched.
         if (pieces.isNotEmpty()) {
             while (true) {
-                val cut = findCjkSentenceCut(rest) ?: break
+                val cut = findSentenceCut(rest) ?: break
                 pieces += rest.substring(0, cut.first).trim()
                 rest = rest.substring(cut.second).trim()
             }
@@ -83,7 +88,11 @@ object ClauseSplitter {
 
         // Nothing usable was found; hand back the original rather than a
         // single-element list built from a half-applied split.
-        return if (pieces.size < 2) listOf(trimmed) else pieces
+        return if (pieces.size < 2) {
+            listOf(trimmed)
+        } else {
+            pieces.map(protected::restore)
+        }
     }
 
     /**
@@ -91,7 +100,7 @@ object ClauseSplitter {
      * connector leaves both sides substantial enough to translate.
      */
     private fun findCut(text: String): Pair<Int, Int>? {
-        var best = findCjkSentenceCut(text)
+        var best = findSentenceCut(text)
 
         for (marker in MARKERS) {
             val at = text.indexOf(marker, startIndex = MIN_CLAUSE_LENGTH, ignoreCase = true)
@@ -109,21 +118,48 @@ object ClauseSplitter {
         return best
     }
 
-    private fun findCjkSentenceCut(text: String): Pair<Int, Int>? {
+    private fun findSentenceCut(text: String): Pair<Int, Int>? {
         var best: Pair<Int, Int>? = null
-        for (terminator in CJK_SENTENCE_TERMINATORS) {
-            val at = text.indexOf(
-                terminator,
-                startIndex = MIN_CLAUSE_LENGTH,
-            )
-            if (at < 0) continue
-            val boundary = at + terminator.length
-            if (text.length - boundary < MIN_CLAUSE_LENGTH) continue
-            if (best == null || boundary < best.first) {
-                best = boundary to boundary
+        for (terminator in SENTENCE_TERMINATORS) {
+            var at = text.indexOf(terminator, startIndex = MIN_CLAUSE_LENGTH)
+            while (at >= 0) {
+                sentenceBoundary(text, at, terminator)?.let { candidate ->
+                    if (best == null || candidate.first < best.first) best = candidate
+                }
+                at = text.indexOf(terminator, startIndex = at + terminator.length)
             }
         }
         return best
+    }
+
+    private fun sentenceBoundary(
+        text: String,
+        at: Int,
+        terminator: String,
+    ): Pair<Int, Int>? {
+        if (terminator == "." && isLatinAbbreviation(text, at)) return null
+
+        var leftEnd = at + terminator.length
+        // Treat ellipses and trailing quotes/brackets as part of the left unit.
+        while (leftEnd < text.length && text[leftEnd] in REPEATED_TERMINATORS) leftEnd += 1
+        while (leftEnd < text.length && text[leftEnd] in SENTENCE_CLOSERS) leftEnd += 1
+
+        var rightStart = leftEnd
+        if (terminator in LATIN_SENTENCE_TERMINATORS) {
+            // A Latin full stop is a sentence boundary only when followed by
+            // whitespace. Protected values have already been tokenized, while
+            // this guard bounds false positives such as initials and filenames.
+            if (rightStart >= text.length || !text[rightStart].isWhitespace()) return null
+        }
+        while (rightStart < text.length && text[rightStart].isWhitespace()) rightStart += 1
+        if (text.length - rightStart < MIN_CLAUSE_LENGTH) return null
+        return leftEnd to rightStart
+    }
+
+    private fun isLatinAbbreviation(text: String, at: Int): Boolean {
+        val prefix = text.substring(0, at)
+        val word = prefix.takeLastWhile { it.isLetter() }.lowercase()
+        return word.length == 1 || word in LATIN_ABBREVIATIONS
     }
 
     /**
@@ -143,8 +179,15 @@ object ClauseSplitter {
         " and ", " but ", " so ", " yet ",
     )
 
-    /** Preserve Japanese/CJK sentence punctuation on the left-hand unit. */
-    private val CJK_SENTENCE_TERMINATORS = listOf("。", "！", "？")
+    /** Preserve sentence punctuation on the left-hand translation unit. */
+    private val SENTENCE_TERMINATORS = listOf("。", "！", "？", ".", "!", "?")
+    private val LATIN_SENTENCE_TERMINATORS = setOf(".", "!", "?")
+    private val REPEATED_TERMINATORS = setOf('.', '!', '?', '。', '！', '？', '…')
+    private val SENTENCE_CLOSERS = setOf('"', '\'', '”', '’', ')', ']', '}', '）', '］', '｝', '」', '』', '】', '》', '〉')
+    private val LATIN_ABBREVIATIONS = setOf(
+        "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
+        "fig", "no", "dept", "inc", "ltd",
+    )
 
     /** Below this the model was never in trouble, so leave the text intact. */
     private const val MAX_UNSPLIT_LENGTH = 90

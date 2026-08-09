@@ -82,6 +82,28 @@ class ClauseSplitterTest {
     }
 
     @Test
+    fun `splits long English text at restored sentence terminators`() {
+        val text = "The storm crossed the northern valley before midnight while every station " +
+            "reported lower water levels. The rescue team reopened the mountain road after " +
+            "engineers inspected every bridge and radio relay."
+
+        val parts = ClauseSplitter.split(text)
+
+        assertEquals(2, parts.size)
+        assertTrue(parts.all { it.endsWith(".") })
+        assertEquals(text, parts.joinToString(" "))
+    }
+
+    @Test
+    fun `does not treat protected internal punctuation as clause boundaries`() {
+        val text = "During a deliberately extended inspection the measured value stayed at 3.14 " +
+            "beside release v2.0.0 located at https://example.com/releases/2.0 until the final " +
+            "review concluded with no separate semantic boundary"
+
+        assertEquals(listOf(text), ClauseSplitter.split(text))
+    }
+
+    @Test
     fun `prefers the longer connector over the one nested inside it`() {
         val text = "The app keeps working offline until you clear its data, in which case " +
             "the models have to be downloaded again from the network."

@@ -22,7 +22,7 @@
 - [x] 在翻译前遮蔽、翻译后恢复版本号、邮箱、金额、日期和 URL
 - [x] 让原文与译文面板可复制
 - [x] 在不保存历史的前提下增加长结果展开与限高滚动
-- [ ] 恢复 OCR 丢失的关键标点并按语义分句（[#40](https://github.com/Arimacose/ScreenTranslation/issues/40)）
+- [x] 恢复 OCR 丢失的关键标点并按语义分句（[#40](https://github.com/Arimacose/ScreenTranslation/issues/40)；[质量基准](OCR_PUNCTUATION_QUALITY_2026-08-09.md)）
 - [ ] 抽象 `TranslationProvider`，分离端侧快速模式和高质量模式（[#41](https://github.com/Arimacose/ScreenTranslation/issues/41)）
 - [ ] 为固定公开文本建立质量回归夹具与人工评分规范（[#46](https://github.com/Arimacose/ScreenTranslation/issues/46)）
 - [x] 增加模型管理页面：大小、状态、下载与删除

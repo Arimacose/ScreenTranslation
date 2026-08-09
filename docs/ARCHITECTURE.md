@@ -55,7 +55,8 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 | `FrameProcessor` | 限速、单飞处理、丢弃过期帧和串联 OCR/翻译 | 不允许并发处理两帧；结果带代次校验 |
 | `FullScreenFrameProcessor` | 亮度分块差分、脏块 OCR、文字框稳定与逐块翻译 | `3×6` 分块；强制复核；最多 12 个新块/轮；翻译单活跃 |
 | `IncrementalBlockTracker` | 以文字与几何匹配维持 block ID，过滤重复框 | 同一内容连续两次观察后才稳定 |
-| `ProtectedTextCodec` | 翻译前替换 URL、邮箱、日期、金额与版本号，翻译后恢复 | 纯 Kotlin；token 避免与输入冲突 |
+| `OcrPunctuationRestorer` | 在分句/翻译前恢复高置信句尾、硬换行句界和缺失右侧成对标点 | 先 token 化保护值；纯 Kotlin；规则与阈值固定 |
+| `ProtectedTextCodec` | 翻译前替换 URL、邮箱、日期、金额、小数与版本号，翻译后恢复 | 纯 Kotlin；token 避免与输入冲突 |
 | `BitmapExtractor` | 从 ImageReader 图像读取 stride，构造 Bitmap 并裁剪 | 每个 `Image` 均在 `finally` 中关闭 |
 | `OcrEngine` | 为帧处理层提供统一 OCR 接口；生产实现为 `PpOcrv6Engine` | 单工作线程串行推理；关闭时释放 ORT session 与线程 |
 | `StableTextGate` | 文本规范化、去空白抖动、稳定次数门限、重复抑制 | 纯 Kotlin，可单元测试 |
@@ -80,13 +81,17 @@ flowchart LR
     E --> F["ImageReader：最新屏幕帧"]
     F --> R{"捕获模式"}
     R -->|"区域（默认）"| G["裁剪/遮蔽区域"]
-    G --> H["PP-OCRv6 + StableTextGate"]
-    H --> I["分句或 Online 整段 latest-wins"]
+    G --> H["PP-OCRv6"]
+    H --> S["确定性标点恢复 + 保护值隔离"]
+    S --> U["源语言过滤 + StableTextGate"]
+    U --> I["分句或 Online 整段 latest-wins"]
     I --> J["Edition TranslationBackend"]
     J --> K["OverlayController：原文/译文面板"]
     R -->|"全屏增量（Experimental）"| M["3×6 亮度差分 + 脏块复核"]
-    M --> N["PP-OCRv6 文字框 + 跨帧稳定"]
-    N --> O["单活跃变化块翻译队列"]
+    M --> N["PP-OCRv6 文字框"]
+    N --> T["确定性标点恢复 + 源语言过滤"]
+    T --> V["跨帧稳定"]
+    V --> O["单活跃变化块翻译队列"]
     O --> P["FullScreenOverlayController：原文框上方译文"]
     D --> L["运行通知：停止入口"]
     L --> Q["停止后常驻通知：按已保存模式重新授权"]

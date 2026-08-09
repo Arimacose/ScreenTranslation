@@ -5,7 +5,7 @@ import java.security.MessageDigest
 /**
  * Replaces translation-sensitive values with deterministic opaque tokens.
  *
- * OCR text often contains URLs, dates, prices, and software versions that are
+ * OCR text often contains URLs, dates, prices, decimals, and software versions that are
  * already meaningful in the target language. Keeping them outside the model
  * prevents punctuation changes, digit grouping changes, and accidental
  * localization. The original text remains available separately for display.
@@ -18,6 +18,12 @@ object ProtectedTextCodec {
     ) {
         val hasReplacements: Boolean
             get() = replacements.isNotEmpty()
+
+        /** Removes only this instance's exact tokens for punctuation heuristics. */
+        internal fun withoutProtectedValues(text: String = encoded): String =
+            replacements.fold(text) { value, replacement ->
+                value.replace(replacement.first, " ")
+            }
 
         fun restore(translated: String): String = replacements.fold(translated) { text, item ->
             restoreToken(text, item.first, item.second)
@@ -91,11 +97,12 @@ object ProtectedTextCodec {
 
     /** Earlier patterns win when two candidates overlap. */
     private val PATTERNS = listOf(
-        Regex("""(?i)\b(?:https?://|www\.)[^\s<>{}\[\]\"']*[A-Za-z0-9/#]"""),
+        Regex("""(?i)\b(?:https?://|www\.)[A-Z0-9._~:/?#@!$&'()*+,;=%-]*[A-Z0-9/#]"""),
         Regex("""(?i)(?<![\p{L}\p{N}._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\p{L}\p{N}._%+-])"""),
-        Regex("""(?i)(?<![\p{L}\p{N}@._-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?:/[^\s<>{}\[\]\"']*)?(?![\p{L}\p{N}._-])"""),
+        Regex("""(?i)(?<![A-Z0-9@._-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?:/[A-Z0-9._~:/?#@!$&'()*+,;=%-]*[A-Z0-9/#])?(?![A-Z0-9._-])"""),
         Regex("""(?<!\d)(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{4}年\d{1,2}月\d{1,2}日?)(?!\d)"""),
         Regex("""(?i)(?:[$€£¥￥]\s?\d+(?:[,\s]\d{3})*(?:\.\d+)?|(?:CNY|RMB|USD|EUR|GBP|JPY)\s?\d+(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:[,\s]\d{3})*(?:\.\d+)?\s?(?:CNY|RMB|USD|EUR|GBP|JPY|元|円|日元|人民币|美元|欧元|英镑))"""),
+        Regex("""(?<![\p{L}\p{N}.])\d+\.\d+(?![\p{L}\p{N}.])"""),
         Regex("""(?i)(?<![\p{L}\p{N}])v?\d+(?:\.\d+){1,4}(?:[-+][0-9A-Z.-]+)?(?![\p{L}\p{N}])"""),
     )
 
