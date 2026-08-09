@@ -461,6 +461,7 @@ class ScreenTranslationService : Service() {
     private fun reportProcessingError(error: Throwable) {
         mainHandler.post {
             if (!closing) {
+                overlayController?.preserveContentAfterFailure()
                 updateOverlayStatus(
                     "处理失败：${error.message ?: error.javaClass.simpleName}",
                 )

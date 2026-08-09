@@ -57,12 +57,31 @@ internal data class RegionOverlayContent(
  * the same state rule without constructing an Android window in a JVM test.
  */
 internal object RegionOverlayContentPolicy {
+    fun success(
+        original: String,
+        translation: String,
+    ): RegionOverlayContent = RegionOverlayContent(
+        original = original,
+        translation = translation,
+    )
+
+    @Suppress("UNUSED_PARAMETER")
     fun pending(
         currentOriginal: String,
         currentTranslation: String,
         nextOriginal: String,
     ): RegionOverlayContent = RegionOverlayContent(
-        original = nextOriginal,
+        // The latest source belongs to an unfinished request. Keep the last
+        // successful pair atomic until that request produces its translation.
+        original = currentOriginal,
+        translation = currentTranslation,
+    )
+
+    fun failure(
+        currentOriginal: String,
+        currentTranslation: String,
+    ): RegionOverlayContent = RegionOverlayContent(
+        original = currentOriginal,
         translation = currentTranslation,
     )
 }
@@ -249,17 +268,18 @@ class OverlayController(
     }
 
     fun updateContent(original: String, translation: String) {
+        val successful = RegionOverlayContentPolicy.success(original, translation)
         runOnMain {
-            currentOriginal = original
-            currentTranslation = translation
-            originalView?.text = original.ifBlank {
+            currentOriginal = successful.original
+            currentTranslation = successful.translation
+            originalView?.text = successful.original.ifBlank {
                 appContext.getString(R.string.overlay_waiting_for_text)
             }
-            translationView?.text = translation.ifBlank {
+            translationView?.text = successful.translation.ifBlank {
                 appContext.getString(R.string.overlay_waiting_for_translation)
             }
-            copyOriginalButton?.isEnabled = original.isNotBlank()
-            copyTranslationButton?.isEnabled = translation.isNotBlank()
+            copyOriginalButton?.isEnabled = successful.original.isNotBlank()
+            copyTranslationButton?.isEnabled = successful.translation.isNotBlank()
             rootView?.post { dispatchOverlayBounds() }
         }
     }
@@ -273,8 +293,12 @@ class OverlayController(
         updateContent(pending.original, pending.translation)
     }
 
-    fun updateTranslation(text: String) {
-        updateContent(currentOriginal, text)
+    fun preserveContentAfterFailure() {
+        val preserved = RegionOverlayContentPolicy.failure(
+            currentOriginal = currentOriginal,
+            currentTranslation = currentTranslation,
+        )
+        updateContent(preserved.original, preserved.translation)
     }
 
     fun updateStatus(status: String) {

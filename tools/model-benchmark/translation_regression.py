@@ -2,8 +2,9 @@
 """Strict, key-free translation regression and blinded-review tooling.
 
 The public corpus is the only authority for source text, references, tags,
-categories and semantic checks.  Formal candidate files deliberately contain
-only case identity, a source hash, model output and real-inference metadata.
+categories and semantic checks.  Candidate files deliberately contain only
+case identity, a source hash, model output, strict runner-claimed metadata and
+structural hashes; those public self-hashes are not inference attestation.
 Synthetic reference playback exists solely for a deterministic harness smoke
 and is rejected by the formal release gate.
 """
@@ -20,6 +21,7 @@ import math
 import re
 import secrets
 import statistics
+import unicodedata
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +47,18 @@ DEFAULT_ONLINE_EVIDENCE_SOURCE = (
     / "online"
     / "OnlineFailureContractExecutionTest.kt"
 )
+DEFAULT_CANDIDATE_RUNNER_SOURCE = (
+    ROOT
+    / "app"
+    / "src"
+    / "benchmark"
+    / "java"
+    / "com"
+    / "screentranslation"
+    / "app"
+    / "benchmark"
+    / "ModelBenchmarkActivity.kt"
+)
 DEFAULT_BLIND_KEY_DIRECTORY = Path.home() / ".screentranslation" / "blind-review-keys"
 
 PAIR_BY_SUITE = {"en-zh-diverse-v2": "en-zh", "ja-zh-diverse-v1": "ja-zh"}
@@ -59,9 +73,34 @@ REQUIRED_FAILURE_CLASSES = {
     "response",
 }
 FORMAL_EVIDENCE_KIND = "real_model_inference"
+FORMAL_PRODUCER_ID = "screen-translation-benchmark-runner/v1"
 SMOKE_EVIDENCE_KIND = "synthetic_harness_smoke"
 ONLINE_EVIDENCE_KIND = "kotlin_policy_execution"
 BANNED_FORMAL_MARKERS = ("reference", "fixture", "replay", "synthetic", "smoke")
+# Fixed Unicode 15.1 Default_Ignorable_Code_Point coverage used by replay
+# normalization.  General categories alone are insufficient: reserved Cn
+# code points such as U+2065 and U+FFF0 are default-ignorable as well.
+DEFAULT_IGNORABLE_UNICODE_VERSION = "15.1.0"
+DEFAULT_IGNORABLE_RANGES = (
+    (0x00AD, 0x00AD),
+    (0x034F, 0x034F),
+    (0x061C, 0x061C),
+    (0x115F, 0x1160),
+    (0x17B4, 0x17B5),
+    (0x180B, 0x180F),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x206F),
+    (0x3164, 0x3164),
+    (0xFE00, 0xFE0F),
+    (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0),
+    (0xFFF0, 0xFFF8),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0000, 0xE0FFF),
+)
+MAX_NORMALIZED_REPLAY_FRACTION = 0.90
 RETIRED_REFERENCE_SHA256 = {
     "945ad37059351ba0a1c03d81b549c016a96691a6e8bd1079ce33d85dd466123c",
     "e4f9bc931f42955c25eb6df798d8fcfc6eacd5414fe3d157e876df062a2713fa",
@@ -174,6 +213,12 @@ CANDIDATE_KEYS = {
     "inference",
     "cases",
 }
+PROVENANCE_KEYS = {
+    "schema_version",
+    "producer_id",
+    "producer_source_sha256",
+    "raw_inference_record_sha256",
+}
 INFERENCE_KEYS = {
     "producer",
     "engine_id",
@@ -212,7 +257,21 @@ def _load_score_module() -> Any:
     return module
 
 
+def _load_online_evidence_module() -> Any:
+    module_path = Path(__file__).with_name("online_failure_evidence.py")
+    spec = importlib.util.spec_from_file_location(
+        "translation_regression_online_failure_evidence",
+        module_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load Online evidence runner: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 score = _load_score_module()
+online_evidence = _load_online_evidence_module()
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -764,6 +823,67 @@ def make_reference_replay(
     }
 
 
+def formal_raw_inference_record_sha256(result: dict[str, Any]) -> str:
+    """Hash the strict runner-owned portion of a formal candidate record."""
+    cases = result["cases"]
+    canonical_cases = (
+        sorted(cases, key=lambda case: str(case.get("case_id", "")))
+        if isinstance(cases, list) and all(isinstance(case, dict) for case in cases)
+        else cases
+    )
+    return canonical_json_sha256(
+        {
+            "schema_version": result["schema_version"],
+            "corpus_release": result["corpus_release"],
+            "fixture_sha256": result["fixture_sha256"],
+            "suite_id": result["suite_id"],
+            "source_language": result["source_language"],
+            "target_language": result["target_language"],
+            "inference": result["inference"],
+            "cases": canonical_cases,
+        }
+    )
+
+
+def _validate_formal_provenance(result: dict[str, Any]) -> None:
+    provenance = _exact_keys(result["provenance"], PROVENANCE_KEYS, "candidate provenance")
+    if provenance["schema_version"] != 1:
+        raise ValueError("Unsupported candidate provenance schema")
+    if provenance["producer_id"] != FORMAL_PRODUCER_ID:
+        raise ValueError("Formal candidate must name the project benchmark runner")
+    expected_source_hash = sha256_file(DEFAULT_CANDIDATE_RUNNER_SOURCE)
+    if provenance["producer_source_sha256"] != expected_source_hash:
+        raise ValueError("Formal candidate benchmark-runner source hash mismatch")
+    expected_record_hash = formal_raw_inference_record_sha256(result)
+    if provenance["raw_inference_record_sha256"] != expected_record_hash:
+        raise ValueError("Formal candidate raw inference record hash mismatch")
+
+
+def _is_default_ignorable(character: str) -> bool:
+    codepoint = ord(character)
+    # Cc/Cf is an intentionally conservative replay-defense superset.  The
+    # fixed table below supplies Default_Ignorable Cn/Mn gaps and prevents the
+    # result from drifting with Python's bundled Unicode database.
+    if unicodedata.category(character) in {"Cc", "Cf"}:
+        return True
+    return any(
+        start <= codepoint <= end
+        for start, end in DEFAULT_IGNORABLE_RANGES
+    )
+
+
+def replay_fingerprint(value: str) -> str:
+    """Collapse obvious invisible/format-only mutations for replay detection."""
+    normalized = unicodedata.normalize("NFKC", value)
+    return "".join(
+        character
+        for character in normalized
+        if not character.isspace()
+        and not unicodedata.category(character).startswith("P")
+        and not _is_default_ignorable(character)
+    ).casefold()
+
+
 def _validate_inference_metadata(inference: Any, *, formal: bool) -> dict[str, Any]:
     inference = _exact_keys(inference, INFERENCE_KEYS, "candidate inference")
     for key in INFERENCE_KEYS - {"repetitions"}:
@@ -776,6 +896,15 @@ def _validate_inference_metadata(inference: Any, *, formal: bool) -> dict[str, A
     if inference["network_path"] not in {"offline", "provider_https"}:
         raise ValueError("candidate inference.network_path must be offline or provider_https")
     if formal:
+        if inference["producer"] != FORMAL_PRODUCER_ID:
+            raise ValueError("Formal candidate producer must be the project benchmark runner")
+        for key in ("model_revision", "runtime_revision"):
+            if not re.fullmatch(r"[0-9a-f]{7,64}", inference[key]):
+                raise ValueError(f"Formal candidate inference.{key} must be a pinned lowercase revision hash")
+        if inference["device_kind"] != "physical-android-device":
+            raise ValueError("Formal candidate must come from the physical Android benchmark runner")
+        if inference["latency_clock"] != "elapsed-realtime-monotonic":
+            raise ValueError("Formal candidate latency clock must be elapsed-realtime-monotonic")
         metadata = " ".join(str(inference[key]) for key in INFERENCE_KEYS if key != "repetitions").casefold()
         marker = next((item for item in BANNED_FORMAL_MARKERS if item in metadata), None)
         if marker:
@@ -792,15 +921,18 @@ def validate_candidate_against_suite(
     *,
     formal: bool = True,
 ) -> tuple[list[dict[str, Any]], str]:
-    _exact_keys(result, CANDIDATE_KEYS, f"{pair} candidate")
-    if result["schema_version"] != 2:
-        raise ValueError(f"{pair} candidate has unsupported schema")
+    expected_candidate_keys = CANDIDATE_KEYS | ({"provenance"} if formal else set())
+    if not isinstance(result, dict):
+        raise ValueError(f"{pair} candidate must be an object")
     expected_kind = FORMAL_EVIDENCE_KIND if formal else SMOKE_EVIDENCE_KIND
-    if result["evidence_kind"] != expected_kind:
+    if result.get("evidence_kind") != expected_kind:
         raise ValueError(
             f"{pair} candidate evidence_kind must be {expected_kind}; "
             "reference/fixture/replay/synthetic evidence is not release evidence"
         )
+    _exact_keys(result, expected_candidate_keys, f"{pair} candidate")
+    if result["schema_version"] != 2:
+        raise ValueError(f"{pair} candidate has unsupported schema")
     if result["corpus_release"] != corpus_release or result["fixture_sha256"] != fixture_hash:
         raise ValueError(f"{pair} candidate corpus release or fixture_sha256 mismatch")
     source, target = pair.split("-", 1)
@@ -856,6 +988,8 @@ def validate_candidate_against_suite(
     materialized: list[dict[str, Any]] = []
     exact_reference_count = 0
     source_passthrough_count = 0
+    normalized_reference_replay_count = 0
+    normalized_source_passthrough_count = 0
     for fixture in suite["cases"]:
         candidate_case = by_id[fixture["id"]]
         expected_source_hash = sha256_text(fixture["source_text"])
@@ -864,6 +998,16 @@ def validate_candidate_against_suite(
         output_text = candidate_case["candidate"]["output_text"]
         exact_reference_count += int(output_text in fixture["reference_translations"])
         source_passthrough_count += int(output_text.strip() == fixture["source_text"].strip())
+        output_fingerprint = replay_fingerprint(output_text)
+        normalized_reference_replay_count += int(
+            any(
+                output_fingerprint == replay_fingerprint(reference)
+                for reference in fixture["reference_translations"]
+            )
+        )
+        normalized_source_passthrough_count += int(
+            output_fingerprint == replay_fingerprint(fixture["source_text"])
+        )
         joined = copy.deepcopy(fixture)
         joined["translation_raw"] = copy.deepcopy(candidate_case["candidate"])
         materialized.append(joined)
@@ -871,6 +1015,29 @@ def validate_candidate_against_suite(
         raise ValueError("Formal candidate is a complete canonical reference replay")
     if formal and source_passthrough_count == len(materialized):
         raise ValueError("Formal candidate is a complete source fixture passthrough")
+    if formal and normalized_reference_replay_count == len(materialized):
+        raise ValueError(
+            "Formal candidate is a complete canonical reference replay after Unicode normalization"
+        )
+    if formal and normalized_source_passthrough_count == len(materialized):
+        raise ValueError(
+            "Formal candidate is a complete source fixture passthrough after Unicode normalization"
+        )
+    normalized_replay_limit = math.ceil(
+        len(materialized) * MAX_NORMALIZED_REPLAY_FRACTION
+    )
+    if formal and normalized_reference_replay_count >= normalized_replay_limit:
+        raise ValueError(
+            "Formal candidate is a near-complete canonical reference replay after Unicode "
+            f"normalization: {normalized_reference_replay_count}/{len(materialized)}"
+        )
+    if formal and normalized_source_passthrough_count >= normalized_replay_limit:
+        raise ValueError(
+            "Formal candidate is a near-complete source fixture passthrough after Unicode "
+            f"normalization: {normalized_source_passthrough_count}/{len(materialized)}"
+        )
+    if formal:
+        _validate_formal_provenance(result)
     return materialized, canonical_json_sha256(result)
 
 
@@ -1069,10 +1236,13 @@ def run_gate(
     thresholds_path: Path = DEFAULT_THRESHOLDS,
     calibration_path: Path = DEFAULT_CALIBRATION,
     failures_path: Path = DEFAULT_FAILURES,
-    failure_evidence: dict[str, Any] | None = None,
     failure_replay: dict[str, Any] | None = None,
-    human_summary: dict[str, Any] | None = None,
+    blind_sheet_path: Path | None = None,
+    blind_key_path: Path | None = None,
+    rating_paths: list[Path] | None = None,
+    rubric_path: Path | None = None,
     candidate_system: str | None = None,
+    baseline_system: str | None = None,
     automated_only_smoke: bool = False,
 ) -> dict[str, Any]:
     if automated_only_smoke:
@@ -1090,14 +1260,20 @@ def run_gate(
     fixture_hash = sha256_file(fixtures_path)
     pair_reports: dict[str, Any] = {}
     candidate_hashes: dict[str, str] = {}
+    baseline_hashes: dict[str, str] = {}
+    candidate_cases_by_pair: dict[str, list[dict[str, Any]]] = {}
+    baseline_cases_by_pair: dict[str, list[dict[str, Any]]] = {}
     for pair in ("en-zh", "ja-zh"):
         candidate_cases, candidate_hash = validate_candidate_against_suite(
             candidates[pair], pair, suites[pair], fixtures["corpus_release"], fixture_hash, formal=True
         )
-        baseline_cases, _ = validate_candidate_against_suite(
+        baseline_cases, baseline_hash = validate_candidate_against_suite(
             baselines[pair], pair, suites[pair], fixtures["corpus_release"], fixture_hash, formal=True
         )
         candidate_hashes[pair] = candidate_hash
+        baseline_hashes[pair] = baseline_hash
+        candidate_cases_by_pair[pair] = candidate_cases
+        baseline_cases_by_pair[pair] = baseline_cases
         pair_reports[pair] = evaluate_pair_gate(
             candidate_cases,
             baseline_cases,
@@ -1107,19 +1283,71 @@ def run_gate(
 
     failure_report: dict[str, Any] = {"required": edition == "online"}
     if edition == "online":
-        if failure_evidence is None:
-            raise ValueError("Online gate requires Kotlin production-path failure evidence")
-        failure_report.update(
-            verify_failure_evidence(failure_evidence, load_json(failures_path), failures_path)
-        )
+        if failures_path.resolve() != DEFAULT_FAILURES.resolve():
+            raise ValueError("Formal Online gate requires the canonical failure contract")
     else:
         failure_report["passed"] = True
 
-    if human_summary is None or not candidate_system:
-        raise ValueError("Release gate requires blind human scores and a candidate system id")
-    _validate_human_summary_top(human_summary, fixtures["corpus_release"], fixture_hash)
-    human_checks: list[dict[str, Any]] = []
+    if (
+        blind_sheet_path is None
+        or blind_key_path is None
+        or rating_paths is None
+        or rubric_path is None
+        or not candidate_system
+        or not baseline_system
+    ):
+        raise ValueError(
+            "Release gate requires a blind sheet, repository-external identity key, "
+            "raw rating documents, rubric, candidate system id, and baseline system id"
+        )
+    if candidate_system == baseline_system:
+        raise ValueError("Candidate and baseline blind system ids must be distinct")
     human_config = thresholds["human_review"]
+    minimum_raters = human_config["minimum_raters_per_output"]
+    if len(rating_paths) < minimum_raters:
+        raise ValueError(
+            f"Release gate requires at least {minimum_raters} raw rating documents; "
+            f"received {len(rating_paths)}"
+        )
+    resolved_rating_paths = [path.expanduser().resolve() for path in rating_paths]
+    if len(set(resolved_rating_paths)) != len(resolved_rating_paths):
+        raise ValueError("Release gate requires distinct raw rating document paths")
+
+    sheet = load_json(blind_sheet_path.expanduser().resolve())
+    external_key_path = ensure_external_blind_key_path(blind_key_path)
+    key = load_json(external_key_path)
+    rating_documents = [load_json(path) for path in resolved_rating_paths]
+    rubric = load_json(rubric_path.expanduser().resolve())
+    validate_human_rubric(rubric)
+    if canonical_json_sha256(rubric) != canonical_json_sha256(load_json(DEFAULT_RUBRIC)):
+        raise ValueError("Formal gate requires the canonical repository human-rating rubric")
+    _validate_blind_system_bindings(
+        sheet,
+        key,
+        {
+            candidate_system: candidate_cases_by_pair,
+            baseline_system: baseline_cases_by_pair,
+        },
+        {
+            candidate_system: candidate_hashes,
+            baseline_system: baseline_hashes,
+        },
+        fixtures_path,
+    )
+    human_summary = score_human_ratings(
+        sheet,
+        key,
+        rating_documents,
+        rubric,
+        fixtures_path,
+    )
+    _validate_human_summary_top(human_summary, fixtures["corpus_release"], fixture_hash)
+    if human_summary["rater_count"] < minimum_raters:
+        raise ValueError(
+            f"Release gate requires at least {minimum_raters} unique raters; "
+            f"received {human_summary['rater_count']}"
+        )
+    human_checks: list[dict[str, Any]] = []
     for pair in ("en-zh", "ja-zh"):
         metrics = _human_metric(human_summary, candidate_system, pair)
         if metrics["system_evidence_sha256"] != candidate_hashes[pair]:
@@ -1140,8 +1368,85 @@ def run_gate(
                 _check(f"{pair} case coverage", metrics["case_coverage"], ">=", human_config["minimum_case_coverage"]),
             ]
         )
-    human_report = {"passed": all(check["passed"] for check in human_checks), "status": "evaluated", "checks": human_checks}
-    automated_passed = all(report["passed"] for report in pair_reports.values()) and bool(failure_report["passed"])
+    human_score_checks_passed = all(check["passed"] for check in human_checks)
+    reviewer_authenticity = {
+        "passed": False,
+        "status": "pseudonymous_ids_only_not_authenticated_people",
+        "reason": (
+            "Distinct rater_id strings and complete documents do not prove distinct "
+            "human reviewers. Trusted reviewer signatures or protected approvals are required."
+        ),
+    }
+    human_report = {
+        "passed": False,
+        "score_checks_passed": human_score_checks_passed,
+        "status": "recomputed_from_structurally_valid_unauthenticated_raw_ratings",
+        "reviewer_authenticity": reviewer_authenticity,
+        "checks": human_checks,
+        "evidence": {
+            "bundle_id": human_summary["bundle_id"],
+            "sheet_sha256": human_summary["sheet_sha256"],
+            "blind_key_canonical_sha256": canonical_json_sha256(key),
+            "rubric_canonical_sha256": canonical_json_sha256(rubric),
+            "raw_rating_document_sha256": [
+                canonical_json_sha256(document) for document in rating_documents
+            ],
+            "raw_rating_document_count": len(rating_documents),
+            "unique_rater_count": human_summary["rater_count"],
+        },
+    }
+    runner_provenance = {
+        "passed": False,
+        "status": "unattested_structural_runner_records",
+        "producer_id": FORMAL_PRODUCER_ID,
+        "producer_source_sha256": sha256_file(DEFAULT_CANDIDATE_RUNNER_SOURCE),
+        "reason": (
+            "Candidate JSON and its public hashes are structurally self-consistent but "
+            "are not a fresh gate-owned runner response or a verified external attestation."
+        ),
+    }
+    baseline_admission = {
+        "passed": False,
+        "status": "unadmitted_caller_supplied_incumbent_records",
+        "evidence_sha256": baseline_hashes,
+        "reason": (
+            "The supplied baseline is structurally valid but is not bound to a canonical "
+            "edition incumbent manifest and repository pin."
+        ),
+    }
+    if edition == "online":
+        fresh_online = online_evidence.run_fresh_online_failure_evidence()
+        verification = fresh_online["verification"]
+        if (
+            verification.get("passed") is not True
+            or verification.get("fresh") is not True
+            or verification.get("status") != "fresh_kotlin_policy_execution"
+            or verification.get("trust_boundary")
+            != "fresh_hash_pinned_current_checkout_not_attestation"
+            or re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(verification.get("execution_chain_sha256", "")),
+            )
+            is None
+        ):
+            raise ValueError("Online production-path evidence was not freshly verified")
+        failure_report.update(verification)
+        failure_report["evidence_canonical_sha256"] = canonical_json_sha256(
+            fresh_online["evidence"]
+        )
+    metric_checks_passed = all(report["passed"] for report in pair_reports.values()) and bool(failure_report["passed"])
+    automated_passed = metric_checks_passed and bool(baseline_admission["passed"])
+    release_ready_blockers = []
+    if not metric_checks_passed:
+        release_ready_blockers.append("automated_quality_or_online_policy_gate_failed")
+    if not baseline_admission["passed"]:
+        release_ready_blockers.append("canonical_incumbent_admission_required")
+    if not human_report["score_checks_passed"]:
+        release_ready_blockers.append("blind_human_review_gate_failed")
+    if not human_report["reviewer_authenticity"]["passed"]:
+        release_ready_blockers.append("authenticated_independent_human_reviewers_required")
+    if not runner_provenance["passed"]:
+        release_ready_blockers.append("fresh_or_attested_candidate_runner_provenance_required")
     return {
         "schema_version": 2,
         "report_kind": "translation_quality_release_gate",
@@ -1149,11 +1454,20 @@ def run_gate(
         "corpus_release": fixtures["corpus_release"],
         "fixture_sha256": fixture_hash,
         "candidate_evidence_sha256": candidate_hashes,
+        "metric_checks_passed": metric_checks_passed,
         "automated_passed": automated_passed,
-        "release_ready": automated_passed and bool(human_report["passed"]),
+        "release_ready": not release_ready_blockers,
+        "release_ready_reason": (
+            "all_formal_gates_passed"
+            if not release_ready_blockers
+            else ",".join(release_ready_blockers)
+        ),
+        "release_ready_blockers": release_ready_blockers,
         "pairs": pair_reports,
         "failure_contract": failure_report,
         "human_review": human_report,
+        "runner_provenance": runner_provenance,
+        "baseline_admission": baseline_admission,
     }
 
 
@@ -1335,6 +1649,7 @@ def _validate_blind_sheet_and_key(
 
     expected: dict[tuple[str, str], dict[str, Any]] = {}
     systems_by_route: dict[tuple[str, str], set[str]] = defaultdict(set)
+    seen_system_routes: set[tuple[str, str, str]] = set()
     for index, entry in enumerate(key["entries"]):
         _exact_keys(
             entry,
@@ -1350,6 +1665,10 @@ def _validate_blind_sheet_and_key(
         _nonempty_string(entry["system_id"], f"blind key {output_key}.system_id")
         if not re.fullmatch(r"[0-9a-f]{64}", str(entry["system_evidence_sha256"])):
             raise ValueError(f"Invalid system evidence hash: {output_key}")
+        system_route = (entry["pair"], entry["case_id"], entry["system_id"])
+        if system_route in seen_system_routes:
+            raise ValueError(f"Blind key repeats a system for one canonical case: {system_route}")
+        seen_system_routes.add(system_route)
         expected[output_key] = entry
         systems_by_route[route].add(entry["system_id"])
     if set(expected) != set(output_to_item):
@@ -1357,7 +1676,101 @@ def _validate_blind_sheet_and_key(
     system_sets = {tuple(sorted(value)) for value in systems_by_route.values()}
     if len(system_sets) != 1:
         raise ValueError("Blind key system coverage varies between cases")
+    if not system_sets or len(next(iter(system_sets))) < 2:
+        raise ValueError("Blind comparison requires at least two distinct systems per case")
     return expected
+
+
+def validate_human_rubric(rubric: dict[str, Any]) -> dict[str, Any]:
+    _exact_keys(
+        rubric,
+        {
+            "schema_version",
+            "license_spdx",
+            "instructions",
+            "adequacy",
+            "fluency",
+            "critical_error_values",
+        },
+        "human-rating rubric",
+    )
+    if rubric["schema_version"] != 1:
+        raise ValueError("Unsupported human-rating rubric schema")
+    _nonempty_string(rubric["license_spdx"], "human-rating rubric.license_spdx")
+    instructions = rubric["instructions"]
+    if (
+        not isinstance(instructions, list)
+        or not instructions
+        or any(not isinstance(value, str) or not value.strip() for value in instructions)
+    ):
+        raise ValueError("Human-rating rubric instructions must be non-empty strings")
+    expected_scale = {str(value) for value in range(1, 6)}
+    for dimension in ("adequacy", "fluency"):
+        scale = rubric[dimension]
+        if not isinstance(scale, dict) or set(scale) != expected_scale:
+            raise ValueError(f"Human-rating rubric {dimension} must define exactly 1..5")
+        for score, description in scale.items():
+            _nonempty_string(description, f"human-rating rubric.{dimension}.{score}")
+    errors = rubric["critical_error_values"]
+    if (
+        not isinstance(errors, list)
+        or any(not isinstance(value, str) or not value.strip() for value in errors)
+        or len(errors) != len(set(errors))
+        or "none" not in errors
+    ):
+        raise ValueError("Human rubric has no valid critical-error vocabulary")
+    return rubric
+
+
+def _validate_blind_system_bindings(
+    sheet: dict[str, Any],
+    key: dict[str, Any],
+    system_cases: dict[str, dict[str, list[dict[str, Any]]]],
+    system_hashes: dict[str, dict[str, str]],
+    fixtures_path: Path,
+) -> None:
+    expected = _validate_blind_sheet_and_key(sheet, key, fixtures_path)
+    if set(system_cases) != set(system_hashes) or len(system_cases) != 2:
+        raise ValueError("Formal blind gate requires exactly candidate and baseline systems")
+    actual_systems = {entry["system_id"] for entry in expected.values()}
+    if actual_systems != set(system_cases):
+        raise ValueError(
+            "Blind key systems must equal the formal candidate and baseline ids exactly"
+        )
+    sheet_outputs = {
+        (item["item_id"], output["output_id"]): output["text"]
+        for item in sheet["items"]
+        for output in item["outputs"]
+    }
+    expected_outputs = {
+        system_id: {
+            (pair, case["id"]): case["translation_raw"]["output_text"]
+            for pair, cases in pairs.items()
+            for case in cases
+        }
+        for system_id, pairs in system_cases.items()
+    }
+    actual_routes: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    for output_key, entry in expected.items():
+        system_id = entry["system_id"]
+        route = (entry["pair"], entry["case_id"])
+        if route in actual_routes[system_id]:
+            raise ValueError(f"Blind key repeats {system_id} output for {route}")
+        actual_routes[system_id].add(route)
+        if entry["system_evidence_sha256"] != system_hashes[system_id].get(entry["pair"]):
+            raise ValueError(
+                f"Blind key is not hash-bound to {system_id} evidence for {entry['pair']}"
+            )
+        if sheet_outputs[output_key] != expected_outputs[system_id].get(route):
+            raise ValueError(
+                f"Blind sheet output is not bound to {system_id} evidence for {route}"
+            )
+    for system_id, outputs in expected_outputs.items():
+        if actual_routes[system_id] != set(outputs):
+            missing = sorted(set(outputs) - actual_routes[system_id])
+            raise ValueError(
+                f"Blind bundle does not cover {system_id} exactly; missing={missing}"
+            )
 
 
 def score_human_ratings(
@@ -1368,11 +1781,8 @@ def score_human_ratings(
     fixtures_path: Path = DEFAULT_FIXTURES,
 ) -> dict[str, Any]:
     expected = _validate_blind_sheet_and_key(sheet, key, fixtures_path)
-    if rubric.get("schema_version") != 1:
-        raise ValueError("Unsupported human-rating rubric schema")
-    valid_errors = set(rubric.get("critical_error_values", []))
-    if not valid_errors or "none" not in valid_errors:
-        raise ValueError("Human rubric has no valid critical-error vocabulary")
+    validate_human_rubric(rubric)
+    valid_errors = set(rubric["critical_error_values"])
     if not rating_documents:
         raise ValueError("At least one completed rating document is required")
     rater_ids: set[str] = set()
@@ -1557,20 +1967,24 @@ def main() -> None:
     human_parser.add_argument("--sheet", type=Path, required=True)
     human_parser.add_argument("--key", type=Path, required=True)
     human_parser.add_argument("--ratings", type=Path, action="append", required=True)
+    human_parser.add_argument("--rubric", type=Path, default=DEFAULT_RUBRIC)
     human_parser.add_argument("--output", type=Path, required=True)
 
     gate_parser = subparsers.add_parser("gate", help="Evaluate real candidate evidence")
     gate_parser.add_argument("--edition", choices=("lite", "full", "online"), required=True)
     gate_parser.add_argument("--candidate", action="append", required=True)
     gate_parser.add_argument("--baseline", action="append", required=True)
-    gate_parser.add_argument("--human-summary", type=Path, required=True)
+    gate_parser.add_argument("--blind-sheet", type=Path, required=True)
+    gate_parser.add_argument("--blind-key", type=Path, required=True)
+    gate_parser.add_argument("--ratings", type=Path, action="append", required=True)
+    gate_parser.add_argument("--rubric", type=Path, required=True)
     gate_parser.add_argument("--candidate-system", required=True)
-    gate_parser.add_argument("--failure-evidence", type=Path)
+    gate_parser.add_argument("--baseline-system", required=True)
     gate_parser.add_argument("--output", type=Path, required=True)
 
     online_parser = subparsers.add_parser(
-        "verify-online-evidence",
-        help="Verify JVM-generated Online policy/parser evidence",
+        "audit-legacy-online-evidence",
+        help="Audit legacy schema-v2 evidence; never a formal release-gate input",
     )
     online_parser.add_argument("--evidence", type=Path, required=True)
     online_parser.add_argument("--output", type=Path)
@@ -1603,7 +2017,7 @@ def main() -> None:
             load_json(args.sheet),
             load_json(ensure_external_blind_key_path(args.key)),
             [load_json(path) for path in args.ratings],
-            load_json(DEFAULT_RUBRIC),
+            load_json(args.rubric),
         )
         write_json(args.output, result)
     elif args.command == "gate":
@@ -1613,18 +2027,26 @@ def main() -> None:
             args.edition,
             {pair: load_json(path) for pair, path in candidate_paths.items()},
             {pair: load_json(path) for pair, path in baseline_paths.items()},
-            failure_evidence=load_json(args.failure_evidence) if args.failure_evidence else None,
-            human_summary=load_json(args.human_summary),
+            blind_sheet_path=args.blind_sheet,
+            blind_key_path=args.blind_key,
+            rating_paths=args.ratings,
+            rubric_path=args.rubric,
             candidate_system=args.candidate_system,
+            baseline_system=args.baseline_system,
         )
         write_json(args.output, result)
         if not result["release_ready"]:
             raise SystemExit(1)
-    elif args.command == "verify-online-evidence":
-        result = verify_failure_evidence(
+    elif args.command == "audit-legacy-online-evidence":
+        audit = verify_failure_evidence(
             load_json(args.evidence),
             load_json(DEFAULT_FAILURES),
         )
+        result = {
+            **audit,
+            "formal_gate_eligible": False,
+            "status": "legacy_audit_only_not_fresh_release_evidence",
+        }
         if args.output:
             write_json(args.output, result)
     elif args.command == "smoke":

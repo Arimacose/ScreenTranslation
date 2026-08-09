@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import inspect
 import json
 import math
 import tempfile
@@ -39,7 +40,7 @@ def real_shaped_candidate(pair: str, system_id: str) -> dict:
                 },
             }
         )
-    return {
+    result = {
         "schema_version": 2,
         "evidence_kind": regression.FORMAL_EVIDENCE_KIND,
         "corpus_release": fixtures["corpus_release"],
@@ -48,7 +49,7 @@ def real_shaped_candidate(pair: str, system_id: str) -> dict:
         "source_language": source,
         "target_language": target,
         "inference": {
-            "producer": "device-benchmark-runner",
+            "producer": regression.FORMAL_PRODUCER_ID,
             "engine_id": system_id,
             "model_id": f"model-{system_id}",
             "model_revision": "0123456789abcdef",
@@ -66,6 +67,17 @@ def real_shaped_candidate(pair: str, system_id: str) -> dict:
         },
         "cases": cases,
     }
+    result["provenance"] = {
+        "schema_version": 1,
+        "producer_id": regression.FORMAL_PRODUCER_ID,
+        "producer_source_sha256": regression.sha256_file(
+            regression.DEFAULT_CANDIDATE_RUNNER_SOURCE
+        ),
+        "raw_inference_record_sha256": regression.formal_raw_inference_record_sha256(
+            result
+        ),
+    }
+    return result
 
 
 def validate_candidate(document: dict, pair: str = "en-zh", *, formal: bool = True):
@@ -372,7 +384,7 @@ class CandidateSchemaTest(unittest.TestCase):
             validate_candidate(self.candidate)
 
     def test_formal_metadata_replay_marker_is_rejected(self) -> None:
-        self.candidate["inference"]["producer"] = "reference replay runner"
+        self.candidate["inference"]["model_id"] = "reference replay model"
         with self.assertRaisesRegex(ValueError, "non-inference marker"):
             validate_candidate(self.candidate)
 
@@ -401,6 +413,112 @@ class CandidateSchemaTest(unittest.TestCase):
             case["candidate"]["output_text"] = by_id[case["case_id"]]["source_text"]
         with self.assertRaisesRegex(ValueError, "source fixture passthrough"):
             validate_candidate(self.candidate)
+
+    def test_complete_invisible_and_format_only_replays_are_rejected(self) -> None:
+        fixtures = regression.load_json(regression.DEFAULT_FIXTURES)
+        by_id = {
+            case["id"]: case for case in regression.suite_map(fixtures)["en-zh"]["cases"]
+        }
+        mutations = {
+            "zero_width": lambda value: "\u200b".join(value) + "\u200b",
+            "variation_selector": lambda value: value + "\ufe0f",
+            "reserved_default_ignorable_2065": lambda value: value + "\u2065",
+            "reserved_default_ignorable_fff0": lambda value: value + "\ufff0",
+            "punctuation_whitespace": lambda value: f" \t{value}！？… \n",
+        }
+        for source_kind in ("reference", "source"):
+            for mutation_name, mutate in mutations.items():
+                with self.subTest(source_kind=source_kind, mutation=mutation_name):
+                    candidate = real_shaped_candidate("en-zh", "alpha")
+                    for case in candidate["cases"]:
+                        fixture = by_id[case["case_id"]]
+                        original = (
+                            regression.selected_reference(fixture)
+                            if source_kind == "reference"
+                            else fixture["source_text"]
+                        )
+                        case["candidate"]["output_text"] = mutate(original)
+                    expected = (
+                        "reference replay after Unicode normalization"
+                        if source_kind == "reference"
+                        else "source fixture passthrough after Unicode normalization"
+                    )
+                    with self.assertRaisesRegex(ValueError, expected):
+                        validate_candidate(candidate)
+
+    def test_forty_seven_of_forty_eight_normalized_replays_are_rejected(self) -> None:
+        fixtures = regression.load_json(regression.DEFAULT_FIXTURES)
+        by_id = {
+            case["id"]: case for case in regression.suite_map(fixtures)["en-zh"]["cases"]
+        }
+        for source_kind in ("reference", "source"):
+            for invisible in ("\u200b", "\u2065", "\ufff0"):
+                with self.subTest(source_kind=source_kind, invisible=hex(ord(invisible))):
+                    candidate = real_shaped_candidate("en-zh", "alpha")
+                    for case in candidate["cases"][:-1]:
+                        fixture = by_id[case["case_id"]]
+                        original = (
+                            regression.selected_reference(fixture)
+                            if source_kind == "reference"
+                            else fixture["source_text"]
+                        )
+                        case["candidate"]["output_text"] = original + invisible
+                    candidate["provenance"][
+                        "raw_inference_record_sha256"
+                    ] = regression.formal_raw_inference_record_sha256(candidate)
+                    expected = (
+                        "near-complete canonical reference replay"
+                        if source_kind == "reference"
+                        else "near-complete source fixture passthrough"
+                    )
+                    with self.assertRaisesRegex(ValueError, expected):
+                        validate_candidate(candidate)
+
+    def test_u2065_reference_replay_would_clear_metrics_but_is_rejected(self) -> None:
+        fixtures = regression.load_json(regression.DEFAULT_FIXTURES)
+        suite = regression.suite_map(fixtures)["en-zh"]
+        by_id = {case["id"]: case for case in suite["cases"]}
+        candidate = real_shaped_candidate("en-zh", "alpha")
+        materialized = []
+        for case in candidate["cases"]:
+            fixture = by_id[case["case_id"]]
+            case["candidate"]["output_text"] = (
+                regression.selected_reference(fixture) + "\u2065"
+            )
+            joined = copy.deepcopy(fixture)
+            joined["translation_raw"] = copy.deepcopy(case["candidate"])
+            materialized.append(joined)
+        candidate["provenance"][
+            "raw_inference_record_sha256"
+        ] = regression.formal_raw_inference_record_sha256(candidate)
+
+        metrics = regression.automatic_metrics(materialized)
+        self.assertGreater(metrics["bleu"], 90.0)
+        self.assertEqual(64, metrics["critical_checks_passed"])
+        self.assertTrue(metrics["protected_span_checks_passed"])
+        with self.assertRaisesRegex(
+            ValueError,
+            "reference replay after Unicode normalization",
+        ):
+            validate_candidate(candidate)
+
+    def test_formal_candidate_requires_pinned_runner_provenance(self) -> None:
+        candidate = copy.deepcopy(self.candidate)
+        candidate["provenance"]["producer_source_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "source hash mismatch"):
+            validate_candidate(candidate)
+
+    def test_formal_candidate_raw_record_hash_detects_output_edit(self) -> None:
+        candidate = copy.deepcopy(self.candidate)
+        candidate["cases"][0]["candidate"]["output_text"] += "人工修改"
+        with self.assertRaisesRegex(ValueError, "raw inference record hash mismatch"):
+            validate_candidate(candidate)
+
+    def test_formal_candidate_rejects_unpinned_revision_label(self) -> None:
+        candidate = copy.deepcopy(self.candidate)
+        candidate["inference"]["model_revision"] = "latest"
+        with self.assertRaisesRegex(ValueError, "pinned lowercase revision hash"):
+            validate_candidate(candidate)
 
 
 class SmokeAndProtectedGateTest(unittest.TestCase):
@@ -507,23 +625,20 @@ class OnlineEvidenceTest(unittest.TestCase):
                 regression.load_json(regression.DEFAULT_FAILURES),
             )
 
-    @unittest.skipUnless(
-        (
-            regression.ROOT
-            / "app/build/model-benchmark/translation-regression/online-failure-evidence.json"
-        ).is_file(),
-        "Run testOnlineDebugUnitTest to generate production-path evidence first",
-    )
-    def test_generated_kotlin_production_evidence_verifies(self) -> None:
-        path = (
-            regression.ROOT
-            / "app/build/model-benchmark/translation-regression/online-failure-evidence.json"
-        )
-        report = regression.verify_failure_evidence(
-            regression.load_json(path),
-            regression.load_json(regression.DEFAULT_FAILURES),
-        )
-        self.assertEqual(9, report["case_count"])
+    def test_formal_gate_has_no_caller_online_evidence_parameter(self) -> None:
+        self.assertNotIn("failure_evidence", inspect.signature(regression.run_gate).parameters)
+        pairs = {
+            pair: real_shaped_candidate(pair, "candidate")
+            for pair in ("en-zh", "ja-zh")
+        }
+        forged = self.copied_expected_evidence(regression.ONLINE_EVIDENCE_KIND)
+        with self.assertRaisesRegex(TypeError, "failure_evidence"):
+            regression.run_gate(
+                "online",
+                pairs,
+                copy.deepcopy(pairs),
+                failure_evidence=forged,
+            )
 
 
 class BlindHumanReviewTest(unittest.TestCase):
@@ -538,6 +653,42 @@ class BlindHumanReviewTest(unittest.TestCase):
         self.sheet, self.key, self.template = regression.make_blind_bundle(
             self.systems, secret=b"test-only-high-entropy-secret-32b"
         )
+
+    def write_gate_inputs(
+        self,
+        directory: str,
+        *,
+        sheet: dict | None = None,
+        key: dict | None = None,
+        ratings: list[dict] | None = None,
+        rubric: dict | None = None,
+    ) -> dict:
+        root = Path(directory)
+        sheet_path = root / "review.blind-sheet.json"
+        key_path = root / "review.blind-key.json"
+        rating_documents = ratings if ratings is not None else [
+            completed_rating(self.template, "reviewer-a"),
+            completed_rating(self.template, "reviewer-b"),
+        ]
+        rating_paths = []
+        regression.write_json(sheet_path, sheet if sheet is not None else self.sheet)
+        regression.write_json(key_path, key if key is not None else self.key)
+        for index, document in enumerate(rating_documents, start=1):
+            path = root / f"reviewer-{index}.blind-ratings.json"
+            regression.write_json(path, document)
+            rating_paths.append(path)
+        rubric_path = regression.DEFAULT_RUBRIC
+        if rubric is not None:
+            rubric_path = root / "human-rating-rubric.json"
+            regression.write_json(rubric_path, rubric)
+        return {
+            "blind_sheet_path": sheet_path,
+            "blind_key_path": key_path,
+            "rating_paths": rating_paths,
+            "rubric_path": rubric_path,
+            "candidate_system": "private-system-two",
+            "baseline_system": "private-system-one",
+        }
 
     def test_public_sheet_hides_system_ids_case_ids_and_seed(self) -> None:
         serialized = json.dumps(self.sheet, ensure_ascii=False)
@@ -574,6 +725,253 @@ class BlindHumanReviewTest(unittest.TestCase):
                 self.assertEqual(
                     regression.canonical_json_sha256(self.systems[system][pair]),
                     summary["systems"][system][pair]["system_evidence_sha256"],
+                )
+
+    def test_formal_gate_recomputes_verified_raw_rating_bundle_but_needs_attestation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = regression.run_gate(
+                "full",
+                self.systems["private-system-two"],
+                self.systems["private-system-one"],
+                **self.write_gate_inputs(directory),
+            )
+        self.assertFalse(report["release_ready"])
+        self.assertTrue(report["metric_checks_passed"])
+        self.assertFalse(report["automated_passed"])
+        self.assertFalse(report["baseline_admission"]["passed"])
+        self.assertFalse(report["human_review"]["passed"])
+        self.assertTrue(report["human_review"]["score_checks_passed"])
+        self.assertFalse(
+            report["human_review"]["reviewer_authenticity"]["passed"]
+        )
+        self.assertFalse(report["runner_provenance"]["passed"])
+        self.assertEqual(
+            "recomputed_from_structurally_valid_unauthenticated_raw_ratings",
+            report["human_review"]["status"],
+        )
+        self.assertIn(
+            "authenticated_independent_human_reviewers_required",
+            report["release_ready_blockers"],
+        )
+        self.assertEqual(2, report["human_review"]["evidence"]["raw_rating_document_count"])
+        self.assertEqual(2, report["human_review"]["evidence"]["unique_rater_count"])
+
+    def test_public_hashes_and_recomputed_raw_record_do_not_attest_forged_outputs(self) -> None:
+        forged_candidate = copy.deepcopy(self.systems["private-system-two"])
+        for document in forged_candidate.values():
+            document["inference"]["device_model"] = "caller-fabricated-public-record"
+            document["provenance"]["producer_source_sha256"] = regression.sha256_file(
+                regression.DEFAULT_CANDIDATE_RUNNER_SOURCE
+            )
+            document["provenance"][
+                "raw_inference_record_sha256"
+            ] = regression.formal_raw_inference_record_sha256(document)
+        systems = {
+            "private-system-one": self.systems["private-system-one"],
+            "private-system-two": forged_candidate,
+        }
+        sheet, key, template = regression.make_blind_bundle(
+            systems,
+            secret=b"test-only-forged-provenance-secret",
+        )
+        ratings = [
+            completed_rating(template, "reviewer-a"),
+            completed_rating(template, "reviewer-b"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            report = regression.run_gate(
+                "full",
+                forged_candidate,
+                self.systems["private-system-one"],
+                **self.write_gate_inputs(
+                    directory,
+                    sheet=sheet,
+                    key=key,
+                    ratings=ratings,
+                ),
+            )
+        self.assertTrue(report["metric_checks_passed"])
+        self.assertFalse(report["automated_passed"])
+        self.assertFalse(report["human_review"]["passed"])
+        self.assertTrue(report["human_review"]["score_checks_passed"])
+        self.assertFalse(report["runner_provenance"]["passed"])
+        self.assertFalse(report["release_ready"])
+
+    def test_fabricated_aggregate_summary_is_not_a_formal_gate_input(self) -> None:
+        candidate_hashes = {
+            pair: regression.canonical_json_sha256(
+                self.systems["private-system-two"][pair]
+            )
+            for pair in ("en-zh", "ja-zh")
+        }
+        forged = {
+            "schema_version": 2,
+            "bundle_id": "fabricated-without-sheet-or-ratings",
+            "sheet_sha256": "0" * 64,
+            "corpus_release": "2026.08-public-v2-original-references",
+            "fixture_sha256": regression.sha256_file(regression.DEFAULT_FIXTURES),
+            "rater_count": 2,
+            "systems": {
+                "private-system-two": {
+                    pair: {
+                        "system_evidence_sha256": candidate_hashes[pair],
+                        "mean_adequacy": 5,
+                        "mean_fluency": 5,
+                        "critical_error_rate": 0,
+                        "case_coverage": 1,
+                        "minimum_ratings_per_output": 2,
+                        "rating_count": 96,
+                    }
+                    for pair in ("en-zh", "ja-zh")
+                }
+            },
+        }
+        with self.assertRaisesRegex(TypeError, "human_summary"):
+            regression.run_gate(
+                "full",
+                self.systems["private-system-two"],
+                self.systems["private-system-one"],
+                human_summary=forged,
+                candidate_system="private-system-two",
+            )
+
+    def test_formal_gate_rejects_synchronized_sheet_and_key_output_tamper(self) -> None:
+        sheet = copy.deepcopy(self.sheet)
+        key = copy.deepcopy(self.key)
+        candidate_entry = next(
+            entry for entry in key["entries"]
+            if entry["system_id"] == "private-system-two"
+        )
+        item = next(
+            item for item in sheet["items"]
+            if item["item_id"] == candidate_entry["item_id"]
+        )
+        output = next(
+            output for output in item["outputs"]
+            if output["output_id"] == candidate_entry["output_id"]
+        )
+        output["text"] = "同步伪造的满分候选输出"
+        key["sheet_sha256"] = regression.canonical_json_sha256(sheet)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "output is not bound"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, sheet=sheet, key=key),
+                )
+
+    def test_formal_gate_rejects_blind_key_candidate_hash_tamper(self) -> None:
+        key = copy.deepcopy(self.key)
+        for entry in key["entries"]:
+            if entry["system_id"] == "private-system-two":
+                entry["system_evidence_sha256"] = "0" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "not hash-bound"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, key=key),
+                )
+
+    def test_formal_gate_rejects_synchronized_baseline_output_tamper(self) -> None:
+        sheet = copy.deepcopy(self.sheet)
+        key = copy.deepcopy(self.key)
+        baseline_entry = next(
+            entry for entry in key["entries"]
+            if entry["system_id"] == "private-system-one"
+        )
+        item = next(
+            item for item in sheet["items"]
+            if item["item_id"] == baseline_entry["item_id"]
+        )
+        output = next(
+            output for output in item["outputs"]
+            if output["output_id"] == baseline_entry["output_id"]
+        )
+        output["text"] = "联合修改后的无关基线文字"
+        key["sheet_sha256"] = regression.canonical_json_sha256(sheet)
+        ratings = [
+            completed_rating(self.template, "reviewer-a"),
+            completed_rating(self.template, "reviewer-b"),
+        ]
+        for rating in ratings:
+            rating["sheet_sha256"] = key["sheet_sha256"]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "private-system-one evidence"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(
+                        directory,
+                        sheet=sheet,
+                        key=key,
+                        ratings=ratings,
+                    ),
+                )
+
+    def test_formal_gate_rejects_raw_rating_tamper(self) -> None:
+        ratings = [
+            completed_rating(self.template, "reviewer-a"),
+            completed_rating(self.template, "reviewer-b"),
+        ]
+        ratings[0]["sheet_sha256"] = "0" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "not bound"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, ratings=ratings),
+                )
+
+    def test_formal_gate_rejects_missing_raw_ratings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "at least 2 raw rating documents"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, ratings=[]),
+                )
+
+    def test_formal_gate_rejects_too_few_raw_raters(self) -> None:
+        ratings = [completed_rating(self.template, "reviewer-a")]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "at least 2 raw rating documents"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, ratings=ratings),
+                )
+
+    def test_formal_gate_rejects_duplicate_rater_ids_across_raw_documents(self) -> None:
+        ratings = [
+            completed_rating(self.template, "reviewer-a"),
+            completed_rating(self.template, "reviewer-a"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "duplicate pseudonymous rater id"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, ratings=ratings),
+                )
+
+    def test_formal_gate_rejects_tampered_rubric(self) -> None:
+        rubric = regression.load_json(regression.DEFAULT_RUBRIC)
+        rubric["instructions"][0] = "Give every output a five."
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "canonical repository"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, rubric=rubric),
                 )
 
     def test_incomplete_rating_sheet_is_rejected(self) -> None:
@@ -661,21 +1059,18 @@ class BlindHumanReviewTest(unittest.TestCase):
             regression.make_blind_bundle(self.systems, secret=b"predictable")
 
     def test_all_five_scores_for_different_candidate_hash_are_rejected(self) -> None:
-        summary = regression.score_human_ratings(
-            self.sheet,
-            self.key,
-            [completed_rating(self.template, "reviewer-a"), completed_rating(self.template, "reviewer-b")],
-            regression.load_json(regression.DEFAULT_RUBRIC),
-        )
-        summary["systems"]["private-system-two"]["en-zh"]["system_evidence_sha256"] = "0" * 64
-        with self.assertRaisesRegex(ValueError, "not bound"):
-            regression.run_gate(
-                "full",
-                self.systems["private-system-two"],
-                self.systems["private-system-one"],
-                human_summary=summary,
-                candidate_system="private-system-two",
-            )
+        key = copy.deepcopy(self.key)
+        for entry in key["entries"]:
+            if entry["system_id"] == "private-system-two" and entry["pair"] == "en-zh":
+                entry["system_evidence_sha256"] = "0" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "not hash-bound"):
+                regression.run_gate(
+                    "full",
+                    self.systems["private-system-two"],
+                    self.systems["private-system-one"],
+                    **self.write_gate_inputs(directory, key=key),
+                )
 
 
 class CommandInputTest(unittest.TestCase):

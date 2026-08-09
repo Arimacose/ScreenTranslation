@@ -6,7 +6,9 @@ import java.util.Properties
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.testing.Test
 import org.gradle.work.DisableCachingByDefault
 
 plugins {
@@ -415,5 +417,72 @@ tasks.register("printVersionInfo") {
     doLast {
         println("versionName=${android.defaultConfig.versionName}")
         println("versionCode=${android.defaultConfig.versionCode}")
+    }
+}
+
+// Formal Online failure evidence is challenge-driven. A random challenge makes
+// the unit-test task out-of-date, and the output path is owned by the invoking
+// gate. Ordinary testOnlineDebugUnitTest runs receive neither property and do
+// not leave a reusable formal-evidence JSON file behind.
+val onlineEvidenceChallengeFile =
+    providers.gradleProperty("onlineFailureEvidenceChallengeFile")
+val onlineEvidenceOutputFile =
+    providers.gradleProperty("onlineFailureEvidenceOutputFile")
+
+tasks.withType<Test>().configureEach {
+    if (name == "testOnlineDebugUnitTest" &&
+        (onlineEvidenceChallengeFile.isPresent || onlineEvidenceOutputFile.isPresent)
+    ) {
+        require(onlineEvidenceChallengeFile.isPresent && onlineEvidenceOutputFile.isPresent) {
+            "Fresh Online evidence requires both -PonlineFailureEvidenceChallengeFile " +
+                "and -PonlineFailureEvidenceOutputFile"
+        }
+        val challenge = file(onlineEvidenceChallengeFile.get())
+        val evidence = file(onlineEvidenceOutputFile.get())
+        inputs.file(challenge)
+            .withPropertyName("onlineFailureEvidenceChallenge")
+            .withPathSensitivity(PathSensitivity.NONE)
+        outputs.file(evidence)
+            .withPropertyName("onlineFailureEvidenceResponse")
+        // The fresh nonce already changes the input fingerprint. Disabling the
+        // up-to-date shortcut also forces a new current-checkout execution.
+        outputs.upToDateWhen { false }
+        systemProperty(
+            "screenTranslation.onlineEvidence.challengeFile",
+            challenge.absolutePath,
+        )
+        systemProperty(
+            "screenTranslation.onlineEvidence.outputFile",
+            evidence.absolutePath,
+        )
+        filter {
+            includeTestsMatching(
+                "com.screentranslation.app.online.OnlineFailureContractExecutionTest",
+            )
+        }
+        doFirst {
+            check(challenge.isFile) {
+                "Fresh Online evidence challenge is missing: $challenge"
+            }
+            check(!evidence.exists()) {
+                "Fresh Online evidence output must not already exist: $evidence"
+            }
+        }
+    }
+}
+
+tasks.register("generateFreshOnlineFailureEvidence") {
+    group = "verification"
+    description =
+        "Runs the production Online policy/parser against a one-use gate challenge."
+    dependsOn("testOnlineDebugUnitTest")
+    doLast {
+        check(onlineEvidenceChallengeFile.isPresent && onlineEvidenceOutputFile.isPresent) {
+            "Pass challenge/output paths with the onlineFailureEvidence Gradle properties"
+        }
+        val evidence = file(onlineEvidenceOutputFile.get())
+        check(evidence.isFile && evidence.length() > 0L) {
+            "Fresh Online failure evidence was not produced: $evidence"
+        }
     }
 }

@@ -76,5 +76,5 @@
     }
   },
   "calibration_manifest_sha256": "2763dfc6c7dc1ddb4ad3b65003d6a44a66b7a5bc885431698212d62e414ec552",
-  "formal_gate_policy": "Historical aggregate calibration is context only. Formal results require complete current-corpus real inference evidence, a real incumbent, blind ratings bound to candidate hashes, and Online Kotlin policy evidence."
+  "formal_gate_policy": "Historical aggregate calibration is context only. Formal results require complete current-corpus candidate records, a repository-pinned edition incumbent manifest, raw blind ratings recomputed against both systems, authenticated independent reviewers, fresh Online Kotlin policy execution when applicable, and fresh or externally attested candidate-runner provenance. Caller baselines, public self-hashes, and pseudonymous ids are diagnostic structural inputs only."
 }

@@ -9,12 +9,12 @@ import org.junit.Test
 import java.net.SocketTimeoutException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * Executes the versioned contract through production Kotlin policy/parser
- * code. The JSON written under app/build is formal Online gate input; it is not
- * an expected-to-actual fixture copy.
+ * code. A formal gate passes a one-use challenge and an empty, gate-owned output
+ * path. Ordinary unit-test runs assert the contract without creating a reusable
+ * formal evidence file.
  */
 class OnlineFailureContractExecutionTest {
     @Test
@@ -44,22 +44,31 @@ class OnlineFailureContractExecutionTest {
             )
         }
 
+        val request = OnlineFailureEvidenceProtocol.requestFromSystemProperties(
+            System.getProperties().stringPropertyNames().associateWith { key ->
+                System.getProperty(key).orEmpty()
+            },
+        ) ?: return
         val root = repositoryRoot()
         val producer = root.resolve(PRODUCER_SOURCE)
-        val output = root.resolve(
-            "app/build/model-benchmark/translation-regression/" +
-                "online-failure-evidence.json",
+        val contractSha256 = OnlineFailureEvidenceProtocol.sha256(contractBytes)
+        val producerSha256 = OnlineFailureEvidenceProtocol.sha256(Files.readAllBytes(producer))
+        val executionChainSha256 = OnlineFailureEvidenceProtocol.executionChainSha256(root)
+        val challengeBytes = Files.readAllBytes(request.challengePath)
+        val challenge = OnlineFailureEvidenceProtocol.parseChallenge(
+            challengeBytes = challengeBytes,
+            expectedContractSha256 = contractSha256,
+            expectedProducerSourceSha256 = producerSha256,
+            expectedExecutionChainSha256 = executionChainSha256,
         )
-        val evidence = JSONObject()
-            .put("schema_version", 2)
-            .put("evidence_kind", "kotlin_policy_execution")
-            .put("contract_sha256", sha256(contractBytes))
-            .put("producer", "OnlineFailureContractExecutionTest")
-            .put("producer_source_sha256", sha256(Files.readAllBytes(producer)))
-            .put("cases", evidenceCases)
-        Files.createDirectories(output.parent)
-        Files.writeString(output, evidence.toString(2) + "\n", Charsets.UTF_8)
-        assertTrue(Files.size(output) > 0L)
+        val evidence = OnlineFailureEvidenceProtocol.buildEvidence(
+            challenge = challenge,
+            contractSha256 = contractSha256,
+            producerSourceSha256 = producerSha256,
+            evidenceCases = evidenceCases,
+        )
+        OnlineFailureEvidenceProtocol.writeNewEvidence(request.outputPath, evidence)
+        assertTrue(Files.size(request.outputPath) > 0L)
     }
 
     private fun executeStimulus(stimulus: JSONObject): JSONObject {
@@ -113,6 +122,19 @@ class OnlineFailureContractExecutionTest {
         }
 
         val retry = retryDelay != null
+        val previous = RegionOverlayContentPolicy.success(
+            original = "previous source",
+            translation = "上一条可用译文",
+        )
+        val pending = RegionOverlayContentPolicy.pending(
+            currentOriginal = previous.original,
+            currentTranslation = previous.translation,
+            nextOriginal = "latest source",
+        )
+        val failed = RegionOverlayContentPolicy.failure(
+            currentOriginal = pending.original,
+            currentTranslation = pending.translation,
+        )
         return JSONObject()
             .put("classification", failure.category.contractName())
             .put("retry", retry)
@@ -122,11 +144,7 @@ class OnlineFailureContractExecutionTest {
             }
             .put(
                 "preserve_previous_translation",
-                RegionOverlayContentPolicy.pending(
-                    currentOriginal = "previous source",
-                    currentTranslation = "上一条可用译文",
-                    nextOriginal = "latest source",
-                ).translation == "上一条可用译文",
+                pending == previous && failed == previous,
             )
     }
 
@@ -171,11 +189,6 @@ class OnlineFailureContractExecutionTest {
         }
         return candidate
     }
-
-    private fun sha256(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString(separator = "") { byte -> "%02x".format(byte) }
 
     private companion object {
         const val PRODUCER_SOURCE =

@@ -77,4 +77,31 @@ class OverlayWindowFlagsTest {
         assertTrue(isSelectionSizeAccepted(80, 80, 80f))
         assertEquals(false, isSelectionSizeAccepted(79, 80, 80f))
     }
+
+    @Test
+    fun `region content keeps one successful pair through pending and failure`() {
+        val firstSuccess = RegionOverlayContentPolicy.success(
+            original = "old source",
+            translation = "旧译文",
+        )
+        val pending = RegionOverlayContentPolicy.pending(
+            currentOriginal = firstSuccess.original,
+            currentTranslation = firstSuccess.translation,
+            nextOriginal = "new source",
+        )
+        val failed = RegionOverlayContentPolicy.failure(
+            currentOriginal = pending.original,
+            currentTranslation = pending.translation,
+        )
+
+        assertEquals(firstSuccess, pending)
+        assertEquals(firstSuccess, failed)
+
+        val nextSuccess = RegionOverlayContentPolicy.success(
+            original = "new source",
+            translation = "新译文",
+        )
+        assertEquals("new source", nextSuccess.original)
+        assertEquals("新译文", nextSuccess.translation)
+    }
 }
