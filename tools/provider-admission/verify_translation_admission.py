@@ -300,13 +300,31 @@ def validate_source(value: Any) -> dict[str, Any]:
 
     corpus = require_object(
         artifacts["corpus"],
-        {"corpus_id", "path", "expected_sha256", "suite_ids"},
+        {
+            "corpus_id",
+            "path",
+            "expected_sha256",
+            "suite_ids",
+            "suite_case_counts",
+        },
         "source.artifacts.corpus",
     )
     require_string(corpus["corpus_id"], "source.artifacts.corpus.corpus_id", pattern=IDENTIFIER)
     require_string(corpus["path"], "source.artifacts.corpus.path")
     require_string(corpus["expected_sha256"], "source.artifacts.corpus.expected_sha256", pattern=SHA64)
-    unique_strings(corpus["suite_ids"], "source.artifacts.corpus.suite_ids")
+    suite_ids = unique_strings(corpus["suite_ids"], "source.artifacts.corpus.suite_ids")
+    suite_case_counts = require_object(
+        corpus["suite_case_counts"],
+        suite_ids,
+        "source.artifacts.corpus.suite_case_counts",
+    )
+    for suite_id in suite_ids:
+        require_int(
+            suite_case_counts[suite_id],
+            f"source.artifacts.corpus.suite_case_counts.{suite_id}",
+            minimum=1,
+            maximum=KOTLIN_INT_MAX,
+        )
 
     apk = require_object(
         artifacts["apk"],
@@ -749,6 +767,7 @@ def inspect_corpus(
     if not isinstance(document, dict) or not isinstance(document.get("suites"), list):
         raise EvidenceError("corpus JSON is missing suites")
     suite_ids = []
+    case_counts_by_suite: dict[str, int] = {}
     critical_ids_by_suite: dict[str, list[str]] = {}
     for index, suite in enumerate(document["suites"]):
         if not isinstance(suite, dict):
@@ -759,8 +778,11 @@ def inspect_corpus(
             pattern=IDENTIFIER,
         )
         suite_ids.append(suite_id)
+        cases = require_list(suite.get("cases"), f"corpus.{suite_id}.cases")
+        case_counts_by_suite[suite_id] = len(cases)
         critical_ids: list[str] = []
-        for case_index, case in enumerate(require_list(suite.get("cases"), f"corpus.{suite_id}.cases")):
+        case_ids: list[str] = []
+        for case_index, case in enumerate(cases):
             if not isinstance(case, dict):
                 raise EvidenceError(f"corpus.{suite_id}.cases[{case_index}] must be an object")
             case_id = require_string(
@@ -768,6 +790,7 @@ def inspect_corpus(
                 f"corpus.{suite_id}.cases[{case_index}].id",
                 pattern=IDENTIFIER,
             )
+            case_ids.append(case_id)
             for check_index, check in enumerate(
                 require_list(
                     case.get("critical_checks"),
@@ -784,6 +807,8 @@ def inspect_corpus(
                     f"corpus.{suite_id}.{case_id}.critical_checks[{check_index}].name",
                 )
                 critical_ids.append(f"{case_id}.critical.{check_index + 1}")
+        if len(case_ids) != len(set(case_ids)):
+            raise EvidenceError(f"corpus suite {suite_id} has duplicate case IDs")
         if len(critical_ids) != len(set(critical_ids)):
             raise EvidenceError(f"corpus suite {suite_id} has duplicate derived critical IDs")
         critical_ids_by_suite[suite_id] = critical_ids
@@ -794,7 +819,13 @@ def inspect_corpus(
         "actual_sha256": actual_sha,
         "expected_suite_ids": source["suite_ids"],
         "actual_suite_ids": suite_ids,
-        "verified": actual_sha == source["expected_sha256"] and suite_ids == source["suite_ids"],
+        "expected_suite_case_counts": source["suite_case_counts"],
+        "actual_suite_case_counts": case_counts_by_suite,
+        "verified": (
+            actual_sha == source["expected_sha256"]
+            and suite_ids == source["suite_ids"]
+            and case_counts_by_suite == source["suite_case_counts"]
+        ),
     }
     return observation, critical_ids_by_suite
 

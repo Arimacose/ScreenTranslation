@@ -26,13 +26,17 @@
       "path_environment": "SCREEN_TRANSLATION_STQ_TRANSFORMATION_MANIFEST"
     },
     "corpus": {
-      "corpus_id": "translation-diverse-2026-07-29",
+      "corpus_id": "2026.08-public-v2-original-references",
       "path": "app/src/benchmark/assets/translation-fixtures.json",
-      "expected_sha256": "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657",
+      "expected_sha256": "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
       "suite_ids": [
         "en-zh-diverse-v2",
         "ja-zh-diverse-v1"
-      ]
+      ],
+      "suite_case_counts": {
+        "en-zh-diverse-v2": 48,
+        "ja-zh-diverse-v1": 48
+      }
     },
     "apk": {
       "edition": "full",
@@ -64,7 +68,7 @@
     {
       "route_id": "en-zh",
       "corpus_suite_id": "en-zh-diverse-v2",
-      "expected_critical_check_count": 54,
+      "expected_critical_check_count": 64,
       "score_summary_environment": "SCREEN_TRANSLATION_STQ_EN_ZH_SCORE_SUMMARY",
       "expected_score_summary_sha256": null,
       "historical_score_artifact_sha256": "aff52d86a6daca3fece4b35ca9dd2dbbb85b97c814669c68fd606d5fcef94ec3",
@@ -73,7 +77,7 @@
     {
       "route_id": "ja-zh",
       "corpus_suite_id": "ja-zh-diverse-v1",
-      "expected_critical_check_count": 52,
+      "expected_critical_check_count": 62,
       "score_summary_environment": "SCREEN_TRANSLATION_STQ_JA_ZH_SCORE_SUMMARY",
       "expected_score_summary_sha256": null,
       "historical_score_artifact_sha256": "efd40fe23582913b09fb6bae66b32b55df385efd90a695b32af54546874ce4c3",

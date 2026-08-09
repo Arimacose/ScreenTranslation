@@ -78,6 +78,48 @@ class TranslationAdmissionVerifierTest(unittest.TestCase):
         self.assertEqual(VERIFIER.SOURCE_SCHEMA, validated["schema"])
         self.assertEqual(["en-zh", "ja-zh"], [route["route_id"] for route in validated["routes"]])
 
+    def test_versioned_source_binds_current_corpus_counts(self) -> None:
+        corpus = self.source["artifacts"]["corpus"]
+        self.assertEqual("2026.08-public-v2-original-references", corpus["corpus_id"])
+        self.assertEqual(
+            "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
+            corpus["expected_sha256"],
+        )
+        self.assertEqual(
+            {"en-zh-diverse-v2": 48, "ja-zh-diverse-v1": 48},
+            corpus["suite_case_counts"],
+        )
+        self.assertEqual([64, 62], [route["expected_critical_check_count"] for route in self.source["routes"]])
+
+    def test_source_rejects_incomplete_suite_case_counts(self) -> None:
+        forged = copy.deepcopy(self.source)
+        del forged["artifacts"]["corpus"]["suite_case_counts"]["ja-zh-diverse-v1"]
+
+        with self.assertRaisesRegex(VERIFIER.EvidenceError, "keys mismatch"):
+            VERIFIER.validate_source(forged)
+
+    def test_corpus_case_count_drift_fails_closed_even_with_matching_byte_hash(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temporary:
+            path = Path(temporary) / "translation-fixtures.json"
+            corpus_document = json.loads(
+                (REPO_ROOT / "app/src/benchmark/assets/translation-fixtures.json")
+                .read_text(encoding="utf-8")
+            )
+            corpus_document["suites"][0]["cases"].pop()
+            path.write_text(
+                json.dumps(corpus_document, ensure_ascii=False, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            forged = copy.deepcopy(self.source["artifacts"]["corpus"])
+            forged["path"] = path.relative_to(REPO_ROOT).as_posix()
+            forged["expected_sha256"] = VERIFIER.sha256_file(path)
+
+            observation, _ = VERIFIER.inspect_corpus(forged, REPO_ROOT)
+
+            self.assertFalse(observation["verified"])
+            self.assertEqual(48, observation["expected_suite_case_counts"]["en-zh-diverse-v2"])
+            self.assertEqual(47, observation["actual_suite_case_counts"]["en-zh-diverse-v2"])
+
     def test_source_rejects_caller_supplied_ancestor_boolean(self) -> None:
         forged = copy.deepcopy(self.source)
         forged["runtime"]["merge_ancestor_of_runtime"] = True

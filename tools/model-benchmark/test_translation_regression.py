@@ -116,7 +116,7 @@ class FixtureValidationTest(unittest.TestCase):
 
     def test_api_key_shaped_failure_fixture_is_rejected(self) -> None:
         contract = regression.load_json(regression.DEFAULT_FAILURES)
-        contract["description"] += " sk-example0123456789"
+        contract["description"] += " sk-" + ("x" * 24)
         with self.assertRaisesRegex(ValueError, "API-key-shaped"):
             regression.validate_failure_contract(contract)
 

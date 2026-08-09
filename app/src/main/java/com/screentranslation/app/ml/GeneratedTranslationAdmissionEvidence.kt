@@ -3,7 +3,7 @@
 package com.screentranslation.app.ml
 
 internal object GeneratedTranslationAdmissionEvidence {
-    const val SHA256 = "9a50c713bc2231f295c03c9c6e1b2a87c2b5b4b9687446b7e97684fa91beaae2"
+    const val SHA256 = "56d4c6587c1d91dab3d9b0d92b833312d89c2c145f444bebae872dbcac5ad383"
     val JSON: String = """{
   "bindings": {
     "apk": {
@@ -41,13 +41,21 @@ internal object GeneratedTranslationAdmissionEvidence {
       }
     },
     "corpus": {
-      "actual_sha256": "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657",
+      "actual_sha256": "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
+      "actual_suite_case_counts": {
+        "en-zh-diverse-v2": 48,
+        "ja-zh-diverse-v1": 48
+      },
       "actual_suite_ids": [
         "en-zh-diverse-v2",
         "ja-zh-diverse-v1"
       ],
-      "corpus_id": "translation-diverse-2026-07-29",
-      "expected_sha256": "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657",
+      "corpus_id": "2026.08-public-v2-original-references",
+      "expected_sha256": "043bb49a27d647a24aba96c605f8d5eea0b5fd8d19eac490161b4e48b772bd72",
+      "expected_suite_case_counts": {
+        "en-zh-diverse-v2": 48,
+        "ja-zh-diverse-v1": 48
+      },
       "expected_suite_ids": [
         "en-zh-diverse-v2",
         "ja-zh-diverse-v1"
@@ -138,7 +146,7 @@ internal object GeneratedTranslationAdmissionEvidence {
       "critical_evaluated_ids": null,
       "critical_regressed_ids": null,
       "evaluation_run_id": null,
-      "expected_critical_check_count": 54,
+      "expected_critical_check_count": 64,
       "expected_critical_check_ids": [
         "issue18_long_compound.critical.1",
         "issue18_long_compound.critical.2",
@@ -193,7 +201,17 @@ internal object GeneratedTranslationAdmissionEvidence {
         "safety_medication_limit.critical.2",
         "safety_medication_limit.critical.3",
         "safety_refund_exception.critical.1",
-        "safety_refund_exception.critical.2"
+        "safety_refund_exception.critical.2",
+        "en_protected_url_email.critical.1",
+        "en_protected_template_version.critical.1",
+        "en_subtitle_interruption.critical.1",
+        "en_subtitle_speakers.critical.1",
+        "en_commerce_flash_sale.critical.1",
+        "en_commerce_subscription.critical.1",
+        "en_ui_compact_labels.critical.1",
+        "en_long_exception_policy.critical.1",
+        "en_long_exception_policy.critical.2",
+        "en_long_exception_policy.critical.3"
       ],
       "expected_score_summary_sha256": null,
       "historical_artifacts": {
@@ -216,7 +234,7 @@ internal object GeneratedTranslationAdmissionEvidence {
       "critical_evaluated_ids": null,
       "critical_regressed_ids": null,
       "evaluation_run_id": null,
-      "expected_critical_check_count": 52,
+      "expected_critical_check_count": 62,
       "expected_critical_check_ids": [
         "ja_ui_save_changes.critical.1",
         "ja_ui_save_changes.critical.2",
@@ -269,7 +287,17 @@ internal object GeneratedTranslationAdmissionEvidence {
         "ja_safety_refund.critical.1",
         "ja_safety_refund.critical.2",
         "ja_literary_wagahai.critical.1",
-        "ja_ambiguity_hashi.critical.1"
+        "ja_ambiguity_hashi.critical.1",
+        "ja_protected_url_email.critical.1",
+        "ja_protected_template_version.critical.1",
+        "ja_subtitle_interruption.critical.1",
+        "ja_subtitle_speakers.critical.1",
+        "ja_commerce_flash_sale.critical.1",
+        "ja_commerce_subscription.critical.1",
+        "ja_ui_compact_labels.critical.1",
+        "ja_long_exception_policy.critical.1",
+        "ja_long_exception_policy.critical.2",
+        "ja_long_exception_policy.critical.3"
       ],
       "expected_score_summary_sha256": null,
       "historical_artifacts": {
@@ -312,11 +340,11 @@ internal object GeneratedTranslationAdmissionEvidence {
   "schema": "screen-translation-admission/v1",
   "source_record": {
     "path": "docs/evidence/hymt2-stq-admission-source-v1.json",
-    "sha256": "b1ff72340b580593b0dd5373d7ee7ae90eee65cdbb1a83a2aae60802ea101675"
+    "sha256": "9fda7277333d53fc2b76be827544044ff146a9a65bfca5622ed9f9b9737820f1"
   },
   "verifier": {
     "path": "tools/provider-admission/verify_translation_admission.py",
-    "sha256": "0c69f8f34697e23517b692bfeb6288d35ec4987088c60cb1ff596e1a48c714a6"
+    "sha256": "7e15df8435b791f00ed60779f036f4247ef58de4c91864e9c426819d3fbf5722"
   }
 }
 """

@@ -75,6 +75,6 @@
       ]
     }
   },
-  "calibration_manifest_sha256": "e4ea3c42548a07afa24195111631736e8c198005def9d3175cb0100857304247",
+  "calibration_manifest_sha256": "2763dfc6c7dc1ddb4ad3b65003d6a44a66b7a5bc885431698212d62e414ec552",
   "formal_gate_policy": "Historical aggregate calibration is context only. Formal results require complete current-corpus real inference evidence, a real incumbent, blind ratings bound to candidate hashes, and Online Kotlin policy evidence."
 }
