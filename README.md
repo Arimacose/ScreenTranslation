@@ -92,8 +92,12 @@ ML Kit/Bergamot 仍有 `6.9–9.5` BLEU 优势，但只保留 Q4 的
 raw 中位延迟仍为 `616–622 ms`。四模型数据、格式兼容过程和验收结论见
 [`docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md`](docs/HY_MT2_TRANSLATION_BENCHMARK_2026-07-30.md)。
 官方 source GGUF、retag runnable GGUF、转换 manifest 及“集成 Release/持续热测未测”
-的机器可读记录见
-[`docs/evidence/hymt2-stq-evidence-2026-07-30.json`](docs/evidence/hymt2-stq-evidence-2026-07-30.json)。
+均进入 fail-closed canonical admission：source declaration、验证器根据实时 PR/gitlink/
+artifact 重算的 strict record 与 SHA pin 见
+[`docs/evidence/hymt2-stq-admission-source-v1.json`](docs/evidence/hymt2-stq-admission-source-v1.json)
+和 [`docs/evidence/hymt2-stq-admission-v1.json`](docs/evidence/hymt2-stq-admission-v1.json)。
+CI 会重算这条证据链；应用只解析生成的固定 JSON，不接收调用方填写的 ancestor/verified
+布尔值，当前所有未提供测量都保持 JSON `null` 并阻断选择。
 
 Full · HY-MT2 Q4 Experimental 的 v0.2.0 签名 Release 已在小米 15 Pro /
 Android 16 上完成真机验收：应用内固定长句自检在 `22.579 s` 和
@@ -116,7 +120,8 @@ app/src/main/java/com/screentranslation/app/
 │   ├── OcrEngine.kt                 # OCR 生命周期与结果契约
 │   ├── PpOcrv6Engine.kt             # PP-OCRv6 + ONNX Runtime 生产实现
 │   ├── TranslationEngine.kt         # edition 翻译接口与工厂
-│   └── TranslationProviderProfile.kt # 类型化能力、STQ gate 与中间档阈值
+│   ├── TranslationProviderProfile.kt # 类型化能力与中间档阈值
+│   └── TranslationAdmissionRecord.kt # strict canonical STQ admission parser
 ├── overlay/
 │   ├── OverlayController.kt         # 框选层和译文层
 │   └── RegionSelectionView.kt       # 区域交互

@@ -296,158 +296,40 @@ data class TranslationAttributionCapability(
     }
 }
 
-enum class UpstreamPullRequestState {
-    OPEN,
-    MERGED,
-    CLOSED_UNMERGED,
-}
-
-enum class RuntimeSupportVerificationStatus {
-    UNVERIFIED,
-    VERIFIED_CONTAINS_UPSTREAM_MERGE,
-}
-
-enum class RuntimeSupportEvidenceKind {
-    CI_MERGE_ANCESTRY,
-    VERSIONED_COMPATIBILITY_RECORD,
-}
-
-/**
- * Versioned evidence binding one pinned runtime to one merged upstream support commit.
- * Merely supplying two SHA-shaped strings is not evidence that one contains the other.
- */
-data class TranslationRuntimeSupportEvidence(
-    val kind: RuntimeSupportEvidenceKind,
-    val verifiedUpstreamMergeCommit: String,
-    val verifiedPinnedRuntimeCommit: String,
-    val observedRepositoryGitlinkCommit: String,
-    val mergeCommitIsAncestorOfRuntime: Boolean,
-    val verifiedRunnableModelSha256: String,
-    val evidenceReference: String,
-) {
-    init {
-        require(isFullGitSha(verifiedUpstreamMergeCommit))
-        require(isFullGitSha(verifiedPinnedRuntimeCommit))
-        require(isFullGitSha(observedRepositoryGitlinkCommit))
-        require(isSha256(verifiedRunnableModelSha256))
-        require(
-            evidenceReference.startsWith("https://") ||
-                evidenceReference.startsWith("repo://"),
-        ) {
-            "Runtime evidence must reference a CI result or versioned repository record"
-        }
-    }
-
-    fun verifies(
-        upstreamMergeCommit: String?,
-        pinnedRuntimeCommit: String?,
-        runnableModelSha256: String?,
-    ): Boolean =
-        verifiedUpstreamMergeCommit == upstreamMergeCommit &&
-            verifiedPinnedRuntimeCommit == pinnedRuntimeCommit &&
-            observedRepositoryGitlinkCommit == pinnedRuntimeCommit &&
-            mergeCommitIsAncestorOfRuntime &&
-            verifiedRunnableModelSha256 == runnableModelSha256
-}
-
-/**
- * A deliberately fail-closed gate for a model format that is not in the pinned runtime.
- * A pull-request head and SHA-shaped values are observations only. Selection requires an
- * explicitly merged PR plus CI or versioned evidence that the exact pinned runtime contains
- * the exact upstream merge commit.
- */
-data class TranslationEvaluationGate(
-    val upstreamPullRequestUrl: String,
-    val upstreamPullRequestState: UpstreamPullRequestState,
-    val observedPullRequestHeadCommit: String,
-    val upstreamSupportMergeCommit: String?,
-    val pinnedRuntimeCommit: String?,
-    val runtimeSupportVerificationStatus: RuntimeSupportVerificationStatus,
-    val runtimeSupportEvidence: TranslationRuntimeSupportEvidence?,
-    val pinnedModelRevision: String,
-    val sourceModelSha256: String,
-    val runnableModelSha256: String,
-    val modelTransformationId: String,
-    val modelTransformationManifestSha256: String,
-    val evaluationEvidenceId: String,
-    val evaluationEvidenceSha256: String,
-) {
-    val isSatisfied: Boolean
-        get() = upstreamPullRequestState == UpstreamPullRequestState.MERGED &&
-            isFullGitSha(upstreamSupportMergeCommit) &&
-            isFullGitSha(pinnedRuntimeCommit) &&
-            runtimeSupportVerificationStatus ==
-                RuntimeSupportVerificationStatus.VERIFIED_CONTAINS_UPSTREAM_MERGE &&
-            runtimeSupportEvidence?.verifies(
-                upstreamSupportMergeCommit,
-                pinnedRuntimeCommit,
-                runnableModelSha256,
-            ) == true &&
-            isFullGitSha(pinnedModelRevision) &&
-            isSha256(sourceModelSha256) &&
-            isSha256(runnableModelSha256) &&
-            modelTransformationId.isNotBlank() &&
-            isSha256(modelTransformationManifestSha256) &&
-            evaluationEvidenceId.isNotBlank() &&
-            isSha256(evaluationEvidenceSha256)
-
-    val unmetRequirements: Set<String>
-        get() = buildSet {
-            if (upstreamPullRequestState != UpstreamPullRequestState.MERGED) {
-                add("UPSTREAM_PULL_REQUEST_MERGED")
-            }
-            if (!isFullGitSha(upstreamSupportMergeCommit)) {
-                add("UPSTREAM_MERGE_COMMIT_RECORDED")
-            }
-            if (!isFullGitSha(pinnedRuntimeCommit)) add("SUPPORTED_RUNTIME_PINNED")
-            if (
-                runtimeSupportVerificationStatus !=
-                RuntimeSupportVerificationStatus.VERIFIED_CONTAINS_UPSTREAM_MERGE ||
-                runtimeSupportEvidence?.verifies(
-                    upstreamSupportMergeCommit,
-                    pinnedRuntimeCommit,
-                    runnableModelSha256,
-                ) != true
-            ) {
-                add("PINNED_RUNTIME_CONTAINS_MERGE_VERIFIED")
-            }
-            if (!isFullGitSha(pinnedModelRevision)) add("MODEL_REVISION_PINNED")
-            if (!isSha256(sourceModelSha256)) add("SOURCE_MODEL_SHA256_PINNED")
-            if (!isSha256(runnableModelSha256)) add("RUNNABLE_MODEL_SHA256_PINNED")
-            if (
-                modelTransformationId.isBlank() ||
-                !isSha256(modelTransformationManifestSha256)
-            ) {
-                add("MODEL_TRANSFORMATION_RECORDED")
-            }
-            if (evaluationEvidenceId.isBlank() || !isSha256(evaluationEvidenceSha256)) {
-                add("EVALUATION_EVIDENCE_PINNED")
-            }
-        }
-
-    init {
-        require(upstreamPullRequestUrl.startsWith("https://"))
-        require(isFullGitSha(observedPullRequestHeadCommit))
-    }
-}
-
 enum class MiddleTierAdmissionFailure {
     RUNTIME_SUPPORT_NOT_MERGED_AND_PINNED,
+    CORPUS_ARTIFACT_NOT_VERIFIED,
+    SOURCE_MODEL_ARTIFACT_NOT_VERIFIED,
+    RUNNABLE_MODEL_ARTIFACT_NOT_VERIFIED,
+    TRANSFORMATION_MANIFEST_NOT_VERIFIED,
+    APK_ARTIFACT_NOT_VERIFIED,
+    SIGNER_NOT_VERIFIED,
+    DEVICE_ROM_EVIDENCE_NOT_VERIFIED,
     REQUIRED_ROUTE_MISSING,
     DUPLICATE_ROUTE_MEASUREMENT,
     UNEXPECTED_ROUTE_MEASUREMENT,
+    SCORE_ARTIFACT_NOT_VERIFIED,
+    QUALITY_MEASUREMENT_MISSING,
     QUALITY_RETENTION_BELOW_THRESHOLD,
+    CRITICAL_CHECK_IDS_MISSING,
     CRITICAL_CHECK_REGRESSION,
+    RAW_LATENCY_MEASUREMENT_MISSING,
     RAW_MEDIAN_LATENCY_ABOVE_THRESHOLD,
     APP_PIPELINE_MEASUREMENT_MISSING,
     APP_PIPELINE_MEDIAN_LATENCY_ABOVE_THRESHOLD,
     APP_PIPELINE_P95_LATENCY_ABOVE_THRESHOLD,
     APP_PIPELINE_TIMEOUTS_ABOVE_THRESHOLD,
     INTEGRATED_RELEASE_MEASUREMENT_MISSING,
+    PROCESS_PSS_MEASUREMENT_MISSING,
     PROCESS_PSS_ABOVE_THRESHOLD,
+    HIGH_WATER_MEMORY_MEASUREMENT_MISSING,
     HIGH_WATER_MEMORY_ABOVE_THRESHOLD,
+    LMK_MEASUREMENT_MISSING,
     LMK_EVENTS_ABOVE_THRESHOLD,
+    HOT_RUN_MEASUREMENT_MISSING,
     HOT_RUN_TOO_SHORT,
+    THERMAL_CADENCE_MISSING,
+    THERMAL_CADENCE_ABOVE_THRESHOLD,
     THERMAL_SAMPLING_INSUFFICIENT,
     THERMAL_STATUS_ABOVE_THRESHOLD,
 }
@@ -460,6 +342,9 @@ data class MiddleTierAppPipelineMeasurement(
     val isComplete: Boolean
         get() = medianLatencyMillis != null && p95LatencyMillis != null && timeoutCount != null
 
+    val hasAnyMeasurement: Boolean
+        get() = medianLatencyMillis != null || p95LatencyMillis != null || timeoutCount != null
+
     init {
         require(medianLatencyMillis == null || medianLatencyMillis.isFinite())
         require(medianLatencyMillis == null || medianLatencyMillis >= 0.0)
@@ -471,40 +356,84 @@ data class MiddleTierAppPipelineMeasurement(
 
 data class MiddleTierRouteMeasurement(
     val route: TranslationRoute,
-    val q4BleuRetentionPercent: Double,
-    val criticalCheckRegressionsAgainstShippingLite: Int,
-    val rawMedianLatencyMillis: Double,
-    val appPipeline: MiddleTierAppPipelineMeasurement?,
+    val q4BleuRetentionPercent: Double?,
+    val criticalEvaluatedIds: Set<String>?,
+    val criticalRegressedIds: Set<String>?,
+    val rawMedianLatencyMillis: Double?,
+    val appPipeline: MiddleTierAppPipelineMeasurement,
 ) {
     init {
-        require(q4BleuRetentionPercent.isFinite() && q4BleuRetentionPercent >= 0.0)
-        require(criticalCheckRegressionsAgainstShippingLite >= 0)
-        require(rawMedianLatencyMillis.isFinite() && rawMedianLatencyMillis >= 0.0)
+        require(
+            q4BleuRetentionPercent == null ||
+                q4BleuRetentionPercent.isFinite() && q4BleuRetentionPercent in 0.0..100.0,
+        )
+        require((criticalEvaluatedIds == null) == (criticalRegressedIds == null))
+        require(criticalEvaluatedIds == null || criticalEvaluatedIds.all(String::isNotBlank))
+        require(criticalRegressedIds == null || criticalRegressedIds.all(String::isNotBlank))
+        require(
+            criticalEvaluatedIds == null ||
+                criticalRegressedIds.orEmpty().all(criticalEvaluatedIds::contains),
+        ) {
+            "Regressed critical checks must be a subset of evaluated critical checks"
+        }
+        require(
+            rawMedianLatencyMillis == null ||
+                rawMedianLatencyMillis.isFinite() && rawMedianLatencyMillis >= 0.0,
+        )
     }
 }
 
 data class MiddleTierIntegratedReleaseMeasurement(
-    val processPssBytes: Long,
-    val processHighWaterBytes: Long,
-    val lmkEventCount: Int,
-    val sustainedHotRunMinutes: Int,
-    val thermalStatusSamples: List<Int>,
+    val processPssBytes: Long?,
+    val processHighWaterBytes: Long?,
+    val lmkEventCount: Int?,
+    val sustainedHotRunMinutes: Double?,
+    val thermalSampleIntervalSeconds: Double?,
+    val thermalStatusSamples: List<Int>?,
 ) {
-    val maximumThermalStatus: Int
-        get() = thermalStatusSamples.maxOrNull() ?: Int.MAX_VALUE
+    val isComplete: Boolean
+        get() = processPssBytes != null &&
+            processHighWaterBytes != null &&
+            lmkEventCount != null &&
+            sustainedHotRunMinutes != null &&
+            thermalSampleIntervalSeconds != null &&
+            thermalStatusSamples != null
+
+    val hasAnyMeasurement: Boolean
+        get() = processPssBytes != null ||
+            processHighWaterBytes != null ||
+            lmkEventCount != null ||
+            sustainedHotRunMinutes != null ||
+            thermalSampleIntervalSeconds != null ||
+            thermalStatusSamples != null
+
+    val maximumThermalStatus: Int?
+        get() = thermalStatusSamples?.maxOrNull()
 
     init {
-        require(processPssBytes >= 0L)
-        require(processHighWaterBytes >= processPssBytes)
-        require(lmkEventCount >= 0)
-        require(sustainedHotRunMinutes >= 0)
-        require(thermalStatusSamples.all { it >= 0 })
+        require(processPssBytes == null || processPssBytes >= 0L)
+        require(processHighWaterBytes == null || processHighWaterBytes >= 0L)
+        require(
+            processPssBytes == null ||
+                processHighWaterBytes == null ||
+                processHighWaterBytes >= processPssBytes,
+        )
+        require(lmkEventCount == null || lmkEventCount >= 0)
+        require(
+            sustainedHotRunMinutes == null ||
+                sustainedHotRunMinutes.isFinite() && sustainedHotRunMinutes >= 0.0,
+        )
+        require(
+            thermalSampleIntervalSeconds == null ||
+                thermalSampleIntervalSeconds.isFinite() && thermalSampleIntervalSeconds > 0.0,
+        )
+        require(thermalStatusSamples == null || thermalStatusSamples.all { it >= 0 })
     }
 }
 
 data class MiddleTierCandidateMeasurement(
     val routeMeasurements: List<MiddleTierRouteMeasurement>,
-    val integratedRelease: MiddleTierIntegratedReleaseMeasurement?,
+    val integratedRelease: MiddleTierIntegratedReleaseMeasurement,
 )
 
 data class MiddleTierAdmissionPolicy(
@@ -518,8 +447,9 @@ data class MiddleTierAdmissionPolicy(
     val maximumIntegratedProcessPssBytesExclusive: Long,
     val maximumIntegratedProcessHighWaterBytesExclusive: Long,
     val maximumLmkEventCount: Int,
-    val minimumSustainedHotRunMinutes: Int,
+    val minimumSustainedHotRunMinutes: Double,
     val minimumThermalStatusSampleCount: Int,
+    val maximumThermalSampleIntervalSeconds: Double,
     val maximumThermalStatus: Int,
 ) {
     init {
@@ -543,17 +473,38 @@ data class MiddleTierAdmissionPolicy(
         require(maximumIntegratedProcessPssBytesExclusive > 0L)
         require(maximumIntegratedProcessHighWaterBytesExclusive > 0L)
         require(maximumLmkEventCount >= 0)
-        require(minimumSustainedHotRunMinutes > 0)
+        require(minimumSustainedHotRunMinutes.isFinite() && minimumSustainedHotRunMinutes > 0.0)
         require(minimumThermalStatusSampleCount > 2)
+        require(
+            maximumThermalSampleIntervalSeconds.isFinite() &&
+                maximumThermalSampleIntervalSeconds > 0.0,
+        )
         require(maximumThermalStatus >= 0)
     }
 
-    fun evaluate(
+    internal fun evaluate(
         measurement: MiddleTierCandidateMeasurement,
-        evaluationGate: TranslationEvaluationGate,
+        runtimeGateSatisfied: Boolean,
+        bindings: TranslationAdmissionArtifactBindings,
+        integratedSummaryVerified: Boolean,
     ): Set<MiddleTierAdmissionFailure> = buildSet {
-        if (!evaluationGate.isSatisfied) {
+        if (!runtimeGateSatisfied) {
             add(MiddleTierAdmissionFailure.RUNTIME_SUPPORT_NOT_MERGED_AND_PINNED)
+        }
+        if (!bindings.corpusVerified) add(MiddleTierAdmissionFailure.CORPUS_ARTIFACT_NOT_VERIFIED)
+        if (!bindings.sourceModelVerified) {
+            add(MiddleTierAdmissionFailure.SOURCE_MODEL_ARTIFACT_NOT_VERIFIED)
+        }
+        if (!bindings.runnableModelVerified) {
+            add(MiddleTierAdmissionFailure.RUNNABLE_MODEL_ARTIFACT_NOT_VERIFIED)
+        }
+        if (!bindings.transformationManifestVerified) {
+            add(MiddleTierAdmissionFailure.TRANSFORMATION_MANIFEST_NOT_VERIFIED)
+        }
+        if (!bindings.apkVerified) add(MiddleTierAdmissionFailure.APK_ARTIFACT_NOT_VERIFIED)
+        if (!bindings.signerVerified) add(MiddleTierAdmissionFailure.SIGNER_NOT_VERIFIED)
+        if (!bindings.deviceRomVerified) {
+            add(MiddleTierAdmissionFailure.DEVICE_ROM_EVIDENCE_NOT_VERIFIED)
         }
 
         val measurementsByRoute = measurement.routeMeasurements.groupBy { it.route }
@@ -570,20 +521,30 @@ data class MiddleTierAdmissionPolicy(
         requiredRoutes.mapNotNull { route ->
             measurementsByRoute[route]?.singleOrNull()
         }.forEach { routeMeasurement ->
-            if (routeMeasurement.q4BleuRetentionPercent < minimumQ4BleuRetentionPercent) {
+            if (bindings.scoreVerifiedByRoute[routeMeasurement.route] != true) {
+                add(MiddleTierAdmissionFailure.SCORE_ARTIFACT_NOT_VERIFIED)
+            }
+            val quality = routeMeasurement.q4BleuRetentionPercent
+            if (quality == null) {
+                add(MiddleTierAdmissionFailure.QUALITY_MEASUREMENT_MISSING)
+            } else if (quality < minimumQ4BleuRetentionPercent) {
                 add(MiddleTierAdmissionFailure.QUALITY_RETENTION_BELOW_THRESHOLD)
             }
-            if (
-                routeMeasurement.criticalCheckRegressionsAgainstShippingLite >
-                maximumCriticalCheckRegressionsAgainstShippingLite
-            ) {
+            val evaluatedIds = routeMeasurement.criticalEvaluatedIds
+            val regressedIds = routeMeasurement.criticalRegressedIds
+            if (evaluatedIds == null || regressedIds == null) {
+                add(MiddleTierAdmissionFailure.CRITICAL_CHECK_IDS_MISSING)
+            } else if (regressedIds.size > maximumCriticalCheckRegressionsAgainstShippingLite) {
                 add(MiddleTierAdmissionFailure.CRITICAL_CHECK_REGRESSION)
             }
-            if (routeMeasurement.rawMedianLatencyMillis >= maximumRawMedianLatencyMillisExclusive) {
+            val rawLatency = routeMeasurement.rawMedianLatencyMillis
+            if (rawLatency == null) {
+                add(MiddleTierAdmissionFailure.RAW_LATENCY_MEASUREMENT_MISSING)
+            } else if (rawLatency >= maximumRawMedianLatencyMillisExclusive) {
                 add(MiddleTierAdmissionFailure.RAW_MEDIAN_LATENCY_ABOVE_THRESHOLD)
             }
             val pipeline = routeMeasurement.appPipeline
-            if (pipeline?.isComplete != true) {
+            if (!pipeline.isComplete) {
                 add(MiddleTierAdmissionFailure.APP_PIPELINE_MEASUREMENT_MISSING)
             } else {
                 if (
@@ -605,30 +566,44 @@ data class MiddleTierAdmissionPolicy(
         }
 
         val integrated = measurement.integratedRelease
-        if (integrated == null) {
+        if (!integratedSummaryVerified || !integrated.isComplete) {
             add(MiddleTierAdmissionFailure.INTEGRATED_RELEASE_MEASUREMENT_MISSING)
-        } else {
-            if (integrated.processPssBytes >= maximumIntegratedProcessPssBytesExclusive) {
-                add(MiddleTierAdmissionFailure.PROCESS_PSS_ABOVE_THRESHOLD)
-            }
-            if (
-                integrated.processHighWaterBytes >=
-                maximumIntegratedProcessHighWaterBytesExclusive
-            ) {
-                add(MiddleTierAdmissionFailure.HIGH_WATER_MEMORY_ABOVE_THRESHOLD)
-            }
-            if (integrated.lmkEventCount > maximumLmkEventCount) {
-                add(MiddleTierAdmissionFailure.LMK_EVENTS_ABOVE_THRESHOLD)
-            }
-            if (integrated.sustainedHotRunMinutes < minimumSustainedHotRunMinutes) {
-                add(MiddleTierAdmissionFailure.HOT_RUN_TOO_SHORT)
-            }
-            if (integrated.thermalStatusSamples.size < minimumThermalStatusSampleCount) {
-                add(MiddleTierAdmissionFailure.THERMAL_SAMPLING_INSUFFICIENT)
-            }
-            if (integrated.maximumThermalStatus > maximumThermalStatus) {
-                add(MiddleTierAdmissionFailure.THERMAL_STATUS_ABOVE_THRESHOLD)
-            }
+        }
+        val pss = integrated.processPssBytes
+        if (pss == null) {
+            add(MiddleTierAdmissionFailure.PROCESS_PSS_MEASUREMENT_MISSING)
+        } else if (pss >= maximumIntegratedProcessPssBytesExclusive) {
+            add(MiddleTierAdmissionFailure.PROCESS_PSS_ABOVE_THRESHOLD)
+        }
+        val highWater = integrated.processHighWaterBytes
+        if (highWater == null) {
+            add(MiddleTierAdmissionFailure.HIGH_WATER_MEMORY_MEASUREMENT_MISSING)
+        } else if (highWater >= maximumIntegratedProcessHighWaterBytesExclusive) {
+            add(MiddleTierAdmissionFailure.HIGH_WATER_MEMORY_ABOVE_THRESHOLD)
+        }
+        val lmk = integrated.lmkEventCount
+        if (lmk == null) {
+            add(MiddleTierAdmissionFailure.LMK_MEASUREMENT_MISSING)
+        } else if (lmk > maximumLmkEventCount) {
+            add(MiddleTierAdmissionFailure.LMK_EVENTS_ABOVE_THRESHOLD)
+        }
+        val hotRun = integrated.sustainedHotRunMinutes
+        if (hotRun == null) {
+            add(MiddleTierAdmissionFailure.HOT_RUN_MEASUREMENT_MISSING)
+        } else if (hotRun < minimumSustainedHotRunMinutes) {
+            add(MiddleTierAdmissionFailure.HOT_RUN_TOO_SHORT)
+        }
+        val interval = integrated.thermalSampleIntervalSeconds
+        if (interval == null) {
+            add(MiddleTierAdmissionFailure.THERMAL_CADENCE_MISSING)
+        } else if (interval > maximumThermalSampleIntervalSeconds) {
+            add(MiddleTierAdmissionFailure.THERMAL_CADENCE_ABOVE_THRESHOLD)
+        }
+        val samples = integrated.thermalStatusSamples
+        if (samples == null || samples.size < minimumThermalStatusSampleCount) {
+            add(MiddleTierAdmissionFailure.THERMAL_SAMPLING_INSUFFICIENT)
+        } else if (integrated.maximumThermalStatus!! > maximumThermalStatus) {
+            add(MiddleTierAdmissionFailure.THERMAL_STATUS_ABOVE_THRESHOLD)
         }
     }
 
@@ -648,8 +623,9 @@ data class MiddleTierAdmissionPolicy(
             maximumIntegratedProcessPssBytesExclusive = 1_073_741_824L, // 1.0 GiB
             maximumIntegratedProcessHighWaterBytesExclusive = 1_288_490_189L, // 1.2 GiB
             maximumLmkEventCount = 0,
-            minimumSustainedHotRunMinutes = 30,
+            minimumSustainedHotRunMinutes = 30.0,
             minimumThermalStatusSampleCount = 30,
+            maximumThermalSampleIntervalSeconds = 60.0,
             maximumThermalStatus = 1,
         )
     }
@@ -666,14 +642,16 @@ data class TranslationProviderProfile(
     val cancellation: TranslationCancellationCapability,
     val performance: TranslationPerformanceCapability,
     val attribution: TranslationAttributionCapability,
-    val evaluationGate: TranslationEvaluationGate? = null,
-    val middleTierAdmissionPolicy: MiddleTierAdmissionPolicy? = null,
+    val admission: TranslationProviderAdmission? = null,
 ) {
     val isSelectable: Boolean
         get() = (
             availability == TranslationProviderAvailability.SHIPPING ||
                 availability == TranslationProviderAvailability.EXPERIMENTAL
-            ) && evaluationGate?.isSatisfied != false
+            ) && when (id) {
+                TranslationProviderId.HY_MT2_STQ_CANDIDATE -> admission?.isSatisfied == true
+                else -> admission?.isSatisfied != false
+            }
 
     fun supports(sourceLanguageTag: String, targetLanguageTag: String): Boolean =
         languages.routeFor(sourceLanguageTag, targetLanguageTag) != null
@@ -686,11 +664,13 @@ data class TranslationProviderProfile(
             "Evaluated routes must be supported by the provider"
         }
         if (availability == TranslationProviderAvailability.EVALUATION_BLOCKED) {
-            require(evaluationGate != null && !evaluationGate.isSatisfied) {
-                "A blocked provider requires an unsatisfied evaluation gate"
+            require(admission != null && !admission.isSatisfied) {
+                "A blocked provider requires one fail-closed canonical admission record"
             }
-            require(middleTierAdmissionPolicy != null) {
-                "A middle-tier candidate requires a published admission policy"
+        }
+        if (id == TranslationProviderId.HY_MT2_STQ_CANDIDATE) {
+            require(admission != null) {
+                "The STQ candidate always carries its canonical admission record"
             }
         }
     }
@@ -936,79 +916,61 @@ object TranslationProviderProfiles {
         ),
     )
 
-    val hyMt2StqCandidate = TranslationProviderProfile(
-        id = TranslationProviderId.HY_MT2_STQ_CANDIDATE,
-        displayName = "HY-MT2 STQ1_0 1.25-bit candidate",
-        availability = TranslationProviderAvailability.EVALUATION_BLOCKED,
-        languages = TranslationLanguageCapability.AnySourceToTargets(setOf("zh")),
-        evaluatedRoutes = setOf(enZh, jaZh),
-        input = TranslationInputCapability(
-            mode = TranslationInputMode.CLAUSE_PLAN,
-            contextWindowTokens = 2_048,
-            reservedOutputTokens = 256,
-        ),
-        modelStorage = TranslationModelStorageCapability(
-            location = TranslationModelStorageLocation.NOT_PROVISIONED,
-            distribution = TranslationModelDistribution.EVALUATION_ONLY,
-            sizeClass = TranslationModelSizeClass.MEDIUM_128_TO_512_MIB,
-            expectedLocalBytes = 461_860_800L..461_860_800L,
-            userRemovableFromApp = false,
-        ),
-        cancellation = TranslationCancellationCapability(
-            perRequest = TranslationPerRequestCancellation.NO_PER_REQUEST_CANCEL,
-            onClose = TranslationCloseBehavior.NOT_IMPLEMENTED,
-        ),
-        performance = TranslationPerformanceCapability(
-            latencyClass = TranslationLatencyClass.VISIBLE_DELAY,
-            memoryClass = TranslationMemoryClass.MEDIUM,
-            routeObservations = mapOf(
-                enZh to TranslationRoutePerformanceObservation(
-                    rawMedianLatencyMillis = 615.727,
-                    observedProcessHighWaterMiB = 903.3203125,
-                    processMeasurementScope =
-                        TranslationProcessMeasurementScope.STANDALONE_NATIVE_RUNNER,
-                ),
-                jaZh to TranslationRoutePerformanceObservation(
-                    rawMedianLatencyMillis = 622.125,
-                    observedProcessHighWaterMiB = 903.3203125,
-                    processMeasurementScope =
-                        TranslationProcessMeasurementScope.STANDALONE_NATIVE_RUNNER,
+    val hyMt2StqCandidate: TranslationProviderProfile by lazy {
+        TranslationProviderProfile(
+            id = TranslationProviderId.HY_MT2_STQ_CANDIDATE,
+            displayName = "HY-MT2 STQ1_0 1.25-bit candidate",
+            availability = TranslationProviderAvailability.EVALUATION_BLOCKED,
+            languages = TranslationLanguageCapability.AnySourceToTargets(setOf("zh")),
+            evaluatedRoutes = setOf(enZh, jaZh),
+            input = TranslationInputCapability(
+                mode = TranslationInputMode.CLAUSE_PLAN,
+                contextWindowTokens = 2_048,
+                reservedOutputTokens = 256,
+            ),
+            modelStorage = TranslationModelStorageCapability(
+                location = TranslationModelStorageLocation.NOT_PROVISIONED,
+                distribution = TranslationModelDistribution.EVALUATION_ONLY,
+                sizeClass = TranslationModelSizeClass.MEDIUM_128_TO_512_MIB,
+                expectedLocalBytes = 461_860_800L..461_860_800L,
+                userRemovableFromApp = false,
+            ),
+            cancellation = TranslationCancellationCapability(
+                perRequest = TranslationPerRequestCancellation.NO_PER_REQUEST_CANCEL,
+                onClose = TranslationCloseBehavior.NOT_IMPLEMENTED,
+            ),
+            performance = TranslationPerformanceCapability(
+                latencyClass = TranslationLatencyClass.VISIBLE_DELAY,
+                memoryClass = TranslationMemoryClass.MEDIUM,
+                routeObservations = mapOf(
+                    enZh to TranslationRoutePerformanceObservation(
+                        rawMedianLatencyMillis = 615.727,
+                        observedProcessHighWaterMiB = 903.3203125,
+                        processMeasurementScope =
+                            TranslationProcessMeasurementScope.STANDALONE_NATIVE_RUNNER,
+                    ),
+                    jaZh to TranslationRoutePerformanceObservation(
+                        rawMedianLatencyMillis = 622.125,
+                        observedProcessHighWaterMiB = 903.3203125,
+                        processMeasurementScope =
+                            TranslationProcessMeasurementScope.STANDALONE_NATIVE_RUNNER,
+                    ),
                 ),
             ),
-        ),
-        attribution = TranslationAttributionCapability(
-            mode = TranslationAttributionMode.BENCHMARK_DOCUMENTATION,
-            components = listOf(
-                TranslationAttributionComponent(
-                    name = "HY-MT2 1.8B STQ1_0 1.25-bit GGUF",
-                    revision = "9df5c824a00a744fb0512a29c640466f4d97dfb0",
-                    license = "Apache License 2.0",
-                    sourceUrl = "https://huggingface.co/tencent/Hy-MT2-1.8B-1.25Bit-GGUF",
+            attribution = TranslationAttributionCapability(
+                mode = TranslationAttributionMode.BENCHMARK_DOCUMENTATION,
+                components = listOf(
+                    TranslationAttributionComponent(
+                        name = "HY-MT2 1.8B STQ1_0 1.25-bit GGUF",
+                        revision = "9df5c824a00a744fb0512a29c640466f4d97dfb0",
+                        license = "Apache License 2.0",
+                        sourceUrl = "https://huggingface.co/tencent/Hy-MT2-1.8B-1.25Bit-GGUF",
+                    ),
                 ),
             ),
-        ),
-        evaluationGate = TranslationEvaluationGate(
-            upstreamPullRequestUrl = "https://github.com/ggml-org/llama.cpp/pull/22836",
-            upstreamPullRequestState = UpstreamPullRequestState.OPEN,
-            observedPullRequestHeadCommit = "7e74b8296fbb2e48ad2fbe4663410279bbd2a5e7",
-            upstreamSupportMergeCommit = null,
-            pinnedRuntimeCommit = "caa596ab3f0f8768ee326d6e3d5d39782194676c",
-            runtimeSupportVerificationStatus = RuntimeSupportVerificationStatus.UNVERIFIED,
-            runtimeSupportEvidence = null,
-            pinnedModelRevision = "9df5c824a00a744fb0512a29c640466f4d97dfb0",
-            sourceModelSha256 =
-                "cc497fe8f033b52b3b8b00a7669e9661435432f9d4cd43f7ed24400c01507a93",
-            runnableModelSha256 =
-                "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7",
-            modelTransformationId = "retag-legacy-stq-gguf-v1",
-            modelTransformationManifestSha256 =
-                "b4713fdb0e95c74446688597d7c0bab6cc217379379115dc535c2e89f599f284",
-            evaluationEvidenceId = "hymt2-stq-2026-07-30-xiaomi15pro-android16",
-            evaluationEvidenceSha256 =
-                "3ebf5628c5e21685fae2583a1500129d2f60e3da80a0e0490beaa4e5a57490cd",
-        ),
-        middleTierAdmissionPolicy = MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER,
-    )
+            admission = TranslationProviderAdmission.parseCanonicalHyMt2Stq(),
+        )
+    }
 
     val editionProfiles: List<TranslationProviderProfile> = listOf(
         bergamotLite,
@@ -1016,10 +978,9 @@ object TranslationProviderProfiles {
         onlineByok,
     )
 
-    val all: List<TranslationProviderProfile> = editionProfiles + listOf(
-        mlKitBenchmark,
-        hyMt2StqCandidate,
-    )
+    val all: List<TranslationProviderProfile> by lazy {
+        editionProfiles + listOf(mlKitBenchmark, hyMt2StqCandidate)
+    }
 
     fun requireById(id: TranslationProviderId): TranslationProviderProfile =
         all.single { it.id == id }
@@ -1027,9 +988,6 @@ object TranslationProviderProfiles {
 
 private fun normalizeLanguageTag(value: String): String =
     value.trim().lowercase(Locale.ROOT)
-
-private fun isFullGitSha(value: String?): Boolean =
-    value?.matches(Regex("[0-9a-f]{40}")) == true
 
 private fun isSha256(value: String?): Boolean =
     value?.matches(Regex("[0-9a-f]{64}")) == true

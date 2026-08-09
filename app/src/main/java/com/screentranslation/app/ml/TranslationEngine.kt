@@ -104,9 +104,10 @@ object TranslationBackendFactory {
                 sourceLanguage,
                 targetLanguage,
             ) as TranslationBackend
-            check(backend.profile.id == selectedProfile.id) {
-                "Translation backend/profile mismatch: selected=${selectedProfile.id}, " +
-                    "actual=${backend.profile.id}"
+            requireSelectedProfileSingleton(selectedProfile, backend.profile)
+            check(backend.profile.isSelectable) {
+                "Translation backend returned a provider whose admission is not satisfied: " +
+                    backend.profile.id
             }
             return backend
         } catch (error: InvocationTargetException) {
@@ -125,4 +126,15 @@ object TranslationBackendFactory {
         "com.screentranslation.app.ml.BergamotTranslationEngine"
     private const val ONLINE_BACKEND_CLASS =
         "com.screentranslation.app.ml.OnlineLlmTranslationEngine"
+}
+
+/** Prevents an ID-matching copy from bypassing the selected singleton's admission record. */
+internal fun requireSelectedProfileSingleton(
+    selectedProfile: TranslationProviderProfile,
+    backendProfile: TranslationProviderProfile,
+) {
+    check(backendProfile === selectedProfile) {
+        "Translation backend/profile singleton mismatch: selected=${selectedProfile.id}, " +
+            "actual=${backendProfile.id}"
+    }
 }

@@ -1,13 +1,13 @@
 package com.screentranslation.app.ml
 
 import com.screentranslation.app.BuildConfig
-import java.io.File
-import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class TranslationProviderProfileTest {
@@ -19,6 +19,7 @@ class TranslationProviderProfileTest {
         assertEquals(profiles.size, profiles.map { it.id }.distinct().size)
         profiles.forEach { profile ->
             assertTrue(profile.isSelectable)
+            assertNull(profile.admission)
             assertTrue(profile.displayName.isNotBlank())
             assertNotNull(profile.languages)
             assertNotNull(profile.input.mode)
@@ -35,10 +36,7 @@ class TranslationProviderProfileTest {
     fun liteRoutesAreExplicitAndJapaneseUsesEnglishPivot() {
         val capability = TranslationProviderProfiles.bergamotLite.languages
 
-        assertEquals(
-            TranslationRoute("en", "zh"),
-            capability.routeFor(" EN ", "ZH"),
-        )
+        assertEquals(TranslationRoute("en", "zh"), capability.routeFor(" EN ", "ZH"))
         assertEquals(
             TranslationRoute("ja", "zh", listOf("en")),
             capability.routeFor("ja", "zh"),
@@ -48,13 +46,6 @@ class TranslationProviderProfileTest {
         assertEquals(
             BergamotLiteProviderContract.modelIdsByRoute.keys,
             TranslationProviderProfiles.bergamotLite.evaluatedRoutes,
-        )
-        assertEquals(
-            35.547,
-            TranslationProviderProfiles.bergamotLite.performance.routeObservations
-                .getValue(TranslationRoute("en", "zh"))
-                .rawMedianLatencyMillis,
-            0.0,
         )
     }
 
@@ -75,10 +66,7 @@ class TranslationProviderProfileTest {
             profile.modelStorage.expectedLocalBytes,
         )
         assertTrue(profile.modelStorage.userRemovableFromApp)
-        assertEquals(
-            TranslationProviderAvailability.EXPERIMENTAL,
-            profile.availability,
-        )
+        assertEquals(TranslationProviderAvailability.EXPERIMENTAL, profile.availability)
         assertEquals(
             TranslationCloseBehavior.MARK_CLOSED_DRAIN_EXECUTOR_THEN_RELEASE_RUNTIME,
             profile.cancellation.onClose,
@@ -102,237 +90,165 @@ class TranslationProviderProfileTest {
             TranslationCloseBehavior.PREEMPT_ACTIVE_AND_DISCARD_QUEUED,
             profile.cancellation.onClose,
         )
-        assertEquals(
-            TranslationModelStorageLocation.REMOTE_PROVIDER,
-            profile.modelStorage.location,
-        )
-        assertEquals(
-            TranslationAttributionMode.DYNAMIC_REMOTE_PROVIDER,
-            profile.attribution.mode,
-        )
+        assertEquals(TranslationModelStorageLocation.REMOTE_PROVIDER, profile.modelStorage.location)
+        assertEquals(TranslationAttributionMode.DYNAMIC_REMOTE_PROVIDER, profile.attribution.mode)
     }
 
     @Test
-    fun factoryProfileMatchesExactlyOneEditionBuildFlag() {
+    fun factoryProfileIsTheSelectedEditionSingleton() {
         val expected = when {
-            BuildConfig.BERGAMOT_LITE -> TranslationProviderId.BERGAMOT_LITE
-            BuildConfig.HYMT2_Q4_EXPERIMENTAL -> TranslationProviderId.HY_MT2_Q4_FULL
-            BuildConfig.ONLINE_LLM -> TranslationProviderId.ONLINE_BYOK
+            BuildConfig.BERGAMOT_LITE -> TranslationProviderProfiles.bergamotLite
+            BuildConfig.HYMT2_Q4_EXPERIMENTAL -> TranslationProviderProfiles.hyMt2Q4Full
+            BuildConfig.ONLINE_LLM -> TranslationProviderProfiles.onlineByok
             else -> error("Test variant has no provider flag")
         }
 
-        assertEquals(expected, TranslationBackendFactory.profile.id)
+        assertSame(expected, TranslationBackendFactory.profile)
+        requireSelectedProfileSingleton(expected, TranslationBackendFactory.profile)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun idMatchingProfileCopyIsRejectedByFactorySingletonContract() {
+        val selected = TranslationBackendFactory.profile
+
+        requireSelectedProfileSingleton(selected, selected.copy())
     }
 
     @Test
-    fun currentOpenStqGateIsFailClosedAndEvidencePinned() {
+    fun canonicalStqAdmissionIsFailClosedAndNotInAnyEdition() {
         val profile = TranslationProviderProfiles.hyMt2StqCandidate
-        val gate = checkNotNull(profile.evaluationGate)
+        val admission = checkNotNull(profile.admission)
 
         assertEquals(TranslationProviderAvailability.EVALUATION_BLOCKED, profile.availability)
-        assertEquals(UpstreamPullRequestState.OPEN, gate.upstreamPullRequestState)
-        assertEquals(
-            "caa596ab3f0f8768ee326d6e3d5d39782194676c",
-            gate.pinnedRuntimeCommit,
-        )
-        assertEquals(RuntimeSupportVerificationStatus.UNVERIFIED, gate.runtimeSupportVerificationStatus)
-        assertNull(gate.runtimeSupportEvidence)
+        assertEquals("hymt2-stq-2026-07-30-xiaomi15pro-android16", admission.candidateId)
+        assertEquals(GeneratedTranslationAdmissionEvidence.SHA256, admission.canonicalSha256)
+        assertFalse(admission.runtimeGateSatisfied)
+        assertFalse(admission.isSatisfied)
         assertFalse(profile.isSelectable)
-        assertFalse(gate.isSatisfied)
-        assertEquals(
-            setOf(
-                "UPSTREAM_PULL_REQUEST_MERGED",
-                "UPSTREAM_MERGE_COMMIT_RECORDED",
-                "PINNED_RUNTIME_CONTAINS_MERGE_VERIFIED",
-            ),
-            gate.unmetRequirements,
-        )
-        assertEquals(
-            "cc497fe8f033b52b3b8b00a7669e9661435432f9d4cd43f7ed24400c01507a93",
-            gate.sourceModelSha256,
-        )
-        assertEquals(
-            "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7",
-            gate.runnableModelSha256,
-        )
-        assertEquals("retag-legacy-stq-gguf-v1", gate.modelTransformationId)
         assertFalse(TranslationProviderProfiles.editionProfiles.contains(profile))
-        assertEquals(MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER, profile.middleTierAdmissionPolicy)
+        assertTrue(MiddleTierAdmissionFailure.RUNTIME_SUPPORT_NOT_MERGED_AND_PINNED in admission.failures)
+        assertTrue(MiddleTierAdmissionFailure.SCORE_ARTIFACT_NOT_VERIFIED in admission.failures)
+        assertTrue(MiddleTierAdmissionFailure.INTEGRATED_RELEASE_MEASUREMENT_MISSING in admission.failures)
     }
 
     @Test
-    fun profilePinsMachineReadableStqEvidenceFile() {
-        val gate = checkNotNull(TranslationProviderProfiles.hyMt2StqCandidate.evaluationGate)
-        val evidence = repositoryFile("docs/evidence/hymt2-stq-evidence-2026-07-30.json")
-        val evidenceText = evidence.readText()
+    fun canonicalAdmissionFailuresCannotBeClearedThroughAMutableCast() {
+        val admission = checkNotNull(TranslationProviderProfiles.hyMt2StqCandidate.admission)
 
-        assertEquals(gate.evaluationEvidenceSha256, sha256(evidence))
-        assertTrue(evidenceText.contains("\"evidence_id\": \"${gate.evaluationEvidenceId}\""))
-        assertTrue(evidenceText.contains("\"snapshot_state\": \"OPEN\""))
-        assertTrue(evidenceText.contains(checkNotNull(gate.pinnedRuntimeCommit)))
-        assertTrue(evidenceText.contains(gate.sourceModelSha256))
-        assertTrue(evidenceText.contains(gate.runnableModelSha256))
-        assertTrue(evidenceText.contains(gate.modelTransformationManifestSha256))
-        assertTrue(evidenceText.contains("\"status\": \"NOT_MEASURED\""))
+        try {
+            @Suppress("UNCHECKED_CAST")
+            (admission.failures as MutableSet<MiddleTierAdmissionFailure>).clear()
+            fail("Canonical admission failures were mutable")
+        } catch (_: UnsupportedOperationException) {
+            // Expected: the public view is defensively copied and unmodifiable.
+        }
+
+        assertFalse(admission.isSatisfied)
+        assertTrue(admission.failures.isNotEmpty())
     }
 
     @Test
-    fun openOrClosedUnmergedPullRequestNeverSatisfiesGate() {
-        val otherwiseVerified = verifiedGate()
-
-        assertFalse(
-            otherwiseVerified.copy(
-                upstreamPullRequestState = UpstreamPullRequestState.OPEN,
-            ).isSatisfied,
+    fun changingBlockedCandidateAvailabilityDoesNotDetachAdmission() {
+        val copied = TranslationProviderProfiles.hyMt2StqCandidate.copy(
+            availability = TranslationProviderAvailability.EXPERIMENTAL,
         )
-        assertFalse(
-            otherwiseVerified.copy(
-                upstreamPullRequestState = UpstreamPullRequestState.CLOSED_UNMERGED,
-            ).isSatisfied,
-        )
+
+        assertFalse(copied.isSelectable)
+        assertSame(TranslationProviderProfiles.hyMt2StqCandidate.admission, copied.admission)
     }
 
-    @Test
-    fun mergedStateWithoutMergeCommitNeverSatisfiesGate() {
-        val gate = verifiedGate().copy(upstreamSupportMergeCommit = null)
-
-        assertFalse(gate.isSatisfied)
-        assertTrue("UPSTREAM_MERGE_COMMIT_RECORDED" in gate.unmetRequirements)
-        assertTrue("PINNED_RUNTIME_CONTAINS_MERGE_VERIFIED" in gate.unmetRequirements)
-    }
-
-    @Test
-    fun runtimeEvidenceMustProveMergeAncestryAndExactGitlink() {
-        val gate = verifiedGate()
-        val evidence = checkNotNull(gate.runtimeSupportEvidence)
-        val otherRuntime = "76543210fedcba9876543210fedcba9876543210"
-
-        assertFalse(
-            gate.copy(
-                runtimeSupportEvidence = evidence.copy(mergeCommitIsAncestorOfRuntime = false),
-            ).isSatisfied,
-        )
-        assertFalse(
-            gate.copy(
-                runtimeSupportEvidence = evidence.copy(
-                    observedRepositoryGitlinkCommit = otherRuntime,
-                ),
-            ).isSatisfied,
+    @Test(expected = IllegalArgumentException::class)
+    fun stqCandidateCopyCannotDropItsAdmissionRecord() {
+        TranslationProviderProfiles.hyMt2StqCandidate.copy(
+            availability = TranslationProviderAvailability.EXPERIMENTAL,
+            admission = null,
         )
     }
 
     @Test
-    fun runtimeEvidenceMustVerifyExactRunnableModelHash() {
-        val gate = verifiedGate()
-        val evidence = checkNotNull(gate.runtimeSupportEvidence)
-
-        assertFalse(
-            gate.copy(
-                runtimeSupportEvidence = evidence.copy(
-                    verifiedRunnableModelSha256 = "0".repeat(64),
-                ),
-            ).isSatisfied,
-        )
-    }
-
-    @Test
-    fun selectabilityIsAlwaysBoundToEvaluationGate() {
-        val unsatisfied = checkNotNull(TranslationProviderProfiles.hyMt2StqCandidate.evaluationGate)
-        val satisfied = verifiedGate()
-
-        assertFalse(
-            TranslationProviderProfiles.bergamotLite.copy(
-                evaluationGate = unsatisfied,
-            ).isSelectable,
-        )
-        assertTrue(
-            TranslationProviderProfiles.hyMt2Q4Full.copy(
-                evaluationGate = satisfied,
-            ).isSelectable,
-        )
-    }
-
-    @Test
-    fun currentStqEvidenceFailsRouteQualityAndMissingIntegrationEvidence() {
-        val profile = TranslationProviderProfiles.hyMt2StqCandidate
-        val failures = MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER.evaluate(
-            measurement = currentStqMeasurement(),
-            evaluationGate = checkNotNull(profile.evaluationGate),
-        )
-
-        assertEquals(
-            setOf(
-                MiddleTierAdmissionFailure.RUNTIME_SUPPORT_NOT_MERGED_AND_PINNED,
-                MiddleTierAdmissionFailure.QUALITY_RETENTION_BELOW_THRESHOLD,
-                MiddleTierAdmissionFailure.CRITICAL_CHECK_REGRESSION,
-                MiddleTierAdmissionFailure.RAW_MEDIAN_LATENCY_ABOVE_THRESHOLD,
-                MiddleTierAdmissionFailure.APP_PIPELINE_MEASUREMENT_MISSING,
-                MiddleTierAdmissionFailure.INTEGRATED_RELEASE_MEASUREMENT_MISSING,
+    fun incompleteMeasurementsAreTypedAsNullAndFailPublishedPolicy() {
+        val policy = MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER
+        val incomplete = MiddleTierCandidateMeasurement(
+            routeMeasurements = policy.requiredRoutes.map { route ->
+                MiddleTierRouteMeasurement(
+                    route = route,
+                    q4BleuRetentionPercent = null,
+                    criticalEvaluatedIds = null,
+                    criticalRegressedIds = null,
+                    rawMedianLatencyMillis = null,
+                    appPipeline = MiddleTierAppPipelineMeasurement(null, null, null),
+                )
+            },
+            integratedRelease = MiddleTierIntegratedReleaseMeasurement(
+                processPssBytes = null,
+                processHighWaterBytes = null,
+                lmkEventCount = null,
+                sustainedHotRunMinutes = null,
+                thermalSampleIntervalSeconds = null,
+                thermalStatusSamples = null,
             ),
-            failures,
         )
+        val bindings = TranslationAdmissionArtifactBindings(
+            corpusVerified = false,
+            sourceModelVerified = false,
+            runnableModelVerified = false,
+            transformationManifestVerified = false,
+            apkVerified = false,
+            signerVerified = false,
+            deviceRomVerified = false,
+            scoreVerifiedByRoute = emptyMap(),
+        )
+
+        val failures = policy.evaluate(
+            measurement = incomplete,
+            runtimeGateSatisfied = false,
+            bindings = bindings,
+            integratedSummaryVerified = false,
+        )
+
+        assertTrue(MiddleTierAdmissionFailure.QUALITY_MEASUREMENT_MISSING in failures)
+        assertTrue(MiddleTierAdmissionFailure.CRITICAL_CHECK_IDS_MISSING in failures)
+        assertTrue(MiddleTierAdmissionFailure.RAW_LATENCY_MEASUREMENT_MISSING in failures)
+        assertTrue(MiddleTierAdmissionFailure.APP_PIPELINE_MEASUREMENT_MISSING in failures)
+        assertTrue(MiddleTierAdmissionFailure.PROCESS_PSS_MEASUREMENT_MISSING in failures)
+        assertTrue(MiddleTierAdmissionFailure.THERMAL_CADENCE_MISSING in failures)
     }
 
     @Test
     fun policyRejectsMissingDuplicateAndUnexpectedRoutes() {
         val policy = MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER
-        val gate = verifiedGate()
-        val en = passingRoute(TranslationRoute("en", "zh"))
-        val ja = passingRoute(TranslationRoute("ja", "zh"))
-        val integrated = passingIntegratedRelease(policy)
+        val en = emptyRoute(TranslationRoute("en", "zh"))
+        val ja = emptyRoute(TranslationRoute("ja", "zh"))
+        val extra = emptyRoute(TranslationRoute("ko", "zh"))
+        val emptyIntegrated = MiddleTierIntegratedReleaseMeasurement(null, null, null, null, null, null)
+        val noTrust = TranslationAdmissionArtifactBindings(
+            false, false, false, false, false, false, false, emptyMap(),
+        )
 
-        assertEquals(
-            setOf(MiddleTierAdmissionFailure.REQUIRED_ROUTE_MISSING),
-            policy.evaluate(MiddleTierCandidateMeasurement(listOf(en), integrated), gate),
-        )
-        assertEquals(
-            setOf(MiddleTierAdmissionFailure.DUPLICATE_ROUTE_MEASUREMENT),
-            policy.evaluate(MiddleTierCandidateMeasurement(listOf(en, en, ja), integrated), gate),
-        )
-        assertEquals(
-            setOf(MiddleTierAdmissionFailure.UNEXPECTED_ROUTE_MEASUREMENT),
-            policy.evaluate(
-                MiddleTierCandidateMeasurement(
-                    listOf(en, ja, passingRoute(TranslationRoute("ko", "zh"))),
-                    integrated,
-                ),
-                gate,
+        assertTrue(
+            MiddleTierAdmissionFailure.REQUIRED_ROUTE_MISSING in policy.evaluate(
+                MiddleTierCandidateMeasurement(listOf(en), emptyIntegrated),
+                false,
+                noTrust,
+                false,
             ),
         )
-    }
-
-    @Test
-    fun twoThermalEndpointsDoNotQualifyAsSustainedSampling() {
-        val policy = MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER
-        val incompleteThermal = passingIntegratedRelease(policy).copy(
-            thermalStatusSamples = listOf(0, 0),
-        )
-
-        assertEquals(
-            setOf(MiddleTierAdmissionFailure.THERMAL_SAMPLING_INSUFFICIENT),
-            policy.evaluate(
-                MiddleTierCandidateMeasurement(
-                    routeMeasurements = policy.requiredRoutes.map(::passingRoute),
-                    integratedRelease = incompleteThermal,
-                ),
-                verifiedGate(),
+        assertTrue(
+            MiddleTierAdmissionFailure.DUPLICATE_ROUTE_MEASUREMENT in policy.evaluate(
+                MiddleTierCandidateMeasurement(listOf(en, en, ja), emptyIntegrated),
+                false,
+                noTrust,
+                false,
             ),
         )
-    }
-
-    @Test
-    fun candidateAtEveryPublishedBoundaryIsAdmittedOnlyWithTrustedEvidence() {
-        val policy = MiddleTierAdmissionPolicy.DAILY_MIDDLE_TIER
-        val failures = policy.evaluate(
-            measurement = MiddleTierCandidateMeasurement(
-                routeMeasurements = policy.requiredRoutes.map(::passingRoute),
-                integratedRelease = passingIntegratedRelease(policy),
+        assertTrue(
+            MiddleTierAdmissionFailure.UNEXPECTED_ROUTE_MEASUREMENT in policy.evaluate(
+                MiddleTierCandidateMeasurement(listOf(en, ja, extra), emptyIntegrated),
+                false,
+                noTrust,
+                false,
             ),
-            evaluationGate = verifiedGate(),
         )
-
-        assertTrue(verifiedGate().isSatisfied)
-        assertTrue(failures.isEmpty())
     }
 
     @Test
@@ -349,98 +265,13 @@ class TranslationProviderProfileTest {
             }
     }
 
-    private fun currentStqMeasurement(): MiddleTierCandidateMeasurement =
-        MiddleTierCandidateMeasurement(
-            routeMeasurements = listOf(
-                MiddleTierRouteMeasurement(
-                    route = TranslationRoute("en", "zh"),
-                    q4BleuRetentionPercent = 88.37,
-                    criticalCheckRegressionsAgainstShippingLite = 0,
-                    rawMedianLatencyMillis = 615.727,
-                    appPipeline = MiddleTierAppPipelineMeasurement(
-                        medianLatencyMillis = 600.994,
-                        p95LatencyMillis = 1_432.453,
-                        timeoutCount = null,
-                    ),
-                ),
-                MiddleTierRouteMeasurement(
-                    route = TranslationRoute("ja", "zh"),
-                    q4BleuRetentionPercent = 89.68,
-                    criticalCheckRegressionsAgainstShippingLite = 8,
-                    rawMedianLatencyMillis = 622.125,
-                    appPipeline = MiddleTierAppPipelineMeasurement(
-                        medianLatencyMillis = 577.303,
-                        p95LatencyMillis = 1_416.108,
-                        timeoutCount = null,
-                    ),
-                ),
-            ),
-            integratedRelease = null,
-        )
-
-    private fun passingRoute(route: TranslationRoute): MiddleTierRouteMeasurement =
+    private fun emptyRoute(route: TranslationRoute): MiddleTierRouteMeasurement =
         MiddleTierRouteMeasurement(
             route = route,
-            q4BleuRetentionPercent = 95.0,
-            criticalCheckRegressionsAgainstShippingLite = 0,
-            rawMedianLatencyMillis = 349.999,
-            appPipeline = MiddleTierAppPipelineMeasurement(
-                medianLatencyMillis = 749.999,
-                p95LatencyMillis = 1_499.999,
-                timeoutCount = 0,
-            ),
+            q4BleuRetentionPercent = null,
+            criticalEvaluatedIds = null,
+            criticalRegressedIds = null,
+            rawMedianLatencyMillis = null,
+            appPipeline = MiddleTierAppPipelineMeasurement(null, null, null),
         )
-
-    private fun passingIntegratedRelease(
-        policy: MiddleTierAdmissionPolicy,
-    ): MiddleTierIntegratedReleaseMeasurement = MiddleTierIntegratedReleaseMeasurement(
-        processPssBytes = policy.maximumIntegratedProcessPssBytesExclusive - 1L,
-        processHighWaterBytes = policy.maximumIntegratedProcessHighWaterBytesExclusive - 1L,
-        lmkEventCount = 0,
-        sustainedHotRunMinutes = policy.minimumSustainedHotRunMinutes,
-        thermalStatusSamples = List(policy.minimumThermalStatusSampleCount) {
-            policy.maximumThermalStatus
-        },
-    )
-
-    private fun verifiedGate(): TranslationEvaluationGate {
-        val open = checkNotNull(TranslationProviderProfiles.hyMt2StqCandidate.evaluationGate)
-        val mergeCommit = "0123456789abcdef0123456789abcdef01234567"
-        val runtimeCommit = "89abcdef0123456789abcdef0123456789abcdef"
-        val evidence = TranslationRuntimeSupportEvidence(
-            kind = RuntimeSupportEvidenceKind.CI_MERGE_ANCESTRY,
-            verifiedUpstreamMergeCommit = mergeCommit,
-            verifiedPinnedRuntimeCommit = runtimeCommit,
-            observedRepositoryGitlinkCommit = runtimeCommit,
-            mergeCommitIsAncestorOfRuntime = true,
-            verifiedRunnableModelSha256 = open.runnableModelSha256,
-            evidenceReference = "https://github.com/Arimacose/ScreenTranslation/actions/runs/123456",
-        )
-        return open.copy(
-            upstreamPullRequestState = UpstreamPullRequestState.MERGED,
-            upstreamSupportMergeCommit = mergeCommit,
-            pinnedRuntimeCommit = runtimeCommit,
-            runtimeSupportVerificationStatus =
-                RuntimeSupportVerificationStatus.VERIFIED_CONTAINS_UPSTREAM_MERGE,
-            runtimeSupportEvidence = evidence,
-        )
-    }
-
-    private fun repositoryFile(relativePath: String): File = sequenceOf(
-        File(relativePath),
-        File("..", relativePath),
-    ).firstOrNull(File::isFile) ?: error("Repository file not found: $relativePath")
-
-    private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().buffered().use { input ->
-            val buffer = ByteArray(8 * 1_024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-    }
 }

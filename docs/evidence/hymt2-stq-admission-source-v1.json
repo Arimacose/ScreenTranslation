@@ -1,0 +1,83 @@
+{
+  "schema": "screen-translation-admission-source/v1",
+  "candidate_id": "hymt2-stq-2026-07-30-xiaomi15pro-android16",
+  "recorded_date": "2026-07-30",
+  "runtime": {
+    "upstream_repository": "ggml-org/llama.cpp",
+    "pull_request_number": 22836,
+    "expected_pull_request_head": "7e74b8296fbb2e48ad2fbe4663410279bbd2a5e7",
+    "submodule_path": "third_party/llama.cpp",
+    "declared_runtime_commit": "caa596ab3f0f8768ee326d6e3d5d39782194676c"
+  },
+  "artifacts": {
+    "source_model": {
+      "revision": "9df5c824a00a744fb0512a29c640466f4d97dfb0",
+      "expected_size_bytes": 461860800,
+      "expected_sha256": "cc497fe8f033b52b3b8b00a7669e9661435432f9d4cd43f7ed24400c01507a93",
+      "path_environment": "SCREEN_TRANSLATION_STQ_SOURCE_MODEL"
+    },
+    "runnable_model": {
+      "expected_sha256": "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7",
+      "path_environment": "SCREEN_TRANSLATION_STQ_RUNNABLE_MODEL"
+    },
+    "transformation_manifest": {
+      "transformation_id": "retag-legacy-stq-gguf-v1",
+      "expected_sha256": "b4713fdb0e95c74446688597d7c0bab6cc217379379115dc535c2e89f599f284",
+      "path_environment": "SCREEN_TRANSLATION_STQ_TRANSFORMATION_MANIFEST"
+    },
+    "corpus": {
+      "corpus_id": "translation-diverse-2026-07-29",
+      "path": "app/src/benchmark/assets/translation-fixtures.json",
+      "expected_sha256": "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657",
+      "suite_ids": [
+        "en-zh-diverse-v2",
+        "ja-zh-diverse-v1"
+      ]
+    },
+    "apk": {
+      "edition": "full",
+      "expected_application_id": "com.screentranslation.app.full",
+      "expected_sha256": null,
+      "expected_signer_cert_sha256": null,
+      "path_environment": "SCREEN_TRANSLATION_STQ_RELEASE_APK"
+    },
+    "device_summary": {
+      "expected_sha256": null,
+      "path_environment": "SCREEN_TRANSLATION_STQ_DEVICE_SUMMARY"
+    },
+    "release_summary": {
+      "expected_sha256": null,
+      "path_environment": "SCREEN_TRANSLATION_STQ_RELEASE_SUMMARY"
+    }
+  },
+  "declared_device": {
+    "model": "Xiaomi 15 Pro",
+    "model_code": "2410DPN6CC",
+    "codename": "haotian",
+    "android_api": 36,
+    "android_build": "BP2A.250605.031.A3",
+    "rom": "HyperOS OS3.0.304.0.WOBCNXM",
+    "abi": "arm64-v8a",
+    "execution": "CPU-only"
+  },
+  "routes": [
+    {
+      "route_id": "en-zh",
+      "corpus_suite_id": "en-zh-diverse-v2",
+      "expected_critical_check_count": 54,
+      "score_summary_environment": "SCREEN_TRANSLATION_STQ_EN_ZH_SCORE_SUMMARY",
+      "expected_score_summary_sha256": null,
+      "historical_score_artifact_sha256": "aff52d86a6daca3fece4b35ca9dd2dbbb85b97c814669c68fd606d5fcef94ec3",
+      "historical_raw_result_sha256": "43d8d80ba17153ce9926fc5246533bdc50829ade33d4a7b55fd6b771921d1e1a"
+    },
+    {
+      "route_id": "ja-zh",
+      "corpus_suite_id": "ja-zh-diverse-v1",
+      "expected_critical_check_count": 52,
+      "score_summary_environment": "SCREEN_TRANSLATION_STQ_JA_ZH_SCORE_SUMMARY",
+      "expected_score_summary_sha256": null,
+      "historical_score_artifact_sha256": "efd40fe23582913b09fb6bae66b32b55df385efd90a695b32af54546874ce4c3",
+      "historical_raw_result_sha256": "2123f90db5e616ffaa54724262cfeec90307ebb5dcacd339972583ecb6675c8a"
+    }
+  ]
+}

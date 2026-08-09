@@ -30,7 +30,15 @@ jobs:
       - name: Check out source and native submodules
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           submodules: recursive
+
+      - name: Recompute canonical translation admission evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python -B -m unittest tools/provider-admission/test_verify_translation_admission.py -v
+          python -B tools/provider-admission/verify_translation_admission.py --check
 
       - name: Verify versioned third-party license bundle
         shell: bash

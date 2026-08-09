@@ -45,10 +45,14 @@ latency/memory observations, and attribution. The daily
 middle-tier thresholds and the fail-closed HY-MT2 STQ gate are documented in
 [`docs/TRANSLATION_PROVIDER_PROFILES.md`](docs/TRANSLATION_PROVIDER_PROFILES.md). STQ remains
 outside every edition factory while llama.cpp PR #22836 is OPEN. Promotion additionally
-requires CI or versioned evidence that the repository gitlink contains the eventual merge and
-loads the exact runnable GGUF hash. The source/retag artifact chain and explicitly missing
-integrated Release/thermal evidence are pinned in
-[`docs/evidence/hymt2-stq-evidence-2026-07-30.json`](docs/evidence/hymt2-stq-evidence-2026-07-30.json).
+requires the repository verifier to prove that the real gitlink contains the eventual merge and
+to hash the exact runnable GGUF and transformation manifest. The source declaration and the
+strict record recomputed from live PR/gitlink/artifact state are pinned in
+[`docs/evidence/hymt2-stq-admission-source-v1.json`](docs/evidence/hymt2-stq-admission-source-v1.json)
+and [`docs/evidence/hymt2-stq-admission-v1.json`](docs/evidence/hymt2-stq-admission-v1.json).
+CI regenerates the record, sidecar, and Kotlin source. Application code consumes only that fixed
+record; caller-supplied ancestor/verified booleans and `NOT_MEASURED` strings are rejected, while
+currently missing Release and thermal measurements remain JSON `null` and block selection.
 
 ## Current features
 

@@ -24,6 +24,10 @@
   读取 `Retry-After` 后一次有界重试，以及 90 秒生成超时不重试。
 - 新增英文 README、可复现的 30 秒仓库 UI 预览 GIF、v0.4.0 milestone 和公开路线图
   issues。
+- 新增 Lite/Full/Online/Benchmark 的类型化 `TranslationProviderProfile`，统一声明语言
+  路由、输入限制、模型存储、取消/关闭语义、逐路由性能与 attribution；HY-MT2 STQ
+  中间档候选改由 CI 重算的 canonical PR/gitlink/ancestry/artifact admission 记录约束，
+  当前缺测与 Open PR 均保持 fail-closed，未进入 factory 或模型下载路径。
 
 ### Changed
 

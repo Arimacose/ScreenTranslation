@@ -1,1 +1,315 @@
-{}
+{
+  "bindings": {
+    "apk": {
+      "actual_application_id": null,
+      "actual_sha256": null,
+      "actual_signer_cert_sha256": null,
+      "apk_verified": false,
+      "edition": "full",
+      "expected_application_id": "com.screentranslation.app.full",
+      "expected_sha256": null,
+      "expected_signer_cert_sha256": null,
+      "signer_verified": false
+    },
+    "candidate": {
+      "runnable_model": {
+        "actual_sha256": null,
+        "actual_size_bytes": null,
+        "expected_sha256": "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7",
+        "verified": false
+      },
+      "source_model": {
+        "actual_sha256": null,
+        "actual_size_bytes": null,
+        "expected_sha256": "cc497fe8f033b52b3b8b00a7669e9661435432f9d4cd43f7ed24400c01507a93",
+        "expected_size_bytes": 461860800,
+        "revision": "9df5c824a00a744fb0512a29c640466f4d97dfb0",
+        "verified": false
+      },
+      "transformation_manifest": {
+        "actual_sha256": null,
+        "actual_size_bytes": null,
+        "expected_sha256": "b4713fdb0e95c74446688597d7c0bab6cc217379379115dc535c2e89f599f284",
+        "transformation_id": "retag-legacy-stq-gguf-v1",
+        "verified": false
+      }
+    },
+    "corpus": {
+      "actual_sha256": "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657",
+      "actual_suite_ids": [
+        "en-zh-diverse-v2",
+        "ja-zh-diverse-v1"
+      ],
+      "corpus_id": "translation-diverse-2026-07-29",
+      "expected_sha256": "06e074f5f352c45f5d50673293232d7a8361a6c28d2fc1ada71c208241f13657",
+      "expected_suite_ids": [
+        "en-zh-diverse-v2",
+        "ja-zh-diverse-v1"
+      ],
+      "path": "app/src/benchmark/assets/translation-fixtures.json",
+      "verified": true
+    },
+    "device": {
+      "actual_summary_sha256": null,
+      "declared": {
+        "abi": "arm64-v8a",
+        "android_api": 36,
+        "android_build": "BP2A.250605.031.A3",
+        "codename": "haotian",
+        "execution": "CPU-only",
+        "model": "Xiaomi 15 Pro",
+        "model_code": "2410DPN6CC",
+        "rom": "HyperOS OS3.0.304.0.WOBCNXM"
+      },
+      "expected_summary_sha256": null,
+      "verified": false
+    }
+  },
+  "candidate_id": "hymt2-stq-2026-07-30-xiaomi15pro-android16",
+  "evaluation": {
+    "failures": [
+      "RUNTIME_SUPPORT_NOT_MERGED_AND_PINNED",
+      "SOURCE_MODEL_ARTIFACT_NOT_VERIFIED",
+      "RUNNABLE_MODEL_ARTIFACT_NOT_VERIFIED",
+      "TRANSFORMATION_MANIFEST_NOT_VERIFIED",
+      "APK_ARTIFACT_NOT_VERIFIED",
+      "SIGNER_NOT_VERIFIED",
+      "DEVICE_ROM_EVIDENCE_NOT_VERIFIED",
+      "SCORE_ARTIFACT_NOT_VERIFIED",
+      "QUALITY_MEASUREMENT_MISSING",
+      "CRITICAL_CHECK_IDS_MISSING",
+      "RAW_LATENCY_MEASUREMENT_MISSING",
+      "APP_PIPELINE_MEASUREMENT_MISSING",
+      "INTEGRATED_RELEASE_MEASUREMENT_MISSING",
+      "PROCESS_PSS_MEASUREMENT_MISSING",
+      "HIGH_WATER_MEMORY_MEASUREMENT_MISSING",
+      "LMK_MEASUREMENT_MISSING",
+      "HOT_RUN_MEASUREMENT_MISSING",
+      "THERMAL_CADENCE_MISSING",
+      "THERMAL_SAMPLING_INSUFFICIENT"
+    ],
+    "satisfied": false
+  },
+  "integrated_release": {
+    "actual_summary_sha256": null,
+    "evaluation_run_id": null,
+    "expected_summary_sha256": null,
+    "lmk_event_count": null,
+    "process_high_water_bytes": null,
+    "process_pss_bytes": null,
+    "score_summary_sha256_by_route": null,
+    "summary_verified": false,
+    "thermal": {
+      "sample_interval_seconds": null,
+      "samples": null,
+      "sustained_hot_run_minutes": null
+    }
+  },
+  "policy": {
+    "maximum_critical_regressions": 0,
+    "maximum_lmk_event_count": 0,
+    "maximum_pipeline_median_latency_ms_exclusive": 750.0,
+    "maximum_pipeline_p95_latency_ms_exclusive": 1500.0,
+    "maximum_pipeline_timeout_count": 0,
+    "maximum_process_high_water_bytes_exclusive": 1288490189,
+    "maximum_process_pss_bytes_exclusive": 1073741824,
+    "maximum_raw_median_latency_ms_exclusive": 350.0,
+    "maximum_thermal_sample_interval_seconds": 60.0,
+    "maximum_thermal_status": 1,
+    "minimum_q4_bleu_retention_percent": 95.0,
+    "minimum_sustained_hot_run_minutes": 30.0,
+    "minimum_thermal_sample_count": 30,
+    "required_route_ids": [
+      "en-zh",
+      "ja-zh"
+    ]
+  },
+  "recorded_date": "2026-07-30",
+  "routes": [
+    {
+      "actual_score_summary_sha256": null,
+      "corpus_suite_id": "en-zh-diverse-v2",
+      "critical_evaluated_ids": null,
+      "critical_regressed_ids": null,
+      "evaluation_run_id": null,
+      "expected_critical_check_count": 54,
+      "expected_critical_check_ids": [
+        "issue18_long_compound.critical.1",
+        "issue18_long_compound.critical.2",
+        "notification_recovery.critical.1",
+        "notification_recovery.critical.2",
+        "numbers_and_symbols.critical.1",
+        "offline_status.critical.1",
+        "offline_status.critical.2",
+        "low_contrast_confusables.critical.1",
+        "version_amount_date.critical.1",
+        "dynamic_beta.critical.1",
+        "dynamic_beta.critical.2",
+        "dickens_611.critical.1",
+        "dickens_611.critical.2",
+        "dickens_611.critical.3",
+        "ui_unsaved_changes.critical.1",
+        "ui_unsaved_changes.critical.2",
+        "ui_permission_once.critical.1",
+        "ui_permission_once.critical.2",
+        "ui_delete_irreversible.critical.1",
+        "ui_sync_paused.critical.1",
+        "ui_sync_paused.critical.2",
+        "system_airplane_exception.critical.1",
+        "system_airplane_exception.critical.2",
+        "system_battery_schedule.critical.1",
+        "system_security_update.critical.1",
+        "system_approximate_location.critical.1",
+        "system_approximate_location.critical.2",
+        "numbers_temperature_range.critical.1",
+        "numbers_route_summary.critical.1",
+        "numbers_discount_coupon.critical.1",
+        "numbers_download_progress.critical.1",
+        "numbers_timezone_deadline.critical.1",
+        "logic_unless_backup.critical.1",
+        "logic_not_every_warning.critical.1",
+        "logic_not_every_warning.critical.2",
+        "logic_not_uncommon.critical.1",
+        "logic_not_uncommon.critical.2",
+        "logic_only_if_permission.critical.1",
+        "logic_no_longer_supported.critical.1",
+        "logic_no_longer_supported.critical.2",
+        "conversation_bank_context.critical.1",
+        "idiom_break_the_ice.critical.1",
+        "idiom_spill_the_beans.critical.1",
+        "idiom_under_the_weather.critical.1",
+        "idiom_under_the_weather.critical.2",
+        "idiom_bite_the_bullet.critical.1",
+        "technical_worker_main_thread.critical.1",
+        "technical_cache_not_data.critical.1",
+        "technical_cache_not_data.critical.2",
+        "safety_medication_limit.critical.1",
+        "safety_medication_limit.critical.2",
+        "safety_medication_limit.critical.3",
+        "safety_refund_exception.critical.1",
+        "safety_refund_exception.critical.2"
+      ],
+      "expected_score_summary_sha256": null,
+      "historical_artifacts": {
+        "raw_result_sha256": "43d8d80ba17153ce9926fc5246533bdc50829ade33d4a7b55fd6b771921d1e1a",
+        "score_sha256": "aff52d86a6daca3fece4b35ca9dd2dbbb85b97c814669c68fd606d5fcef94ec3"
+      },
+      "pipeline": {
+        "median_latency_ms": null,
+        "p95_latency_ms": null,
+        "timeout_count": null
+      },
+      "q4_bleu_retention_percent": null,
+      "raw_median_latency_ms": null,
+      "route_id": "en-zh",
+      "score_verified": false
+    },
+    {
+      "actual_score_summary_sha256": null,
+      "corpus_suite_id": "ja-zh-diverse-v1",
+      "critical_evaluated_ids": null,
+      "critical_regressed_ids": null,
+      "evaluation_run_id": null,
+      "expected_critical_check_count": 52,
+      "expected_critical_check_ids": [
+        "ja_ui_save_changes.critical.1",
+        "ja_ui_save_changes.critical.2",
+        "ja_ui_permission_once.critical.1",
+        "ja_ui_permission_once.critical.2",
+        "ja_ui_delete_irreversible.critical.1",
+        "ja_ui_sync_paused.critical.1",
+        "ja_ui_storage_warning.critical.1",
+        "ja_system_airplane_exception.critical.1",
+        "ja_system_battery_schedule.critical.1",
+        "ja_system_earthquake_alert.critical.1",
+        "ja_system_earthquake_alert.critical.2",
+        "ja_system_train_door.critical.1",
+        "ja_system_approximate_location.critical.1",
+        "ja_system_approximate_location.critical.2",
+        "ja_numbers_order.critical.1",
+        "ja_numbers_temperature.critical.1",
+        "ja_numbers_era_date.critical.1",
+        "ja_numbers_download.critical.1",
+        "ja_numbers_reservation.critical.1",
+        "ja_logic_unless_backup.critical.1",
+        "ja_logic_not_all.critical.1",
+        "ja_logic_not_all.critical.2",
+        "ja_logic_not_uncommon.critical.1",
+        "ja_logic_not_uncommon.critical.2",
+        "ja_logic_only_if_permission.critical.1",
+        "ja_logic_no_longer_supported.critical.1",
+        "ja_logic_no_longer_supported.critical.2",
+        "ja_honorific_sensei.critical.1",
+        "ja_omitted_subject_sent.critical.1",
+        "ja_omitted_subject_sent.critical.2",
+        "ja_benefactive_kureta.critical.1",
+        "ja_conversation_litotes.critical.1",
+        "ja_conversation_litotes.critical.2",
+        "ja_conversation_soft_refusal.critical.1",
+        "ja_idiom_cat_hand.critical.1",
+        "ja_idiom_three_years.critical.1",
+        "ja_idiom_slip_tongue.critical.1",
+        "ja_idiom_after_rain.critical.1",
+        "ja_technical_callback.critical.1",
+        "ja_technical_cache_not_data.critical.1",
+        "ja_technical_cache_not_data.critical.2",
+        "ja_technical_offline_model.critical.1",
+        "ja_technical_offline_model.critical.2",
+        "ja_technical_keys_logs.critical.1",
+        "ja_technical_keys_logs.critical.2",
+        "ja_safety_medication.critical.1",
+        "ja_safety_medication.critical.2",
+        "ja_safety_medication.critical.3",
+        "ja_safety_refund.critical.1",
+        "ja_safety_refund.critical.2",
+        "ja_literary_wagahai.critical.1",
+        "ja_ambiguity_hashi.critical.1"
+      ],
+      "expected_score_summary_sha256": null,
+      "historical_artifacts": {
+        "raw_result_sha256": "2123f90db5e616ffaa54724262cfeec90307ebb5dcacd339972583ecb6675c8a",
+        "score_sha256": "efd40fe23582913b09fb6bae66b32b55df385efd90a695b32af54546874ce4c3"
+      },
+      "pipeline": {
+        "median_latency_ms": null,
+        "p95_latency_ms": null,
+        "timeout_count": null
+      },
+      "q4_bleu_retention_percent": null,
+      "raw_median_latency_ms": null,
+      "route_id": "ja-zh",
+      "score_verified": false
+    }
+  ],
+  "runtime_gate": {
+    "checked_out_submodule_commit": "caa596ab3f0f8768ee326d6e3d5d39782194676c",
+    "declared_runtime_commit": "caa596ab3f0f8768ee326d6e3d5d39782194676c",
+    "expected_pull_request_head": "7e74b8296fbb2e48ad2fbe4663410279bbd2a5e7",
+    "manifest_actual_sha256": null,
+    "manifest_expected_sha256": "b4713fdb0e95c74446688597d7c0bab6cc217379379115dc535c2e89f599f284",
+    "manifest_verified": false,
+    "merge_ancestor_of_runtime": null,
+    "merge_commit": null,
+    "observed_pull_request_head": "7e74b8296fbb2e48ad2fbe4663410279bbd2a5e7",
+    "pull_request_number": 22836,
+    "pull_request_state": "OPEN",
+    "pull_request_updated_at": "2026-07-29T02:07:21Z",
+    "pull_request_url": "https://github.com/ggml-org/llama.cpp/pull/22836",
+    "repository_gitlink_commit": "caa596ab3f0f8768ee326d6e3d5d39782194676c",
+    "runnable_model_actual_sha256": null,
+    "runnable_model_expected_sha256": "e482a38ceaaf8420573483c96ddc8449922b5f5de6a8023b70316e65d41e6de7",
+    "runnable_model_verified": false,
+    "satisfied": false,
+    "submodule_path": "third_party/llama.cpp",
+    "upstream_repository": "ggml-org/llama.cpp"
+  },
+  "schema": "screen-translation-admission/v1",
+  "source_record": {
+    "path": "docs/evidence/hymt2-stq-admission-source-v1.json",
+    "sha256": "b1ff72340b580593b0dd5373d7ee7ae90eee65cdbb1a83a2aae60802ea101675"
+  },
+  "verifier": {
+    "path": "tools/provider-admission/verify_translation_admission.py",
+    "sha256": "0c69f8f34697e23517b692bfeb6288d35ec4987088c60cb1ff596e1a48c714a6"
+  }
+}
