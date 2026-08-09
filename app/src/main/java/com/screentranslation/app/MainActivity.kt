@@ -157,6 +157,86 @@ internal class ModelReadinessViewModel : ViewModel() {
     }
 }
 
+/**
+ * Owns one cancellable resource for a generation of background work.
+ *
+ * Installation and cancellation share one monitor, so a resource created by a
+ * worker either becomes visible to the lifecycle owner or is closed before it
+ * can start expensive work. Exactly one side owns the final close.
+ */
+internal class GenerationOwnedResourceController<T : AutoCloseable> {
+    private val lock = Any()
+    private var generation = 0
+    private var resource: T? = null
+    private var running = false
+
+    val inFlight: Boolean
+        get() = synchronized(lock) { running }
+
+    fun begin(): Int {
+        val stale: T?
+        val nextGeneration: Int
+        synchronized(lock) {
+            generation += 1
+            nextGeneration = generation
+            running = true
+            stale = resource
+            resource = null
+        }
+        close(stale)
+        return nextGeneration
+    }
+
+    fun install(expectedGeneration: Int, candidate: T): Boolean {
+        val installed = synchronized(lock) {
+            if (generation == expectedGeneration && running && resource == null) {
+                resource = candidate
+                true
+            } else {
+                false
+            }
+        }
+        if (!installed) close(candidate)
+        return installed
+    }
+
+    fun release(candidate: T) {
+        val owned = synchronized(lock) {
+            if (resource === candidate) {
+                resource = null
+                candidate
+            } else {
+                null
+            }
+        }
+        close(owned)
+    }
+
+    fun finish(expectedGeneration: Int): Boolean = synchronized(lock) {
+        if (generation != expectedGeneration) {
+            false
+        } else {
+            running = false
+            true
+        }
+    }
+
+    fun cancel() {
+        val owned: T?
+        synchronized(lock) {
+            generation += 1
+            running = false
+            owned = resource
+            resource = null
+        }
+        close(owned)
+    }
+
+    private fun close(value: T?) {
+        if (value != null) runCatching { value.close() }
+    }
+}
+
 internal fun retainedReadinessMatches(
     snapshot: RetainedModelReadiness?,
     selectedPair: Pair<String, String>,
@@ -218,12 +298,8 @@ class MainActivity : AppCompatActivity() {
     private var modelPreparationEngine: TranslationBackend? = null
     private var modelPreparationGeneration = 0
     private var modelReadyFor: Pair<String, String>? = null
-    @Volatile
-    private var modelReadinessEngine: TranslationBackend? = null
-    @Volatile
-    private var modelReadinessGeneration = 0
-    @Volatile
-    private var modelReadinessCheckInFlight = false
+    private val modelReadinessController =
+        GenerationOwnedResourceController<TranslationBackend>()
     private val modelReadinessExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "model-readiness-verifier").apply { isDaemon = true }
     }
@@ -1169,7 +1245,7 @@ class MainActivity : AppCompatActivity() {
             setServiceRunningUi(serviceRunning)
             return
         }
-        if (modelReadinessCheckInFlight) {
+        if (modelReadinessController.inFlight) {
             // onResume follows onStart and must not replace the long-running
             // Full hash status with a misleading "not prepared" label.
             modelReadyFor = null
@@ -1185,7 +1261,7 @@ class MainActivity : AppCompatActivity() {
         setServiceRunningUi(serviceRunning)
 
         val operationIdle = modelPreparationEngine == null &&
-            experimentalSmokeTestEngine == null && !modelReadinessCheckInFlight
+            experimentalSmokeTestEngine == null && !modelReadinessController.inFlight
         if (
             source != target && shouldStartModelReadinessCheck(
                 activityStarted = activityStarted,
@@ -1219,17 +1295,15 @@ class MainActivity : AppCompatActivity() {
                 activityStarted = activityStarted,
                 serviceRunning = ScreenTranslationService.isRunning,
                 operationIdle = modelPreparationEngine == null &&
-                    experimentalSmokeTestEngine == null && !modelReadinessCheckInFlight,
+                    experimentalSmokeTestEngine == null && !modelReadinessController.inFlight,
                 readyForSelectedPair = modelReadyFor == requestedPair,
             )
         ) {
             return
         }
 
-        cancelModelReadinessCheck()
-        val generation = modelReadinessGeneration
+        val generation = modelReadinessController.begin()
         val processGeneration = modelReadinessViewModel.beginVerification()
-        modelReadinessCheckInFlight = true
         modelStatusView.setText(R.string.model_progress_verifying)
         setServiceRunningUi(ScreenTranslationService.isRunning)
         try {
@@ -1251,15 +1325,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     return@execute
                 }
-                if (generation != modelReadinessGeneration) {
-                    runCatching { engine.close() }
-                    return@execute
-                }
-
-                modelReadinessEngine = engine
-                if (generation != modelReadinessGeneration) {
-                    if (modelReadinessEngine === engine) modelReadinessEngine = null
-                    runCatching { engine.close() }
+                if (!modelReadinessController.install(generation, engine)) {
                     return@execute
                 }
 
@@ -1270,8 +1336,7 @@ class MainActivity : AppCompatActivity() {
                         null
                     }
                 } finally {
-                    if (modelReadinessEngine === engine) modelReadinessEngine = null
-                    runCatching { engine.close() }
+                    modelReadinessController.release(engine)
                 }
                 deliverRecoveredModelReadiness(
                     generation,
@@ -1281,9 +1346,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         } catch (_: RejectedExecutionException) {
-            if (generation == modelReadinessGeneration) {
-                modelReadinessCheckInFlight = false
-            }
+            modelReadinessController.finish(generation)
             // Activity destruction owns executor shutdown; no UI result remains relevant.
         }
     }
@@ -1295,8 +1358,7 @@ class MainActivity : AppCompatActivity() {
         identity: String?,
     ) {
         runOnUiThread {
-            if (generation != modelReadinessGeneration || isDestroyed) return@runOnUiThread
-            modelReadinessCheckInFlight = false
+            if (!modelReadinessController.finish(generation) || isDestroyed) return@runOnUiThread
             if (processGeneration != modelReadinessViewModel.generation) return@runOnUiThread
             if (!activityStarted || ScreenTranslationService.isRunning) return@runOnUiThread
             val currentPair = selectedSourceLanguage().languageTag to
@@ -1319,10 +1381,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cancelModelReadinessCheck() {
-        modelReadinessGeneration += 1
-        modelReadinessCheckInFlight = false
-        modelReadinessEngine?.let { engine -> runCatching { engine.close() } }
-        modelReadinessEngine = null
+        modelReadinessController.cancel()
     }
 
     private fun showSelectedPairReady() {
@@ -1401,7 +1460,7 @@ class MainActivity : AppCompatActivity() {
     private fun setServiceRunningUi(running: Boolean) {
         val operationIdle =
             modelPreparationEngine == null && experimentalSmokeTestEngine == null &&
-                !modelReadinessCheckInFlight
+                !modelReadinessController.inFlight
         val currentPair = selectedSourceLanguage().languageTag to selectedTargetLanguage().languageTag
         val prepareState = resolveModelPreparationButtonState(
             serviceRunning = running,

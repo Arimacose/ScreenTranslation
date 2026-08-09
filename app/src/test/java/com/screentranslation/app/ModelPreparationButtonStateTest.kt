@@ -1,5 +1,10 @@
 package com.screentranslation.app
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -119,5 +124,54 @@ class ModelPreparationButtonStateTest {
         assertFalse(shouldStartModelInventoryScan(false, false, false))
         assertFalse(shouldStartModelInventoryScan(true, true, false))
         assertFalse(shouldStartModelInventoryScan(true, false, true))
+    }
+
+    @Test
+    fun `lifecycle cancellation owns and closes an installed verifier exactly once`() {
+        val controller = GenerationOwnedResourceController<CountingCloseable>()
+        val generation = controller.begin()
+        val installed = CountDownLatch(1)
+        val allowWorkerRelease = CountDownLatch(1)
+        val installResult = AtomicBoolean(false)
+        val verifier = CountingCloseable()
+        val worker = Thread {
+            installResult.set(controller.install(generation, verifier))
+            installed.countDown()
+            check(allowWorkerRelease.await(5, TimeUnit.SECONDS))
+            controller.release(verifier)
+        }
+
+        worker.start()
+        assertTrue(installed.await(5, TimeUnit.SECONDS))
+        assertTrue(installResult.get())
+        controller.cancel()
+        allowWorkerRelease.countDown()
+        worker.join(5_000)
+
+        assertFalse(worker.isAlive)
+        assertFalse(controller.inFlight)
+        assertEquals(1, verifier.closeCount.get())
+        assertFalse(controller.finish(generation))
+    }
+
+    @Test
+    fun `verifier created after lifecycle cancellation is rejected and closed`() {
+        val controller = GenerationOwnedResourceController<CountingCloseable>()
+        val generation = controller.begin()
+        val verifier = CountingCloseable()
+
+        controller.cancel()
+
+        assertFalse(controller.install(generation, verifier))
+        assertFalse(controller.inFlight)
+        assertEquals(1, verifier.closeCount.get())
+    }
+
+    private class CountingCloseable : AutoCloseable {
+        val closeCount = AtomicInteger()
+
+        override fun close() {
+            closeCount.incrementAndGet()
+        }
     }
 }

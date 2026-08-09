@@ -811,9 +811,34 @@ internal fun isBergamotRoutePrepared(
         checkOpen: () -> Unit,
     ) -> Boolean = BergamotCachedFileVerifier::isReusable,
 ): Boolean = route.modelIds.all { modelId ->
-    val model = BergamotModelStore.MODEL_SPECS.getValue(modelId)
+    isBergamotModelPrepared(
+        root = root,
+        model = BergamotModelStore.MODEL_SPECS.getValue(modelId),
+        checkOpen = checkOpen,
+        fileVerifier = fileVerifier,
+    )
+}
+
+/**
+ * Canonical Lite model verifier shared by route recovery and model inventory.
+ * decoder.yml is a deterministic derivative rewritten by ensureRoute before a
+ * runtime starts; readiness is therefore defined by the pinned model bytes.
+ */
+internal fun isBergamotModelPrepared(
+    root: File,
+    model: BergamotModelSpec,
+    checkOpen: () -> Unit = {},
+    fileVerifier: (
+        file: File,
+        marker: File,
+        expectedSize: Long,
+        expectedSha256: String,
+        checkOpen: () -> Unit,
+    ) -> Boolean = BergamotCachedFileVerifier::isReusable,
+): Boolean {
+    checkOpen()
     val directory = File(root, model.id)
-    directory.isDirectory && model.files.all { spec ->
+    return directory.isDirectory && model.files.all { spec ->
         checkOpen()
         fileVerifier(
             File(directory, spec.outputName),
@@ -823,6 +848,28 @@ internal fun isBergamotRoutePrepared(
             checkOpen,
         )
     }
+}
+
+internal fun isBergamotModelPreparedAndStable(
+    root: File,
+    model: BergamotModelSpec,
+    checkOpen: () -> Unit = {},
+    preparationIdentityProvider: () -> String? = {
+        bergamotModelPreparationIdentity(root, model, checkOpen)
+    },
+    fileVerifier: (
+        file: File,
+        marker: File,
+        expectedSize: Long,
+        expectedSha256: String,
+        checkOpen: () -> Unit,
+    ) -> Boolean = BergamotCachedFileVerifier::isReusable,
+): Boolean {
+    checkOpen()
+    val identityBefore = preparationIdentityProvider() ?: return false
+    if (!isBergamotModelPrepared(root, model, checkOpen, fileVerifier)) return false
+    checkOpen()
+    return preparationIdentityProvider() == identityBefore
 }
 
 /**
@@ -887,27 +934,57 @@ internal fun bergamotRoutePreparationIdentity(
     for (modelId in route.modelIds) {
         checkOpen()
         val model = BergamotModelStore.MODEL_SPECS.getValue(modelId)
-        val directory = File(root, model.id)
-        if (!directory.isDirectory) return null
-        parts += model.id
-        for (spec in model.files) {
-            checkOpen()
-            val output = File(directory, spec.outputName)
-            val marker = File(directory, "${spec.outputName}.sha256")
-            val markerHash = try {
-                if (!marker.isFile || marker.length() > 256L) return null
-                marker.readText(Charsets.UTF_8).trim()
-            } catch (_: Exception) {
-                return null
-            }
-            if (!markerHash.equals(spec.outputSha256, ignoreCase = true)) return null
-            val outputIdentity = fileIdentity(output, spec.outputSize) ?: return null
-            parts += spec.outputName
-            parts += spec.outputSha256
-            parts += outputIdentity
-        }
+        parts += bergamotModelPreparationIdentityParts(
+            root = root,
+            model = model,
+            checkOpen = checkOpen,
+            fileIdentity = fileIdentity,
+        ) ?: return null
     }
     return stablePreparationIdentity(parts)
+}
+
+internal fun bergamotModelPreparationIdentity(
+    root: File,
+    model: BergamotModelSpec,
+    checkOpen: () -> Unit = {},
+    fileIdentity: (file: File, expectedSize: Long) -> String? =
+        { file, expectedSize -> file.preparationFileIdentity(expectedSize) },
+): String? = bergamotModelPreparationIdentityParts(
+    root = root,
+    model = model,
+    checkOpen = checkOpen,
+    fileIdentity = fileIdentity,
+)?.let { parts ->
+    stablePreparationIdentity(listOf("bergamot-lite-model-preparation-v1") + parts)
+}
+
+private fun bergamotModelPreparationIdentityParts(
+    root: File,
+    model: BergamotModelSpec,
+    checkOpen: () -> Unit,
+    fileIdentity: (file: File, expectedSize: Long) -> String?,
+): List<String>? {
+    val directory = File(root, model.id)
+    if (!directory.isDirectory) return null
+    val parts = mutableListOf(model.id)
+    for (spec in model.files) {
+        checkOpen()
+        val output = File(directory, spec.outputName)
+        val marker = File(directory, "${spec.outputName}.sha256")
+        val markerHash = try {
+            if (!marker.isFile || marker.length() > 256L) return null
+            marker.readText(Charsets.UTF_8).trim()
+        } catch (_: Exception) {
+            return null
+        }
+        if (!markerHash.equals(spec.outputSha256, ignoreCase = true)) return null
+        val outputIdentity = fileIdentity(output, spec.outputSize) ?: return null
+        parts += spec.outputName
+        parts += spec.outputSha256
+        parts += outputIdentity
+    }
+    return parts
 }
 
 internal data class BergamotPartialDownloadDecision(

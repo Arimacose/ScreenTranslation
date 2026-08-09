@@ -73,7 +73,9 @@ currently missing Release and thermal measurements remain JSON `null` and block 
 - Model management screen with status, current/expected size, pinned revision, refresh,
   direct preparation of the currently selected language model, and deletion of downloaded
   or partial translation models. After preparation, the main action becomes a disabled
-  **Ready** button until the language pair or Online configuration changes.
+  **Ready** button; Activity recreation first re-observes the current app-private artifact or
+  configuration identity, while a cold process and service startup still run the complete pinned
+  SHA-256 verifier. Changing the language pair or Online configuration restores the action.
 - Online model discovery through `GET /models`; users select an exact returned model ID.
 - Online HTTP policy with actionable 401/403, 429, timeout, DNS, TLS, endpoint/model, and
   response-format errors. HTTP 408/429/502/503/504 and recoverable generic I/O failures

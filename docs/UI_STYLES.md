@@ -45,8 +45,14 @@ selection borders, status text, controls, and translated-block outlines.
 - Region selector, result panel, and full-screen incremental labels use matching overlay tokens.
 - Activity styling updates immediately through recreation. A running overlay adopts the new
   style the next time capture starts, avoiding in-place WindowManager churn.
-- The current in-memory model-ready pair is included in Activity saved state, so a style change
-  does not turn a grey `已就绪` button back into an actionable prepare button.
+- A retained ViewModel keeps only a process-local pair/artifact identity across Activity
+  recreation. The recreated Activity freshly observes the application-private artifact or Online
+  configuration before restoring the grey `已就绪` state; no ready flag is serialized into
+  Activity saved state.
+- The retained local-file identity is a fast cache invalidator for app-managed changes, not a
+  replacement for integrity verification. A cold process and service preparation perform the
+  edition's complete pinned SHA-256 check; metadata-preserving edits outside the app's private
+  storage contract are handled by that full gate rather than the recreation fast path.
 - The ready button uses the disabled component state in all styles: grey surface, grey label,
   and no click action.
 

@@ -2,6 +2,8 @@ package com.screentranslation.app.ml
 
 import com.screentranslation.app.RetainedModelReadiness
 import com.screentranslation.app.retainedReadinessMatches
+import com.screentranslation.app.model.ModelDownloadState
+import com.screentranslation.app.model.resolveBergamotModelDownloadState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -180,6 +182,41 @@ class BergamotLanguageRouteTest {
     }
 
     @Test
+    fun canonicalModelVerifierRejectsInventoryArtifactChangedDuringHashing() {
+        val root = temporaryFolder.newFolder("bergamot-model-toctou")
+        val model = BergamotModelSpec(
+            id = "test-model",
+            baseUrl = "https://HOST/models/test/exported",
+            files = listOf(
+                BergamotFileSpec(
+                    compressedName = "model.bin.gz",
+                    compressedSize = 4L,
+                    compressedSha256 = "0".repeat(64),
+                    outputName = "model.bin",
+                    outputSize = 4L,
+                    outputSha256 = "1".repeat(64),
+                ),
+            ),
+            configText = "models: []\n",
+        )
+        File(root, model.id).mkdirs()
+        var identityReads = 0
+
+        val ready = isBergamotModelPreparedAndStable(
+            root = root,
+            model = model,
+            preparationIdentityProvider = {
+                identityReads += 1
+                if (identityReads == 1) "before-full-hash" else "after-full-hash"
+            },
+            fileVerifier = { _, _, _, _, _ -> true },
+        )
+
+        assertFalse(ready)
+        assertEquals(2, identityReads)
+    }
+
+    @Test
     fun retainedIdentityRejectsDeletedOrSameSizeReplacedModelOutput() {
         val root = temporaryFolder.newFolder("bergamot-identity")
         val route = BergamotLanguageRoute.requireSupported("en", "zh")
@@ -269,6 +306,85 @@ class BergamotLanguageRouteTest {
         assertNull(
             bergamotRoutePreparationIdentity(root, route, fileIdentity = identityProvider),
         )
+    }
+
+    @Test
+    fun modelInventoryUsesCanonicalHashAndRejectsSameSizeCorruption() {
+        val root = temporaryFolder.newFolder("bergamot-inventory")
+        val validBytes = byteArrayOf(1, 3, 3, 7)
+        val expectedHash = sha256(validBytes)
+        val spec = BergamotModelSpec(
+            id = "test-model",
+            baseUrl = "https://HOST/models/test/exported",
+            files = listOf(
+                BergamotFileSpec(
+                    compressedName = "model.bin.gz",
+                    compressedSize = validBytes.size.toLong(),
+                    compressedSha256 = expectedHash,
+                    outputName = "model.bin",
+                    outputSize = validBytes.size.toLong(),
+                    outputSha256 = expectedHash,
+                ),
+            ),
+            configText = "models: []\n",
+        )
+        val directory = File(root, spec.id).apply { mkdirs() }
+        val output = File(directory, spec.files.single().outputName).apply {
+            writeBytes(validBytes)
+        }
+        File(directory, "${spec.files.single().outputName}.sha256").writeText(expectedHash)
+
+        // decoder.yml is a regenerable derivative and is intentionally absent.
+        assertEquals(
+            ModelDownloadState.READY,
+            resolveBergamotModelDownloadState(root, spec, hasPartial = false),
+        )
+
+        output.writeBytes(byteArrayOf(7, 3, 3, 1))
+
+        assertEquals(
+            ModelDownloadState.NOT_DOWNLOADED,
+            resolveBergamotModelDownloadState(root, spec, hasPartial = false),
+        )
+    }
+
+    @Test
+    fun modelInventoryCancellationInterruptsCanonicalHashing() {
+        val root = temporaryFolder.newFolder("bergamot-inventory-cancel")
+        val bytes = ByteArray(2 * 1024 * 1024) { it.toByte() }
+        val expectedHash = sha256(bytes)
+        val spec = BergamotModelSpec(
+            id = "cancelled-model",
+            baseUrl = "https://HOST/models/cancelled/exported",
+            files = listOf(
+                BergamotFileSpec(
+                    compressedName = "model.bin.gz",
+                    compressedSize = bytes.size.toLong(),
+                    compressedSha256 = expectedHash,
+                    outputName = "model.bin",
+                    outputSize = bytes.size.toLong(),
+                    outputSha256 = expectedHash,
+                ),
+            ),
+            configText = "models: []\n",
+        )
+        val directory = File(root, spec.id).apply { mkdirs() }
+        File(directory, spec.files.single().outputName).writeBytes(bytes)
+        File(directory, "${spec.files.single().outputName}.sha256").writeText(expectedHash)
+        var checks = 0
+
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            resolveBergamotModelDownloadState(
+                root = root,
+                spec = spec,
+                hasPartial = false,
+                checkActive = {
+                    checks += 1
+                    check(checks < 3) { "inventory stopped" }
+                },
+            )
+        }
+        assertTrue(checks >= 3)
     }
 
     @Test

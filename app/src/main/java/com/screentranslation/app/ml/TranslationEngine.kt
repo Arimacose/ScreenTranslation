@@ -105,8 +105,10 @@ internal fun resolveCurrentPreparationIdentity(
 
 /**
  * Samples file content and metadata to invalidate a retained configuration-
- * change cache after deletion, replacement, truncation or ordinary updates.
- * It is deliberately not an integrity proof; cold-start integrity uses the
+ * change cache after app-managed deletion, replacement, truncation or ordinary
+ * updates. This fast identity assumes the application-private model directory
+ * is not being adversarially edited with metadata restored; it is deliberately
+ * not an integrity proof. Cold-start recovery and service preparation use the
  * edition's complete SHA-256 verifier.
  */
 internal fun File.preparationFileIdentity(expectedSize: Long): String? {
@@ -135,7 +137,8 @@ internal fun File.preparationFileIdentity(expectedSize: Long): String? {
             listOf(
                 canonicalPath,
                 expectedSize.toString(),
-                attributes.lastModifiedTime().toMillis().toString(),
+                attributes.creationTime().toString(),
+                attributes.lastModifiedTime().toString(),
                 attributes.fileKey()?.toString().orEmpty(),
                 sampleDigest.digest().joinToString("") { byte -> "%02x".format(byte) },
             ),
