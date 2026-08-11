@@ -2,14 +2,14 @@
 
 **简体中文** | [English](README.en.md)
 
-> v2.0.0 发布候选提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
+> v2.0.0 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
 > Monet 动态取色的 Material 3。参见 [UI 风格设计与边界](docs/UI_STYLES.md)。
 
 ![Apple、MIUIX 与 Material 3 静态设计预览](docs/assets/ui-style-comparison.png)
 
 面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面；默认只裁剪用户框选区域，Experimental 模式则对全屏变化分块增量识别。在本机完成 OCR 后，应用按所选 edition 进行端侧或在线翻译并用悬浮层显示结果。
 
-> 项目状态：面向单一设备/ROM 基线的 `v2.0.0` 发布候选。运行基线为 Android 16 / API 36，`minSdk` 与
+> 项目状态：面向单一设备/ROM 基线的 `v2.0.0`。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
@@ -20,7 +20,9 @@
 该动画由 [`scripts/generate_demo_preview.py`](scripts/generate_demo_preview.py)
 从仓库当前 UI 规则确定性生成，用于展示交互目标，**不是真机录屏**。历史签名
 Release 证据与最终 v2.0.0 真机门禁清单位于
-[`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)；最终候选实测结果将在发布前补入。
+[`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)。最终候选由带 source SHA 的签名
+acceptance Artifact 固定，真机结果写入 Issue #47，并由发布工作流把同一组字节原样提升到
+GitHub Release。
 
 ## 功能
 

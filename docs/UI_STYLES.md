@@ -72,4 +72,6 @@ MIUIX screen are captured from the same build and compared. This is an iteration
 it does not replace the signed/R8 Lite, Full, and Online acceptance matrix below.
 
 HyperOS rendering, wallpaper-derived colors, font metrics, gesture navigation, and overlay
-appearance remain part of the later signed-device acceptance gate.
+appearance are covered by the signed-device acceptance matrix; its immutable result is bound
+externally through Issue #47 and the corresponding Release notes so the accepted source commit
+does not move after testing.

@@ -3,7 +3,7 @@
 package com.screentranslation.app.ml
 
 internal object GeneratedTranslationAdmissionEvidence {
-    const val SHA256 = "56d4c6587c1d91dab3d9b0d92b833312d89c2c145f444bebae872dbcac5ad383"
+    const val SHA256 = "ffbd1e098796c9a6760d5656acd5222fc01221105ddd6ced9b595cfe3677c41d"
     val JSON: String = """{
   "bindings": {
     "apk": {
@@ -324,10 +324,10 @@ internal object GeneratedTranslationAdmissionEvidence {
     "manifest_verified": false,
     "merge_ancestor_of_runtime": null,
     "merge_commit": null,
-    "observed_pull_request_head": "7e74b8296fbb2e48ad2fbe4663410279bbd2a5e7",
+    "observed_pull_request_head": "1e411d8f5a1e23525fa3265dfb4bd76265465397",
     "pull_request_number": 22836,
     "pull_request_state": "OPEN",
-    "pull_request_updated_at": "2026-07-29T02:07:21Z",
+    "pull_request_updated_at": "2026-08-10T06:19:04Z",
     "pull_request_url": "https://github.com/ggml-org/llama.cpp/pull/22836",
     "repository_gitlink_commit": "caa596ab3f0f8768ee326d6e3d5d39782194676c",
     "runnable_model_actual_sha256": null,

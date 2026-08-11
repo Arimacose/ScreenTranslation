@@ -4,19 +4,21 @@
 
 ## 签名 Release 验收门禁
 
-`.github/workflows/release.yml` 同时提供两条严格分离的入口：
+`.github/workflows/release.yml` 通过 `workflow_dispatch` 提供两条严格分离的入口：
 
-- 推送与 `versionName` 一致的 `v*.*.*` 标签时，构建、校验并发布正式 Release；
-- 在 Actions 中手动运行时，只接受 `main`，执行相同的三 edition Release/R8
-  构建、证书摘要、16 KiB 对齐、包名/版本、ABI、许可证和 SHA-256 校验，但不创建
-  标签或 Release。签名 APK/AAB 与 `SHA256SUMS` 作为 14 天短期 artifact 保存。
+- `operation=build` 只接受当前 `origin/main`，执行三 edition Release/R8 构建、证书摘要、
+  16 KiB 对齐、包名/版本、ABI、许可证与 SHA-256 校验；签名 APK/AAB、许可证和
+  `SHA256SUMS` 作为 30 天 acceptance Artifact 保存；
+- `operation=publish` 接受已经通过真机矩阵的 build run ID、annotated tag 和 Issue #47
+  证据评论 URL。它核验 tag、当前 `main`、accepted run 与 Artifact SHA-256 全部指向
+  同一 commit，再从该 immutable Artifact 提取并复验九个文件；资产先进入 Draft Release，
+  公开前再次核验分支、tag、Issue 与不可编辑的证据正文。
 
-正式发布前先运行手动入口，下载完整 artifact，并在目标真机依次验收 Lite、Full、
-Online。最终标签发布后必须重新下载公开 Release 资产，逐项复核校验和与签名，并用
-公开 APK 完成安装/升级、冷启动和核心链路烟测；手动验收 artifact 只用于发布门禁，
-不能替代公开产物的最终复核。
+因此真机安装的三份 APK 与最终公开 APK 是同一组字节；推送 tag 本身不会触发重构建或
+换包。发布证据保存在 Issue #47 评论与 Release notes，源码文档保留可重复步骤和字段
+约束，避免为了回写测试结论再次移动已经验收的 commit。
 
-## v2.0.0 最终签名验收矩阵（待执行）
+## v2.0.0 最终签名验收矩阵（发布门禁）
 
 ### 候选边界
 
@@ -24,13 +26,13 @@ Online。最终标签发布后必须重新下载公开 Release 资产，逐项�
   `2.0.0-lite`、`2.0.0-full`、`2.0.0-online`；
 - 功能集成主线：Issues #40、#41、#46、#47 的实现代码均已合并；其中 #47 的实现合并提交为
   `38f09c0fb4bce346cff3928b7c3bbee5a048628e`；
-- 签名候选必须由最终版本提交在 `main` 上手动运行
-  `Signed release and acceptance` workflow 生成；artifact 名中的 GitHub SHA、三份 APK
+- 签名候选必须由最终版本提交在 `main` 上以 `operation=build` 手动运行
+  `Signed release and acceptance` workflow 生成；Artifact 名中的 GitHub SHA、三份 APK
   SHA-256、三份 AAB SHA-256、`SHA256SUMS` 和证书摘要共同写入最终记录；
 - 预期 release 证书 SHA-256 为
   `b58712578045532158d45b847ab7ed1be041236b5a7a0bd1a1db5480fbe0439f`；
-- 本轮只完成代码、JVM、Lint、R8、APK/AAB、API 36 instrumentation、CodeQL 与依赖
-  审查；真机命令、安装与屏幕共享操作按当前暂停要求留在本节。
+- 代码、JVM、Lint、R8、APK/AAB、API 36 instrumentation、CodeQL 与依赖审查已经完成；
+  最终 `main` 的签名 acceptance Artifact 生成后，按本节继续执行真机安装与屏幕共享矩阵。
 
 ### 已完成的非真机门禁
 
@@ -45,7 +47,7 @@ Online。最终标签发布后必须重新下载公开 Release 资产，逐项�
 - Activity 重建仅复用 retained pair/artifact identity，冷进程与服务准备继续执行完整
   固定哈希；后台 verifier 的 generation、安装、取消、释放和完成使用单一同步 owner。
 
-### 恢复真机工作后的执行顺序
+### 执行顺序
 
 1. 从最终 `main` 手动运行 signed-acceptance workflow，下载并执行
    `sha256sum -c SHA256SUMS`，核对三 APK 的 v2 签名、16 KiB 对齐、包名、版本和 ARM64
@@ -64,9 +66,29 @@ Online。最终标签发布后必须重新下载公开 Release 资产，逐项�
    语言 spinner 和灰色“已就绪”没有截断或重叠，结束后恢复用户原设置；
 8. 通过 MediaProjection 系统对话框完成授权、旋转、锁屏恢复、撤销、停止、任务移除和
    通知栏重启；记录 HyperOS 省电策略“无限制”识别；
-9. 通过后创建 annotated `v2.0.0` tag；公开 Release 生成后重新下载 9 个资产，复核
-   `SHA256SUMS`、证书、版本与许可证，并用公开 APK 重做升级/安装、冷启动和核心链路
-   smoke，再关闭 Issue #47 与 v2.0.0 milestone。
+9. 通过后按下列固定格式向 Issue #47 添加证据评论，使用 ASCII 字段名且每项独占一行；
+   三个 APK SHA-256 必须来自 acceptance Artifact 内的 `SHA256SUMS`。评论一次写定，
+   publish gate 会拒绝重复字段或经过编辑的评论，并把正文 SHA-256 写入 Release notes：
+
+   ```text
+   DEVICE_ACCEPTANCE_PASS
+   acceptance_run_id: RUN_ID
+   source_sha: 40_HEX_COMMIT
+   device: Xiaomi 15 Pro
+   device_model: 2410DPN6CC
+   android: 16
+   rom: HyperOS
+   rom_build: OS_VERSION_TOKEN
+   lite_apk_sha256: 64_HEX_SHA256
+   full_apk_sha256: 64_HEX_SHA256
+   online_apk_sha256: 64_HEX_SHA256
+   ```
+
+10. 移除 Issue #47 的 `status:needs-verification` 并关闭该 Issue；为完全相同的 source
+    commit 创建 annotated `v2.0.0` tag，再在 Actions 手动运行 `operation=publish`，填入
+    build run ID、tag 和证据评论 URL；promotion job 会原样发布已经验收的九个文件；
+11. 从公开 Release 下载 `SHA256SUMS` 与资产，确认九个名称、大小和哈希仍与 acceptance
+    Artifact 一致，并核对 Release asset API 的 size/digest，然后关闭 v2.0.0 milestone。
 
 ### 延期项
 

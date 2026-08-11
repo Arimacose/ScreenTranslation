@@ -40,7 +40,9 @@
 - [ ] 建立可重复的性能、温升和持续运行基准
 - [x] 增加分块差分、块级稳定门和全屏持续识别模式（Experimental；真机门禁跟踪于 [#38](https://github.com/Arimacose/ScreenTranslation/issues/38)）
 - [x] 以 Apple 风格默认候选、MIUIX、Material 3 + 可选 Monet 替换旧 UI，并统一服务悬浮层视觉令牌
-- [ ] 完成三套 UI 的签名 Release / HyperOS 真机视觉与交互验收（[#47](https://github.com/Arimacose/ScreenTranslation/issues/47)）
+- 三套 UI 的签名 Release / HyperOS 真机视觉与交互结果由
+  [#47](https://github.com/Arimacose/ScreenTranslation/issues/47) 与对应 Release notes
+  保存，避免为回写验收状态移动已经固定的发布 commit。
 - [ ] 生成可发布的依赖清单或 SBOM（[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
 
 ## v2.x 跨设备稳定性边界

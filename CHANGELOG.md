@@ -5,7 +5,7 @@
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-08-09
+## [2.0.0] - 2026-08-11
 
 ### Added
 
@@ -39,6 +39,9 @@
 
 ### Changed
 
+- 签名发布改为两阶段 immutable Artifact promotion：先从当前 `main` 构建并真机验收带
+  source SHA 的 30 天 Artifact，再由独立 publish operation 核验 tag、run、Artifact digest、
+  Issue #47 设备证据、APK/AAB 与许可证后原样上传，避免 tag 后重构建替换已验收字节。
 - 把 HyperOS 私有省电设置键与设置页 Intent 隔离到 `VendorAdapter` 边界；当前仍只提供
   `HyperOsVendorAdapter`，本阶段不扩展其他 ROM。
 - Online 的 401/403、429 与超时提示分别指向密钥/权限/余额、限流退避和服务/模型
@@ -69,10 +72,10 @@
 
 ### Verification
 
-- JVM、Lint、R8 Release、APK/AAB、API 36 instrumentation 与 GitHub CI 均作为
-  v2.0.0 候选的非真机门禁。三 edition 最终签名 Release 与三套 UI 真机矩阵
-  仍由 Issue #47 跟踪；全屏覆盖的长时功耗、温升与持续运行保留到
-  v2.1.0 的 Issue #38/#39，不纳入本版本声明。
+- JVM、Lint、R8 Release、APK/AAB、API 36 instrumentation 与 GitHub CI 构成
+  v2.0.0 的非真机门禁。三 edition 最终签名 Release 与三套 UI 短时真机矩阵
+  通过 acceptance run、Issue #47 证据正文和 Release notes 绑定；全屏覆盖的长时功耗、
+  温升与持续运行保留到 v2.1.0 的 Issue #38/#39，不纳入本版本声明。
 - 翻译回归工具对 96 条公开语料、126 个关键检查和 9 个 Online 失败场景完成确定性
   harness smoke；参考回放、调用方自报 provenance 和未经认证的人工评分均保持
   fail-closed，正式候选仍需 gate-owned 或可外部验签的模型输出证据与可信评分身份。

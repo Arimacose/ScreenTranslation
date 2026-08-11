@@ -88,10 +88,21 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/ap
 - 模型下载、离线翻译、旋转、中断、停止与任务移除；
 - 已知回归和残余风险。
 
-## 4. 创建发布标签
+## 4. 生成并验收冻结的签名 Artifact
 
-发布 PR 合并、`main` 全绿，并且手动 signed-acceptance artifact 已完成
-`docs/DEVICE_TEST.md` 的目标真机门禁后：
+发布 PR 合并、`main` 全绿后，在 Actions 手动运行 `Signed release and acceptance`，选择
+`operation=build`。该入口要求 dispatch commit 等于当前 `origin/main`，并保存名称包含
+source SHA 的 30 天签名 acceptance Artifact。下载并验证其中的 `SHA256SUMS`，随后使用
+三份**同一 Artifact 内的 APK**完成 `docs/DEVICE_TEST.md` 真机矩阵。
+
+验收通过后，按 `docs/DEVICE_TEST.md` 的固定 ASCII 字段格式在 Issue #47 添加
+`DEVICE_ACCEPTANCE_PASS` 评论；评论必须绑定 build run ID、source SHA、目标设备/ROM 和
+精确机型/ROM build token，以及三份 APK SHA-256。移除 `status:needs-verification` 并关闭
+Issue #47。
+
+## 5. 创建发布标签
+
+accepted run 的 source commit、当前 `origin/main` 与准备标记的 commit 必须完全一致：
 
 ```bash
 git switch main
@@ -106,23 +117,34 @@ git push origin "v$VERSION"
 签名，可把 `-a` 换成 `-s`。`gh release create --verify-tag` 只核对远端 tag 已存在，
 不等同于验证 tag 的密码学签名；Android APK/AAB 的发布签名由独立 keystore 门禁负责。
 
-## 5. 自动发布内容
+推送 tag 只建立版本引用，不会触发构建或自动发布，因而不会在真机验收后替换 APK 字节。
 
-`.github/workflows/release.yml` 会：
+## 6. 原样提升已验收 Artifact
 
-1. 验证四个签名 secrets；
-2. 检查 tag 与 `versionName`，要求 annotated/signed tag object，并确认 tag commit
-   属于 `origin/main`；
-3. 以 recursive submodules 检出源码，并准备 Android 16、NDK r23b/r29 与 CMake 3.31.6；
-4. 对 Lite/Full/Online 分别运行单元测试、release Lint、APK 和 AAB 构建；
-5. 执行 16 KiB 对齐、APK v2 签名和既有证书摘要验证；
-6. 断言包名、versionCode/versionName、应用标签、PP-OCRv6-small 资产、后端隔离、
-   权重分发策略和 edition-specific `assets/licenses/`；
-7. 归档完整第三方许可证、notices 与 MPL 对应源码坐标，自验 SHA-256 清单并分别
-   保存三个 edition 的 R8 mapping Actions artifact；
-8. 生成 GitHub 自动变更记录，并在前置说明中标记 Full 为 `HY-MT2 Q4 Experimental`、
-   Online 为 BYOK 用户 API 链路；
-9. 发布以下九项：
+再次在 Actions 手动运行 `Signed release and acceptance`，选择 `operation=publish` 并填写：
+
+- `acceptance_run_id`：完成真机验收的 `operation=build` run ID；
+- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.0.0`；
+- `device_evidence_comment`：Issue #47 中 `DEVICE_ACCEPTANCE_PASS` 评论的完整 URL。
+
+promotion job 采用 fail-closed 顺序：
+
+1. 要求 dispatch ref、tag commit、accepted run `head_sha` 和当前 `origin/main` 完全相同；
+2. 要求 tag 名匹配 Gradle `versionName`，tag 为 annotated/signed object；
+3. 核验 accepted run 来自本仓库 release workflow 的成功 `workflow_dispatch`，并取得唯一、
+   未过期、具有 SHA-256 digest 的 acceptance Artifact；
+4. 要求 Issue #47 已关闭、`status:needs-verification` 已移除，证据评论来自仓库所有者或
+   协作者，时间晚于 accepted run 且早于 Issue 关闭；评论须一次写定且所有必需字段唯一，
+   promotion 会冻结正文 SHA-256 并在公开前再次核对；
+5. 下载 Artifact ZIP 并核对 GitHub digest，要求 ZIP entry 精确等于预期九个平面文件，
+   拒绝额外/缺失/嵌套路径和符号链接，随后执行 `sha256sum -c SHA256SUMS`；
+6. 重新核验三 APK 的包名、版本、targetSdk 36、应用标签、非 debuggable、仅 ARM64、
+   v2 signer、16 KiB 对齐、PP-OCRv6/ONNX Runtime、后端隔离与零内置翻译权重；核验
+   三 AAB 的 JAR 签名证书同样匹配固定 release 证书和 edition 许可；
+7. 核对第三方许可 42 项 SHA-256、根 LICENSE，以及证据评论里的三 APK SHA-256；
+8. 先创建仅维护者可见的 Draft Release，从该目录原样上传以下九项并逐项核对 GitHub
+   记录的名称、字节数与 SHA-256 digest；再次核验 `main`、tag、Issue 状态与评论正文后
+   才公开，并把 run、Artifact digest、评论正文 SHA-256 和真机证据 URL 写入 Release notes：
    - `ScreenTranslation-$VERSION-lite-bergamot.apk`
    - `ScreenTranslation-$VERSION-lite-bergamot.aab`
    - `ScreenTranslation-$VERSION-full-hymt2-q4-experimental.apk`
@@ -133,7 +155,10 @@ git push origin "v$VERSION"
    - `ScreenTranslation-$VERSION-THIRD-PARTY.zip`
    - `SHA256SUMS`
 
-## 6. 发布后核验
+该过程不读取 release keystore，也不重新运行 Gradle 构建；公开资产与真机验收资产保持
+逐字节一致。
+
+## 7. 发布后核验
 
 维护者从 GitHub release 重新下载产物：
 
@@ -147,10 +172,12 @@ apksigner verify --verbose --print-certs \
   "ScreenTranslation-$VERSION-online-llm.apk"
 ```
 
-随后安装到干净测试设备，确认版本、首次权限链、模型下载和基础翻译。检查 release notes、
-许可证、隐私链接和已知问题。
+核对公开 Release 九个资产的名称、字节数与 SHA-256 均匹配 accepted Artifact；检查
+Release notes 中的 source commit、build run、Artifact digest、Issue #47 证据 URL、许可、
+隐私链接和已知问题。由于 promotion 上传的是已验收的同一组文件，无需用重构建产物重复
+替代原验收结论。
 
-## 7. 回滚与安全修复
+## 8. 回滚与安全修复
 
 - 尚未分发的错误 release 可标记为 pre-release，并发布修正版；不要移动已公开 tag。
 - 已分发版本通过更高 `versionCode` 的新版本修复。
