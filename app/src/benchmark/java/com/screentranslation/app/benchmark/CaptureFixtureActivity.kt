@@ -182,13 +182,13 @@ class CaptureFixtureActivity : Activity() {
             canvas: Canvas,
             text: String,
             left: Float,
-            top: Float,
+            startBaseline: Float,
             maximumWidth: Float,
             paint: Paint,
             lineGap: Float,
         ): Float {
             var remaining = text.trim()
-            var baseline = top
+            var baseline = startBaseline
             val lineHeight = paint.fontMetrics.run { bottom - top } + lineGap
             while (remaining.isNotEmpty()) {
                 var count = paint.breakText(remaining, true, maximumWidth, null).coerceAtLeast(1)
