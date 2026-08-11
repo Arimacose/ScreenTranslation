@@ -109,42 +109,46 @@ internal class OnlineChatClient(
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    var retryDelayMillis: Long? = null
                     response.use {
                         if (cancelled.get()) {
                             finish(Result.failure(CancellationException("Online request cancelled")))
                             return
                         }
                         if (!response.isSuccessful) {
-                            val delay = OnlineHttpPolicy.retryDelayForStatus(
+                            retryDelayMillis = OnlineHttpPolicy.retryDelayForStatus(
                                 statusCode = response.code,
                                 completedAttempts = attemptIndex,
                                 retryAfter = response.header("Retry-After"),
                                 fallbackDelayMillis = retryJitterMillis(),
                             )
-                            if (delay != null) {
-                                scheduleRetry(attemptIndex + 1, delay)
-                            } else {
+                            if (retryDelayMillis == null) {
                                 finish(
                                     Result.failure(
                                         OnlineHttpPolicy.failureForStatus(response.code),
                                     ),
                                 )
                             }
-                            return
-                        }
-                        val translated = runCatching {
-                            OpenAiChatProtocol.parseTranslation(
-                                readOnlineResponseBounded(response.body),
+                        } else {
+                            val translated = runCatching {
+                                OpenAiChatProtocol.parseTranslation(
+                                    readOnlineResponseBounded(response.body),
+                                )
+                            }
+                            finish(
+                                translated.fold(
+                                    onSuccess = { Result.success(it) },
+                                    onFailure = {
+                                        Result.failure(OnlineHttpPolicy.sanitizeNetworkFailure(it))
+                                    },
+                                ),
                             )
                         }
-                        finish(
-                            translated.fold(
-                                onSuccess = { Result.success(it) },
-                                onFailure = {
-                                    Result.failure(OnlineHttpPolicy.sanitizeNetworkFailure(it))
-                                },
-                            ),
-                        )
+                    }
+                    // Release the prior response and its connection before a zero-delay
+                    // Retry-After can start the next attempt on the scheduler thread.
+                    retryDelayMillis?.let { delay ->
+                        scheduleRetry(attemptIndex + 1, delay)
                     }
                 }
             })
