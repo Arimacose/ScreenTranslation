@@ -34,8 +34,11 @@ class CaptureFixtureActivity : Activity() {
                 Log.i(TAG, "CAPTURE_FIXTURE_V1 cycle=$cycle elapsed_ms=$elapsed")
             }
             if (elapsed < durationMs) {
-                val nextBoundary = startedAt + ((cycle + 1L) * changeIntervalMs)
-                handler.postAtTime(this, max(SystemClock.uptimeMillis() + 50L, nextBoundary))
+                // Handler time is based on uptimeMillis while the fixture's
+                // evidence timestamps use elapsedRealtime. Mixing those clocks
+                // schedules the next transition late after any device sleep.
+                val delayToNextBoundary = changeIntervalMs - (elapsed % changeIntervalMs)
+                handler.postDelayed(this, max(50L, delayToNextBoundary))
             }
         }
     }

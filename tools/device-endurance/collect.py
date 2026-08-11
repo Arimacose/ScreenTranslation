@@ -17,7 +17,7 @@ from typing import Any, Iterable
 
 
 PERF_PREFIX = "SCREEN_TRANSLATION_PERF_V1 "
-SERVICE_CLASS = ".service.ScreenTranslationService"
+SERVICE_CLASS = "com.screentranslation.app.service.ScreenTranslationService"
 VIRTUAL_DISPLAY_NAME = "ScreenTranslationCapture"
 
 
@@ -206,6 +206,32 @@ def parse_perf_snapshot(text: str) -> dict[str, Any] | None:
     return None
 
 
+THREADTIME_PID = re.compile(r"^\S+\s+\S+\s+(\d+)\s+\d+\s")
+
+
+def count_target_log_events(
+    logcat: str,
+    *,
+    package: str,
+    pids: set[int],
+    event_pattern: str,
+    context_lines: int = 60,
+) -> int:
+    """Count an event only when its threadtime PID or nearby context is the app."""
+    lines = logcat.splitlines()
+    event = re.compile(event_pattern, re.IGNORECASE)
+    count = 0
+    for index, line in enumerate(lines):
+        if not event.search(line):
+            continue
+        match = THREADTIME_PID.match(line)
+        event_pid = int(match.group(1)) if match else None
+        context = lines[index : min(len(lines), index + context_lines)]
+        if event_pid in pids or any(package in candidate for candidate in context):
+            count += 1
+    return count
+
+
 def read_private_proc(adb: Adb, pid: int, leaf: str) -> str:
     output = adb.shell("cat", f"/proc/{pid}/{leaf}", check=False)
     if output.strip() and "Permission denied" not in output and "No such file" not in output:
@@ -343,6 +369,7 @@ def summarize(
     interval_requested_seconds: float,
     clock_ticks_per_second: int | None,
     logcat: str,
+    target_package: str,
 ) -> dict[str, Any]:
     pids = [sample["pid"] for sample in samples if sample.get("pid")]
     elapsed = samples[-1]["elapsed_seconds"] - samples[0]["elapsed_seconds"] if len(samples) > 1 else 0
@@ -364,10 +391,15 @@ def summarize(
         "fatal_exception": r"FATAL EXCEPTION",
         "anr": r"\bANR in\b|Input dispatching timed out",
         "native_fatal_signal": r"Fatal signal \d+",
-        "out_of_memory": r"OutOfMemoryError|lowmemorykiller.*screen",
+        "out_of_memory": r"OutOfMemoryError",
     }
     failures = {
-        name: len(re.findall(pattern, logcat, re.IGNORECASE))
+        name: count_target_log_events(
+            logcat,
+            package=target_package,
+            pids=set(pids),
+            event_pattern=pattern,
+        )
         for name, pattern in crash_patterns.items()
     }
     performance = performance_delta(samples)
@@ -536,6 +568,7 @@ def collect(args: argparse.Namespace) -> None:
         interval_requested_seconds=args.interval_seconds,
         clock_ticks_per_second=clock_ticks,
         logcat=logcat,
+        target_package=args.package,
     )
     (output / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

@@ -51,6 +51,17 @@ data class TranslationPlacement(
     val width: Int,
 )
 
+data class TranslationObstacle(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int,
+) {
+    init {
+        require(right > left && bottom > top)
+    }
+}
+
 /** Resolves a label above its source box, falling below only when top space is insufficient. */
 fun resolveTranslationPlacement(
     bounds: NormalizedBounds,
@@ -61,8 +72,43 @@ fun resolveTranslationPlacement(
     maximumWidth: Int,
     gap: Int,
 ): TranslationPlacement {
+    return resolveNonOverlappingTranslationPlacement(
+        bounds = bounds,
+        screenWidth = screenWidth,
+        screenHeight = screenHeight,
+        labelHeight = labelHeight,
+        minimumWidth = minimumWidth,
+        maximumWidth = maximumWidth,
+        gap = gap,
+        occupied = emptyList(),
+    ) ?: TranslationPlacement(
+        left = 0,
+        top = 0,
+        width = minimumWidth.coerceAtMost(screenWidth.coerceAtLeast(1)),
+    )
+}
+
+/**
+ * Keeps a translation label in the safe display area and away from labels or
+ * controls that are already visible. The source-aligned slot above is preferred;
+ * when it is blocked, the resolver searches upward and then below the source.
+ */
+fun resolveNonOverlappingTranslationPlacement(
+    bounds: NormalizedBounds,
+    screenWidth: Int,
+    screenHeight: Int,
+    labelHeight: Int,
+    minimumWidth: Int,
+    maximumWidth: Int,
+    gap: Int,
+    minimumTop: Int = 0,
+    maximumBottom: Int = screenHeight,
+    occupied: List<TranslationObstacle>,
+): TranslationPlacement? {
     require(screenWidth > 0 && screenHeight > 0)
     require(labelHeight >= 0 && minimumWidth > 0 && maximumWidth > 0 && gap >= 0)
+    require(minimumTop in 0..screenHeight)
+    require(maximumBottom in minimumTop..screenHeight)
     val sourceLeft = (bounds.left * screenWidth).toInt()
     val sourceTop = (bounds.top * screenHeight).toInt()
     val sourceRight = (bounds.right * screenWidth).toInt()
@@ -70,13 +116,30 @@ fun resolveTranslationPlacement(
     val width = max(sourceRight - sourceLeft, minimumWidth)
         .coerceAtMost(maximumWidth.coerceAtMost(screenWidth))
     val left = sourceLeft.coerceIn(0, (screenWidth - width).coerceAtLeast(0))
-    val above = sourceTop - labelHeight - gap
-    val top = if (above >= 0) {
-        above
-    } else {
-        (sourceBottom + gap).coerceAtMost((screenHeight - labelHeight).coerceAtLeast(0))
+
+    fun collisions(top: Int): List<TranslationObstacle> {
+        val right = left + width
+        val bottom = top + labelHeight
+        return occupied.filter { obstacle ->
+            left < obstacle.right && right > obstacle.left &&
+                top < obstacle.bottom && bottom > obstacle.top
+        }
     }
-    return TranslationPlacement(left = left, top = top, width = width)
+
+    var top = sourceTop - labelHeight - gap
+    while (top >= minimumTop) {
+        val collisions = collisions(top)
+        if (collisions.isEmpty()) return TranslationPlacement(left, top, width)
+        top = collisions.minOf { it.top } - labelHeight - gap
+    }
+
+    top = max(sourceBottom + gap, minimumTop)
+    while (top + labelHeight <= maximumBottom) {
+        val collisions = collisions(top)
+        if (collisions.isEmpty()) return TranslationPlacement(left, top, width)
+        top = collisions.maxOf { it.bottom } + gap
+    }
+    return null
 }
 
 /** Maintains block identity and requires two matching OCR observations. */
@@ -611,13 +674,13 @@ data class TileChangeSet(
 )
 
 class TileSignatureDiffer {
-    private var previous: List<IntArray>? = null
+    private var previous: List<ByteArray>? = null
 
     val hasBaseline: Boolean
         get() = previous != null
 
     fun compare(
-        current: List<IntArray>,
+        current: List<ByteArray>,
         forced: Set<Int> = emptySet(),
         suppressedNaturalTiles: Set<Int> = emptySet(),
     ): TileChangeSet {
@@ -638,12 +701,14 @@ class TileSignatureDiffer {
         previous = null
     }
 
-    internal fun signaturesDiffer(previous: IntArray, current: IntArray): Boolean {
+    internal fun signaturesDiffer(previous: ByteArray, current: ByteArray): Boolean {
         if (previous.size != current.size || previous.isEmpty()) return true
         var totalDifference = 0L
         var significant = 0
         previous.indices.forEach { index ->
-            val difference = abs(previous[index] - current[index])
+            val oldLuminance = previous[index].toInt() and 0xFF
+            val newLuminance = current[index].toInt() and 0xFF
+            val difference = abs(oldLuminance - newLuminance)
             totalDifference += difference
             if (difference >= SIGNIFICANT_LUMA_DELTA) significant += 1
         }

@@ -23,7 +23,8 @@ import android.widget.TextView
 import com.google.android.material.button.MaterialButton
 import com.screentranslation.app.R
 import com.screentranslation.app.capture.FullScreenFrameProcessor
-import com.screentranslation.app.capture.resolveTranslationPlacement
+import com.screentranslation.app.capture.TranslationObstacle
+import com.screentranslation.app.capture.resolveNonOverlappingTranslationPlacement
 
 internal fun fullScreenTranslationWindowFlags(): Int =
     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -122,9 +123,7 @@ class FullScreenOverlayController(
 
     fun updateBlocks(blocks: List<FullScreenFrameProcessor.TranslatedScreenBlock>) = runOnMain {
         val root = blockRoot ?: return@runOnMain
-        val nextBounds = blocks.associateTo(linkedMapOf()) { block ->
-            block.id to measureTranslationBounds(block)
-        }
+        val nextBounds = planTranslationBounds(blocks)
 
         // HyperOS includes application overlays in MediaProjection frames. Tell
         // the capture thread about both the currently drawn rectangles and the
@@ -135,16 +134,17 @@ class FullScreenOverlayController(
         mainHandler.removeCallbacks(finishMaskTransition)
         reportOverlayBounds(plannedBlockBounds.values + nextBounds.values)
 
-        val activeIds = blocks.mapTo(hashSetOf()) { it.id }
+        val activeIds = nextBounds.keys
         blockViews.keys.filter { it !in activeIds }.forEach { id ->
             blockViews.remove(id)?.let(root::removeView)
         }
         blocks.forEach { block ->
+            val bounds = nextBounds[block.id] ?: return@forEach
             val view = blockViews.getOrPut(block.id) {
                 createTranslationView().also(root::addView)
             }
             view.text = block.translatedText
-            positionTranslation(view, nextBounds.getValue(block.id))
+            positionTranslation(view, bounds)
         }
         plannedBlockBounds.clear()
         plannedBlockBounds.putAll(nextBounds)
@@ -314,34 +314,72 @@ class FullScreenOverlayController(
         }
     }
 
-    private fun measureTranslationBounds(
-        block: FullScreenFrameProcessor.TranslatedScreenBlock,
-    ): Rect {
+    private fun planTranslationBounds(
+        blocks: List<FullScreenFrameProcessor.TranslatedScreenBlock>,
+    ): LinkedHashMap<Long, Rect> {
         val screen = windowManager.maximumWindowMetrics.bounds
-        val sourceLeft = (block.bounds.left * screen.width()).toInt()
-        val sourceRight = (block.bounds.right * screen.width()).toInt()
-        val desiredWidth = maxOf(sourceRight - sourceLeft, dp(96))
-            .coerceAtMost((screen.width() * MAX_LABEL_WIDTH_FRACTION).toInt())
-        measurementView.text = block.translatedText
-        measurementView.measure(
-            View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-        )
-        val placement = resolveTranslationPlacement(
-            bounds = block.bounds,
-            screenWidth = screen.width(),
-            screenHeight = screen.height(),
-            labelHeight = measurementView.measuredHeight,
-            minimumWidth = dp(96),
-            maximumWidth = (screen.width() * MAX_LABEL_WIDTH_FRACTION).toInt(),
-            gap = dp(3),
-        )
-        return Rect(
-            screen.left + placement.left,
-            screen.top + placement.top,
-            screen.left + placement.left + placement.width,
-            screen.top + placement.top + measurementView.measuredHeight,
-        )
+        val insets = windowManager.maximumWindowMetrics.windowInsets
+            .getInsetsIgnoringVisibility(
+                WindowInsets.Type.statusBars() or
+                    WindowInsets.Type.displayCutout() or
+                    WindowInsets.Type.navigationBars(),
+            )
+        val gap = dp(LABEL_GAP_DP)
+        val minimumTop = insets.top
+        val maximumBottom = (screen.height() - insets.bottom).coerceAtLeast(minimumTop)
+        val occupied = mutableListOf<TranslationObstacle>()
+        controlRoot?.takeIf {
+            it.isAttachedToWindow && it.visibility == View.VISIBLE && it.width > 0 && it.height > 0
+        }?.let { control ->
+            val location = IntArray(2)
+            control.getLocationOnScreen(location)
+            occupied += TranslationObstacle(
+                left = location[0] - screen.left,
+                top = location[1] - screen.top,
+                right = location[0] - screen.left + control.width,
+                bottom = location[1] - screen.top + control.height,
+            )
+        }
+
+        val result = linkedMapOf<Long, Rect>()
+        blocks.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }, { it.id }))
+            .forEach { block ->
+                val sourceLeft = (block.bounds.left * screen.width()).toInt()
+                val sourceRight = (block.bounds.right * screen.width()).toInt()
+                val desiredWidth = maxOf(sourceRight - sourceLeft, dp(MIN_LABEL_WIDTH_DP))
+                    .coerceAtMost((screen.width() * MAX_LABEL_WIDTH_FRACTION).toInt())
+                measurementView.text = block.translatedText
+                measurementView.measure(
+                    View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                )
+                val placement = resolveNonOverlappingTranslationPlacement(
+                    bounds = block.bounds,
+                    screenWidth = screen.width(),
+                    screenHeight = screen.height(),
+                    labelHeight = measurementView.measuredHeight,
+                    minimumWidth = dp(MIN_LABEL_WIDTH_DP),
+                    maximumWidth = (screen.width() * MAX_LABEL_WIDTH_FRACTION).toInt(),
+                    gap = gap,
+                    minimumTop = minimumTop,
+                    maximumBottom = maximumBottom,
+                    occupied = occupied,
+                ) ?: return@forEach
+                val relative = TranslationObstacle(
+                    left = placement.left,
+                    top = placement.top,
+                    right = placement.left + placement.width,
+                    bottom = placement.top + measurementView.measuredHeight,
+                )
+                occupied += relative
+                result[block.id] = Rect(
+                    screen.left + relative.left,
+                    screen.top + relative.top,
+                    screen.left + relative.right,
+                    screen.top + relative.bottom,
+                )
+            }
+        return result
     }
 
     private fun positionTranslation(view: TextView, bounds: Rect) {
@@ -396,6 +434,8 @@ class FullScreenOverlayController(
 
     private companion object {
         const val MAX_LABEL_WIDTH_FRACTION = 0.72f
+        const val MIN_LABEL_WIDTH_DP = 96
+        const val LABEL_GAP_DP = 3
         const val CONTROL_WIDTH_FRACTION = 0.90f
         const val CONTROL_TOP_GAP_DP = 4
         const val CAPTURE_MASK_PADDING_DP = 2

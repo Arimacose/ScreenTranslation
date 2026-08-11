@@ -22,7 +22,7 @@ class CapturePerformanceTelemetry(
         TILE,
     }
 
-    data class TimingToken internal constructor(val startedAtNanos: Long)
+    class TimingToken internal constructor(val startedAtNanos: Long)
 
     data class LatencySummary(
         val count: Long,
