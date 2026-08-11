@@ -30,6 +30,7 @@ class FullScreenFrameProcessor(
     frameIntervalMs: Long,
     private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
     private val onError: (Throwable) -> Unit = {},
+    private val performanceTelemetry: CapturePerformanceTelemetry? = null,
     elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : FramePipeline {
     data class TranslatedScreenBlock(
@@ -58,14 +59,17 @@ class FullScreenFrameProcessor(
             synchronized(translations) {
                 translations[id] = TranslationValue(source, translation)
             }
+            performanceTelemetry?.recordTranslationPublished()
             publishBlocks()
         },
         onError = onError,
+        performanceTelemetry = performanceTelemetry,
     )
 
     override fun setEnabled(value: Boolean) {
         if (enabled == value) return
         enabled = value
+        performanceTelemetry?.recordEnabled(value)
         gate.setEnabled(value)
         if (value) {
             translationQueue.resume()
@@ -76,6 +80,7 @@ class FullScreenFrameProcessor(
     }
 
     override fun resetStability() {
+        performanceTelemetry?.recordLifecycleReset()
         gate.invalidate()
         clearTrackingState()
     }
@@ -105,12 +110,15 @@ class FullScreenFrameProcessor(
             if (!gate.isClosed) onError(error)
             return
         } ?: return
+        performanceTelemetry?.recordFrameAvailable()
 
         val generation = gate.tryAcquire()
         if (generation == null) {
+            performanceTelemetry?.recordFrameRejected()
             image.close()
             return
         }
+        performanceTelemetry?.recordFrameAdmitted()
 
         val bitmap = try {
             image.use {
@@ -125,7 +133,9 @@ class FullScreenFrameProcessor(
             onError(error)
             return
         }
+        performanceTelemetry?.recordBitmapMaterialized(bitmap.allocationByteCount.toLong())
 
+        val signatureStartedAt = System.nanoTime()
         val tiles = ScreenTileGrid.create(bitmap.width, bitmap.height)
         val signatures = tileSignatures(bitmap, tiles)
         val exclusionChangedTiles = changedExclusionTiles(
@@ -145,8 +155,13 @@ class FullScreenFrameProcessor(
             },
         )
         lastExclusions = normalizedExclusions.map(::RectF)
-        gate.setFrameIntervalMs(
-            adaptiveInterval.recordChanged(changes.natural.isNotEmpty()),
+        val nextIntervalMs = adaptiveInterval.recordChanged(changes.natural.isNotEmpty())
+        gate.setFrameIntervalMs(nextIntervalMs)
+        performanceTelemetry?.recordSignatureScan(
+            durationNanos = System.nanoTime() - signatureStartedAt,
+            naturalTileCount = changes.natural.size,
+            scheduledTileCount = changes.all.size,
+            intervalMs = nextIntervalMs,
         )
         if (changes.natural.isNotEmpty()) {
             val visibleBlocks = blocksOutsideTiles(currentBlocks, changes.natural)
@@ -184,7 +199,12 @@ class FullScreenFrameProcessor(
         naturallyChanged: Set<Int>,
         generation: Long,
     ) {
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.FULL_FRAME,
+            bitmap.width.toLong() * bitmap.height,
+        )
         ocrEngine.recognize(bitmap) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             if (!gate.isCurrent(generation)) {
                 bitmap.recycleSafely()
                 gate.release()
@@ -260,7 +280,12 @@ class FullScreenFrameProcessor(
             cropTile.width,
             cropTile.height,
         )
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.TILE,
+            crop.width.toLong() * crop.height,
+        )
         ocrEngine.recognize(crop) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             crop.recycleSafely()
             if (!gate.isCurrent(generation)) {
                 bitmap.recycleSafely()
@@ -460,9 +485,15 @@ internal class BlockTranslationQueue(
     private val backend: TranslationBackend,
     private val onTranslation: (Long, String, String) -> Unit,
     private val onError: (Throwable) -> Unit,
+    private val performanceTelemetry: CapturePerformanceTelemetry? = null,
 ) : AutoCloseable {
     private data class Work(val id: Long, val text: String)
-    private data class Active(val token: Long, val work: Work, var call: TranslationCall)
+    private data class Active(
+        val token: Long,
+        val work: Work,
+        var call: TranslationCall,
+        var performanceToken: CapturePerformanceTelemetry.TimingToken? = null,
+    )
 
     private val pending = linkedMapOf<Long, Work>()
     private val cache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
@@ -532,11 +563,13 @@ internal class BlockTranslationQueue(
         }
         val cached = synchronized(cache) { cache[activeWork.work.text] }
         if (cached != null) {
+            performanceTelemetry?.recordTranslationCacheHit()
             complete(activeWork.token, Result.success(cached))
             return
         }
 
         val protected = ProtectedTextCodec.protect(activeWork.work.text)
+        activeWork.performanceToken = performanceTelemetry?.startTranslation()
         val call = backend.translate(protected.encoded) { result ->
             complete(activeWork.token, result.map(protected::restore))
         }
@@ -553,6 +586,9 @@ internal class BlockTranslationQueue(
         val work = synchronized(this) {
             val current = active?.takeIf { it.token == token } ?: return
             active = null
+            current.performanceToken?.let {
+                performanceTelemetry?.finishTranslation(it, result.isSuccess)
+            }
             current.work
         }
         result.fold(
@@ -568,13 +604,16 @@ internal class BlockTranslationQueue(
     }
 
     override fun close() {
+        var unfinishedToken: CapturePerformanceTelemetry.TimingToken? = null
         val call = synchronized(this) {
             if (closed) return
             closed = true
             pending.clear()
+            unfinishedToken = active?.performanceToken
             active?.call.also { active = null }
         }
         call?.cancel()
+        unfinishedToken?.let { performanceTelemetry?.finishTranslation(it, successful = false) }
         synchronized(cache) { cache.clear() }
     }
 }

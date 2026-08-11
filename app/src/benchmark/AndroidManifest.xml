@@ -4,5 +4,8 @@
         <activity
             android:name=".benchmark.ModelBenchmarkActivity"
             android:exported="true" />
+        <activity
+            android:name=".benchmark.CaptureFixtureActivity"
+            android:exported="true" />
     </application>
 </manifest>

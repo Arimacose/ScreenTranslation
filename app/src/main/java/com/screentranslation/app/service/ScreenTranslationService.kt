@@ -30,6 +30,7 @@ import android.view.WindowManager
 import com.screentranslation.app.MainActivity
 import com.screentranslation.app.R
 import com.screentranslation.app.model.CaptureMode
+import com.screentranslation.app.capture.CapturePerformanceTelemetry
 import com.screentranslation.app.capture.FrameProcessor
 import com.screentranslation.app.capture.FramePipeline
 import com.screentranslation.app.capture.FullScreenFrameProcessor
@@ -42,6 +43,8 @@ import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.overlay.OverlayController
 import com.screentranslation.app.overlay.FullScreenOverlayController
 import com.screentranslation.app.util.StableTextGate
+import java.io.FileDescriptor
+import java.io.PrintWriter
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -65,7 +68,17 @@ class ScreenTranslationService : Service() {
     private var ocrEngine: OcrEngine? = null
     private var translationEngine: TranslationBackend? = null
     private var frameProcessor: FramePipeline? = null
+    private var performanceTelemetry: CapturePerformanceTelemetry? = null
     private var captureMode = CaptureMode.REGION
+    private val performanceLogRunnable = object : Runnable {
+        override fun run() {
+            val telemetry = performanceTelemetry ?: return
+            Log.i(PERFORMANCE_TAG, telemetry.snapshot("periodic").toJsonLine())
+            if (sessionStarted && !closing) {
+                mainHandler.postDelayed(this, PERFORMANCE_LOG_INTERVAL_MS)
+            }
+        }
+    }
 
     @Volatile
     private var captureWidth = 0
@@ -232,6 +245,12 @@ class ScreenTranslationService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun dump(fd: FileDescriptor, writer: PrintWriter, args: Array<out String>) {
+        super.dump(fd, writer, args)
+        val snapshot = performanceTelemetry?.snapshot("dumpsys")?.toJsonLine()
+        writer.println("$PERFORMANCE_DUMP_PREFIX ${snapshot ?: "null"}")
+    }
+
     private fun startSession(
         resultCode: Int,
         projectionData: Intent,
@@ -241,6 +260,10 @@ class ScreenTranslationService : Service() {
         captureMode: CaptureMode,
     ) {
         this.captureMode = captureMode
+        performanceTelemetry = CapturePerformanceTelemetry(
+            captureMode = captureMode.persistedValue,
+            baseIntervalMs = frameIntervalMs,
+        )
         lifecycle.dispatch(
             CaptureLifecycleEvent.StartRequested(
                 captureMode = captureMode,
@@ -309,6 +332,7 @@ class ScreenTranslationService : Service() {
                     }
                 },
                 onError = ::reportProcessingError,
+                performanceTelemetry = performanceTelemetry,
             )
         } else {
             FrameProcessor(
@@ -351,6 +375,7 @@ class ScreenTranslationService : Service() {
                     }
                 },
                 onError = ::reportProcessingError,
+                performanceTelemetry = performanceTelemetry,
             )
         }.apply {
             setEnabled(false)
@@ -425,6 +450,12 @@ class ScreenTranslationService : Service() {
         sessionStarted = true
         isRunning = true
         notifySessionStateChanged()
+        Log.i(
+            PERFORMANCE_TAG,
+            checkNotNull(performanceTelemetry).snapshot("started").toJsonLine(),
+        )
+        mainHandler.removeCallbacks(performanceLogRunnable)
+        mainHandler.postDelayed(performanceLogRunnable, PERFORMANCE_LOG_INTERVAL_MS)
         needsProjectionRestart = false
         startupStage = STARTUP_STAGE_MODEL_PREPARATION
         updateOverlayStatus(STATUS_PREPARING_MODEL)
@@ -459,6 +490,7 @@ class ScreenTranslationService : Service() {
     }
 
     private fun reportProcessingError(error: Throwable) {
+        performanceTelemetry?.recordProcessingError()
         mainHandler.post {
             if (!closing) {
                 overlayController?.preserveContentAfterFailure()
@@ -784,6 +816,7 @@ class ScreenTranslationService : Service() {
     private fun releaseSession() {
         if (closing) return
         closing = true
+        mainHandler.removeCallbacks(performanceLogRunnable)
         if (lifecycle.snapshot.stopReason == null) {
             lifecycle.dispatch(
                 CaptureLifecycleEvent.StopRequested(CaptureStopReason.SERVICE_DESTROYED),
@@ -817,6 +850,9 @@ class ScreenTranslationService : Service() {
         overlayController?.close()
         fullScreenOverlayController?.close()
         captureThread?.quitSafely()
+        performanceTelemetry?.let { telemetry ->
+            Log.i(PERFORMANCE_TAG, telemetry.snapshot("final").toJsonLine())
+        }
 
         frameProcessor = null
         virtualDisplay = null
@@ -830,6 +866,7 @@ class ScreenTranslationService : Service() {
         overlayExclusionBounds = emptyList()
         captureHandler = null
         captureThread = null
+        performanceTelemetry = null
         lifecycle.dispatch(CaptureLifecycleEvent.Destroyed)
     }
 
@@ -908,6 +945,9 @@ class ScreenTranslationService : Service() {
 
     companion object {
         private const val TAG = "ScreenTranslation"
+        private const val PERFORMANCE_TAG = "ScreenTranslationPerf"
+        private const val PERFORMANCE_DUMP_PREFIX = "SCREEN_TRANSLATION_PERF_V1"
+        private const val PERFORMANCE_LOG_INTERVAL_MS = 60_000L
 
         private const val ACTION_START =
             "com.screentranslation.app.action.START_SCREEN_TRANSLATION"
