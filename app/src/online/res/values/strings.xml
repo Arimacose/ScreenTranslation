@@ -17,11 +17,11 @@
     <string name="online_settings_explanation">连接自己的 OpenAI-compatible HTTPS API。应用只发送 OCR 文字，不发送截图；保存 Base URL 与 API Key 后会读取服务端模型列表供你选择。</string>
     <string name="online_section_connection">连接与模型</string>
     <string name="online_section_test">连接测试</string>
-    <string name="online_base_url_hint">Base URL（如 https://HOST/v1）</string>
-    <string name="online_api_key_hint">API Key（留空保留已保存密钥）</string>
+    <string name="online_base_url_hint">Base URL</string>
+    <string name="online_api_key_hint">API Key</string>
     <string name="online_key_saved">密钥状态：已保存</string>
     <string name="online_key_missing">密钥状态：尚未保存</string>
-    <string name="online_endpoint_path_help">只需填写 API 根地址；应用会自动使用 /models 获取模型，并自动补充 /chat/completions 发送翻译请求。</string>
+    <string name="online_endpoint_path_help">Base URL 示例：https://HOST/v1；API Key 留空会保留已保存密钥。应用会自动使用 /models 获取模型，并自动补充 /chat/completions 发送翻译请求。</string>
     <string name="online_user_data_flow_consent">我了解：应用会向该服务发送 API Key 以读取模型列表，并在翻译时发送框选区域中识别出的文字。</string>
     <string name="online_fetch_models">获取可用模型</string>
     <string name="online_model_selection_label">选择翻译模型</string>

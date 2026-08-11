@@ -63,19 +63,22 @@ class AppleLayoutContractTest {
             stringValue(mainStrings, "capture_mode_full_screen"),
         )
         assertEquals(
-            "Base URL（如 https://HOST/v1）",
+            "Base URL",
             stringValue(onlineStrings, "online_base_url_hint"),
         )
         assertEquals(
-            "API Key（留空保留已保存密钥）",
+            "API Key",
             stringValue(onlineStrings, "online_api_key_hint"),
         )
         listOf(standardOnline, appleOnline).forEach { layout ->
             assertTrue("@string/online_base_url_hint" in layout)
             assertTrue("@string/online_api_key_hint" in layout)
         }
-        assertTrue("/models" in stringValue(onlineStrings, "online_endpoint_path_help"))
-        assertTrue("/chat/completions" in stringValue(onlineStrings, "online_endpoint_path_help"))
+        val endpointHelp = stringValue(onlineStrings, "online_endpoint_path_help")
+        assertTrue("https://HOST/v1" in endpointHelp)
+        assertTrue("API Key 留空会保留已保存密钥" in endpointHelp)
+        assertTrue("/models" in endpointHelp)
+        assertTrue("/chat/completions" in endpointHelp)
     }
 
     @Test
