@@ -21,7 +21,7 @@
     <string name="capture_mode_region">框选区域（默认）</string>
     <string name="capture_mode_full_screen">全屏增量覆盖（实验）</string>
     <string name="capture_mode_region_hint">授权后拖动选择区域，结果显示在可展开面板中。</string>
-    <string name="capture_mode_full_screen_hint">实验功能：只重识别变化分块，并把译文直接覆盖在对应原文上方；本轮尚未完成 HyperOS 真机验收。</string>
+    <string name="capture_mode_full_screen_hint">实验功能：只重识别变化分块，并把译文直接覆盖在对应原文上方；当前验收基线为 Android 16 / 小米 15 Pro / HyperOS。</string>
     <string name="frame_interval">识别帧间隔</string>
     <string name="frame_interval_value">%1$d 毫秒</string>
     <string name="frame_interval_hint">间隔越短响应越快，但耗电和发热也会增加。</string>
