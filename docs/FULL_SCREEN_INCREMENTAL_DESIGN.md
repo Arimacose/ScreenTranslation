@@ -77,8 +77,8 @@ Lite/Full 在设备端翻译。Online 只向用户配置的 HTTPS API 发送单�
 两个窗口都设置 `FLAG_SECURE`。设计意图是阻止本应用的 MediaProjection 再次取得译文
 标签，从源头切断“译文被 OCR 成新原文”的反馈环；它也意味着用户的系统截图/录屏可能
 不会包含这些 Experimental 标签。HyperOS 对 overlay + `FLAG_SECURE` + MediaProjection
-的实际组合行为尚未在本轮安装验证，必须由
-[#38](https://github.com/Arimacose/ScreenTranslation/issues/38) 的签名 Release 门禁确认。
+的最终结论由 [#38](https://github.com/Arimacose/ScreenTranslation/issues/38) 的
+v2.1.0 签名 Release 门禁与不可编辑证据评论确认。
 
 区域模式仍使用既有的精确悬浮层矩形遮蔽，不设置 `FLAG_SECURE`，因此是递归隔离行为
 不符合预期时的立即回滚路径。
@@ -93,7 +93,7 @@ Lite/Full 在设备端翻译。Online 只向用户配置的 HTTPS API 发送单�
   VirtualDisplay 与 MediaProjection；关闭操作保持幂等。
 - 捕获模式保存在应用设置中；通知快捷启动沿用该模式。用户可在主页面随时选回区域模式。
 
-## 8. 本轮静态验收范围
+## 8. 自动化与预验收范围
 
 已纳入普通 JVM 测试的纯逻辑：
 
@@ -103,13 +103,14 @@ Lite/Full 在设备端翻译。Online 只向用户配置的 HTTPS API 发送单�
 - 翻译队列单活跃、过期取消、暂停/恢复和受保护值恢复；
 - 全屏译文层不可触摸、控制条可触摸以及两层 `FLAG_SECURE` 标志。
 
-本轮按要求不安装 APK。以下项目保持真机门禁：
+v2.1.0 预验收已在目标真机完成固定语料和 5 分钟 A/B；最终签名 Artifact 仍执行：
 
 - HyperOS 是否确实从 MediaProjection 中排除安全 overlay；
 - 译文标签在刘海、状态栏、导航区、横竖屏和不同字体缩放下的位置；
 - 快速滚动、字幕切换和动画背景下的漏检/误触发；
-- Lite、Full、Online 的长时间延迟、内存、温升、功耗与 Online 请求量；
+- 区域和全屏各 15 分钟的延迟、内存、温升与持续运行；
 - 锁屏、投影撤销、进程回收与通知重启的完整状态机。
 
-任何一项门禁失败时，发布版继续保持区域模式默认，并可暂时隐藏 Experimental 入口，
-无需影响三 edition 既有框选翻译链路。
+任何一项门禁失败时不创建 v2.1.0 tag，区域模式继续保持默认。Plane-first A/B 的方法、
+指标与哈希见
+[`PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md`](PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)。

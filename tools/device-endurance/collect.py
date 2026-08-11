@@ -209,6 +209,17 @@ def parse_perf_snapshot(text: str) -> dict[str, Any] | None:
 THREADTIME_PID = re.compile(r"^\S+\s+\S+\s+(\d+)\s+\d+\s")
 
 
+def filter_target_logcat(logcat: str, *, package: str, pids: set[int]) -> str:
+    """Keep only target-PID or explicit target-package lines in the evidence file."""
+    retained: list[str] = []
+    for line in logcat.splitlines():
+        match = THREADTIME_PID.match(line)
+        line_pid = int(match.group(1)) if match else None
+        if line_pid in pids or package in line:
+            retained.append(line)
+    return "\n".join(retained) + ("\n" if retained else "")
+
+
 def count_target_log_events(
     logcat: str,
     *,
@@ -559,7 +570,21 @@ def collect(args: argparse.Namespace) -> None:
             next_sample = started + sample_index * args.interval_seconds
 
     logcat = adb.call("logcat", "-d", "-v", "threadtime", timeout=60.0, check=False)
-    (output / "logcat.txt").write_text(logcat, encoding="utf-8", newline="\n")
+    observed_pids = {
+        int(sample["pid"])
+        for sample in samples
+        if isinstance(sample.get("pid"), int)
+    }
+    target_logcat = filter_target_logcat(
+        logcat,
+        package=args.package,
+        pids=observed_pids,
+    )
+    (output / "logcat.txt").write_text(
+        target_logcat,
+        encoding="utf-8",
+        newline="\n",
+    )
     clock_ticks_text = adb.shell("getconf", "CLK_TCK", check=False).strip()
     clock_ticks = int(clock_ticks_text) if clock_ticks_text.isdigit() else None
     summary = summarize(
@@ -567,7 +592,7 @@ def collect(args: argparse.Namespace) -> None:
         duration_requested_seconds=args.duration_seconds,
         interval_requested_seconds=args.interval_seconds,
         clock_ticks_per_second=clock_ticks,
-        logcat=logcat,
+        logcat=target_logcat,
         target_package=args.package,
     )
     (output / "summary.json").write_text(

@@ -90,11 +90,15 @@ internal object ImageTileSignatureExtractor {
 
         val source = buffer.duplicate()
         val baseOffset = source.position()
-        val lastRequiredByte = baseOffset.toLong() +
+        val rowBytesLong = crop.width.toLong() * pixelStride
+        require(rowBytesLong <= Int.MAX_VALUE) {
+            "Crop row is too large to materialize: $rowBytesLong bytes"
+        }
+        val lastRequiredByteExclusive = baseOffset.toLong() +
             (crop.bottom - 1L) * rowStride +
-            (crop.right - 1L) * pixelStride +
-            RGB_LAST_COMPONENT_OFFSET
-        require(lastRequiredByte < source.limit()) {
+            crop.left.toLong() * pixelStride +
+            rowBytesLong
+        require(lastRequiredByteExclusive <= source.limit()) {
             "Crop $crop exceeds the ${source.limit()} byte pixel plane " +
                 "(rowStride=$rowStride, pixelStride=$pixelStride)"
         }
@@ -137,7 +141,7 @@ internal object ImageTileSignatureExtractor {
         // per RGB component is disproportionately expensive on ART; 800 row
         // copies plus ordinary ByteArray reads are substantially cheaper than
         // ~864,000 JNI-backed absolute reads for a 1440 x 3200 frame.
-        val rowBytes = width * pixelStride
+        val rowBytes = rowBytesLong.toInt()
         val row = ByteArray(rowBytes)
         val luminance = ByteArray(signatureWidth * signatureHeight)
         for (sampleY in 0 until signatureHeight) {
@@ -207,7 +211,6 @@ internal object ImageTileSignatureExtractor {
     }
 
     private const val RGBA_BYTES_PER_PIXEL = 4
-    private const val RGB_LAST_COMPONENT_OFFSET = 2
     private const val SIGNATURE_SCALE_DIVISOR = 4
     private const val WHITE_LUMINANCE = 255
 }

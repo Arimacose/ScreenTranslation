@@ -20,7 +20,7 @@ on:
         required: false
         type: string
       device_evidence_comment:
-        description: "Issue #47 DEVICE_ACCEPTANCE_PASS comment URL (publish only)"
+        description: "DEVICE_ACCEPTANCE_PASS issue-comment URL (publish only)"
         required: false
         type: string
 
@@ -544,12 +544,13 @@ jobs:
           fi
           [[ "$ACCEPTANCE_RUN_ID" =~ ^[1-9][0-9]+$ ]]
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          evidence_pattern='^https://github\.com/Arimacose/ScreenTranslation/issues/47#issuecomment-([1-9][0-9]*)$'
+          evidence_pattern='^https://github\.com/Arimacose/ScreenTranslation/issues/([1-9][0-9]*)#issuecomment-([1-9][0-9]*)$'
           if [[ ! "$DEVICE_EVIDENCE_COMMENT" =~ $evidence_pattern ]]; then
-            echo "::error::Device evidence must be an Issue #47 comment URL"
+            echo "::error::Device evidence must be a ScreenTranslation issue comment URL"
             exit 1
           fi
-          comment_id="${BASH_REMATCH[1]}"
+          evidence_issue_number="${BASH_REMATCH[1]}"
+          comment_id="${BASH_REMATCH[2]}"
 
           git fetch --force origin \
             "+refs/heads/main:refs/remotes/origin/main" \
@@ -578,6 +579,7 @@ jobs:
           } | head -n1)"
           [[ "$RELEASE_TAG" == "v$version_name" ]]
           [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
+          milestone_title="$RELEASE_TAG"
 
           run_json="$(
             gh api \
@@ -631,22 +633,12 @@ jobs:
           artifact_id="$(jq -r '.id' <<<"$artifact_json")"
           artifact_digest="$(jq -r '.digest' <<<"$artifact_json")"
 
-          issue_json="$(
-            gh api "repos/$GITHUB_REPOSITORY/issues/47"
-          )"
-          jq -e \
-            '.state == "closed" and
-             .milestone.title == "v2.0.0" and
-             ([.labels[].name] | index("status:needs-verification") | not)' \
-            <<<"$issue_json" >/dev/null
-          issue_closed_at="$(jq -r '.closed_at' <<<"$issue_json")"
-
           comment_json="$(
             gh api \
               "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id"
           )"
           jq -e \
-            --arg issue_url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/47" \
+            --arg issue_url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$evidence_issue_number" \
             '.issue_url == $issue_url and
              (.author_association == "OWNER" or
               .author_association == "MEMBER" or
@@ -654,9 +646,8 @@ jobs:
             <<<"$comment_json" >/dev/null
           comment_created_at="$(jq -r '.created_at' <<<"$comment_json")"
           comment_updated_at="$(jq -r '.updated_at' <<<"$comment_json")"
-          if [[ "$comment_created_at" < "$run_updated_at" ||
-                "$issue_closed_at" < "$comment_created_at" ]]; then
-            echo "::error::Device evidence must follow the accepted build and precede issue closure"
+          if [[ "$comment_created_at" < "$run_updated_at" ]]; then
+            echo "::error::Device evidence must follow the accepted build"
             exit 1
           fi
           if [[ "$comment_updated_at" != "$comment_created_at" ]]; then
@@ -748,6 +739,81 @@ jobs:
           }
 
           assert_single_marker 'DEVICE_ACCEPTANCE_PASS'
+          assert_single_field \
+            'acceptance_schema' \
+            'screen-translation-device-v2'
+          accepted_issues="$(
+            read_single_token_field \
+              'accepted_issues' \
+              '^[1-9][0-9]*(,[1-9][0-9]*)*$'
+          )"
+          IFS=',' read -r -a accepted_issue_numbers <<<"$accepted_issues"
+          unique_issue_count="$(
+            printf '%s\n' "${accepted_issue_numbers[@]}" |
+              LC_ALL=C sort -n -u |
+              awk 'END { print NR + 0 }'
+          )"
+          if [[ "$unique_issue_count" != "${#accepted_issue_numbers[@]}" ]]; then
+            echo "::error::accepted_issues must not contain duplicates"
+            exit 1
+          fi
+          milestones_json="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/milestones?state=all&per_page=100"
+          )"
+          if [[ "$(
+            jq --arg title "$milestone_title" \
+              '[.[] | select(.title == $title)] | length' \
+              <<<"$milestones_json"
+          )" != "1" ]]; then
+            echo "::error::Release tag must identify exactly one repository milestone"
+            exit 1
+          fi
+          milestone_number="$(
+            jq -r --arg title "$milestone_title" \
+              '.[] | select(.title == $title) | .number' \
+              <<<"$milestones_json"
+          )"
+          milestone_items_json="$(
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues?milestone=$milestone_number&state=all&per_page=100"
+          )"
+          accepted_issues_sorted="$(
+            printf '%s\n' "${accepted_issue_numbers[@]}" |
+              LC_ALL=C sort -n
+          )"
+          milestone_items_sorted="$(
+            jq -r '[.[][] | .number] | sort | .[]' \
+              <<<"$milestone_items_json"
+          )"
+          if [[ "$accepted_issues_sorted" != "$milestone_items_sorted" ]]; then
+            echo "::error::accepted_issues must exactly cover the release milestone"
+            exit 1
+          fi
+          evidence_issue_bound=false
+          for issue_number in "${accepted_issue_numbers[@]}"; do
+            issue_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number"
+            )"
+            jq -e \
+              --arg milestone "$milestone_title" \
+              '.state == "closed" and
+               .milestone.title == $milestone and
+               ([.labels[].name] | index("status:needs-verification") | not)' \
+              <<<"$issue_json" >/dev/null
+            issue_closed_at="$(jq -r '.closed_at' <<<"$issue_json")"
+            if [[ "$issue_closed_at" < "$comment_created_at" ]]; then
+              echo "::error::Device evidence must precede issue #$issue_number closure"
+              exit 1
+            fi
+            if [[ "$issue_number" == "$evidence_issue_number" ]]; then
+              evidence_issue_bound=true
+            fi
+          done
+          if [[ "$evidence_issue_bound" != true ]]; then
+            echo "::error::Evidence comment issue must appear in accepted_issues"
+            exit 1
+          fi
           assert_single_field 'acceptance_run_id' "$ACCEPTANCE_RUN_ID"
           assert_single_field 'source_sha' "$tag_commit"
           assert_single_field 'device' 'Xiaomi 15 Pro'
@@ -762,6 +828,50 @@ jobs:
           lite_apk_sha="$(read_single_sha_field 'lite_apk_sha256')"
           full_apk_sha="$(read_single_sha_field 'full_apk_sha256')"
           online_apk_sha="$(read_single_sha_field 'online_apk_sha256')"
+          region_duration_seconds="$(
+            read_single_token_field 'region_duration_seconds' '^[0-9]+$'
+          )"
+          full_screen_duration_seconds="$(
+            read_single_token_field 'full_screen_duration_seconds' '^[0-9]+$'
+          )"
+          thermal_status_max="$(
+            read_single_token_field 'thermal_status_max' '^[0-9]+$'
+          )"
+          capture_failures="$(
+            read_single_token_field 'capture_failures' '^[0-9]+$'
+          )"
+          if (( 10#$region_duration_seconds < 900 ||
+                10#$full_screen_duration_seconds < 900 ||
+                10#$thermal_status_max > 1 ||
+                10#$capture_failures != 0 )); then
+            echo "::error::Device duration, thermal, or failure gates are not satisfied"
+            exit 1
+          fi
+          region_summary_sha="$(
+            read_single_sha_field 'region_summary_sha256'
+          )"
+          full_screen_summary_sha="$(
+            read_single_sha_field 'full_screen_summary_sha256'
+          )"
+          lifecycle_report_sha="$(
+            read_single_sha_field 'lifecycle_report_sha256'
+          )"
+          ocr_fixture_score_sha="$(
+            read_single_sha_field 'ocr_fixture_score_sha256'
+          )"
+          sustained_benchmark_doc_sha="$(
+            read_single_sha_field 'sustained_benchmark_doc_sha256'
+          )"
+          actual_sustained_benchmark_doc_sha="$(
+            sha256sum \
+              docs/PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md |
+              awk '{ print $1 }'
+          )"
+          if [[ "$sustained_benchmark_doc_sha" != \
+                "$actual_sustained_benchmark_doc_sha" ]]; then
+            echo "::error::Sustained benchmark document hash is not bound to this source"
+            exit 1
+          fi
           comment_body_sha="$(
             printf '%s' "$comment_body" | sha256sum | awk '{ print $1 }'
           )"
@@ -784,10 +894,20 @@ jobs:
           echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
           echo "comment_id=$comment_id" >> "$GITHUB_OUTPUT"
           echo "comment_body_sha=$comment_body_sha" >> "$GITHUB_OUTPUT"
+          echo "accepted_issues=$accepted_issues" >> "$GITHUB_OUTPUT"
+          echo "evidence_issue_number=$evidence_issue_number" >> "$GITHUB_OUTPUT"
           echo "rom_build=$rom_build" >> "$GITHUB_OUTPUT"
           echo "lite_apk_sha=$lite_apk_sha" >> "$GITHUB_OUTPUT"
           echo "full_apk_sha=$full_apk_sha" >> "$GITHUB_OUTPUT"
           echo "online_apk_sha=$online_apk_sha" >> "$GITHUB_OUTPUT"
+          echo "region_duration_seconds=$region_duration_seconds" >> "$GITHUB_OUTPUT"
+          echo "full_screen_duration_seconds=$full_screen_duration_seconds" >> "$GITHUB_OUTPUT"
+          echo "thermal_status_max=$thermal_status_max" >> "$GITHUB_OUTPUT"
+          echo "region_summary_sha=$region_summary_sha" >> "$GITHUB_OUTPUT"
+          echo "full_screen_summary_sha=$full_screen_summary_sha" >> "$GITHUB_OUTPUT"
+          echo "lifecycle_report_sha=$lifecycle_report_sha" >> "$GITHUB_OUTPUT"
+          echo "ocr_fixture_score_sha=$ocr_fixture_score_sha" >> "$GITHUB_OUTPUT"
+          echo "sustained_benchmark_doc_sha=$sustained_benchmark_doc_sha" >> "$GITHUB_OUTPUT"
 
       - name: Download and verify the immutable acceptance Artifact ZIP
         shell: bash
@@ -1052,8 +1172,16 @@ jobs:
           - Signed acceptance run: [${{ inputs.acceptance_run_id }}](https://github.com/$GITHUB_REPOSITORY/actions/runs/${{ inputs.acceptance_run_id }})
           - Immutable Actions Artifact ZIP: \`$artifact_digest\`
           - Target-device evidence: ${{ inputs.device_evidence_comment }}
+          - Accepted issues: \`${{ steps.promotion.outputs.accepted_issues }}\`
           - Device-evidence body SHA-256: \`${{ steps.promotion.outputs.comment_body_sha }}\`
           - Tested ROM build: \`${{ steps.promotion.outputs.rom_build }}\`
+          - Region/full-screen endurance: \`${{ steps.promotion.outputs.region_duration_seconds }} s\` / \`${{ steps.promotion.outputs.full_screen_duration_seconds }} s\`
+          - Maximum thermal status: \`${{ steps.promotion.outputs.thermal_status_max }}\`
+          - Region summary SHA-256: \`${{ steps.promotion.outputs.region_summary_sha }}\`
+          - Full-screen summary SHA-256: \`${{ steps.promotion.outputs.full_screen_summary_sha }}\`
+          - Lifecycle report SHA-256: \`${{ steps.promotion.outputs.lifecycle_report_sha }}\`
+          - OCR fixture score SHA-256: \`${{ steps.promotion.outputs.ocr_fixture_score_sha }}\`
+          - Sustained benchmark document SHA-256: \`${{ steps.promotion.outputs.sustained_benchmark_doc_sha }}\`
 
           The nine files attached to this release are the same files extracted from the accepted Actions Artifact; the publish job verifies the Artifact ZIP digest, \`SHA256SUMS\`, package IDs, versions, APK v2 signer, 16 KiB alignment, edition isolation, AAB signatures, and third-party license hashes before upload.
 
@@ -1063,7 +1191,7 @@ jobs:
           - **Full · HY-MT2 Q4 Experimental**: PP-OCRv6-small OCR with the HY-MT2 Q4 backend. This edition and model integration are explicitly **Experimental**; model weights are downloaded at runtime.
           - **Online · BYOK API**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. OCR text is sent only to the service selected by the user after explicit data-flow consent.
 
-          Lite keeps \`com.screentranslation.app\`; Full and Online use \`.full\` and \`.online\`. The supported device baseline is Android 16 on Xiaomi 15 Pro / current HyperOS. Long-run full-screen endurance and sustained PP-OCRv6 power/thermal measurements remain tracked for v2.1.0.
+          Lite keeps \`com.screentranslation.app\`; Full and Online use \`.full\` and \`.online\`. The supported device baseline is Android 16 on Xiaomi 15 Pro / current HyperOS. This release binds the signed region/full-screen endurance, PP-OCRv6 sustained-resource, lifecycle, and exact-APK evidence above; full-screen incremental overlay remains Experimental and region mode remains the default rollback path.
           NOTES
 
           release_id=''
@@ -1152,11 +1280,19 @@ jobs:
              "${{ steps.promotion.outputs.tag_commit }}" ]]
           [[ "$(git rev-parse "refs/tags/$tag^{commit}")" == \
              "${{ steps.promotion.outputs.tag_commit }}" ]]
-          issue_json="$(gh api "repos/$GITHUB_REPOSITORY/issues/47")"
-          jq -e \
-            '.state == "closed" and
-             ([.labels[].name] | index("status:needs-verification") | not)' \
-            <<<"$issue_json" >/dev/null
+          IFS=',' read -r -a accepted_issue_numbers \
+            <<<"${{ steps.promotion.outputs.accepted_issues }}"
+          for issue_number in "${accepted_issue_numbers[@]}"; do
+            issue_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number"
+            )"
+            jq -e \
+              --arg milestone "${{ inputs.release_tag }}" \
+              '.state == "closed" and
+               .milestone.title == $milestone and
+               ([.labels[].name] | index("status:needs-verification") | not)' \
+              <<<"$issue_json" >/dev/null
+          done
           current_comment_body="$(
             gh api \
               "repos/$GITHUB_REPOSITORY/issues/comments/${{ steps.promotion.outputs.comment_id }}" \

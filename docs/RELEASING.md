@@ -95,10 +95,10 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/ap
 source SHA 的 30 天签名 acceptance Artifact。下载并验证其中的 `SHA256SUMS`，随后使用
 三份**同一 Artifact 内的 APK**完成 `docs/DEVICE_TEST.md` 真机矩阵。
 
-验收通过后，按 `docs/DEVICE_TEST.md` 的固定 ASCII 字段格式在 Issue #47 添加
-`DEVICE_ACCEPTANCE_PASS` 评论；评论必须绑定 build run ID、source SHA、目标设备/ROM 和
-精确机型/ROM build token，以及三份 APK SHA-256。移除 `status:needs-verification` 并关闭
-Issue #47。
+验收通过后，按 `docs/DEVICE_TEST.md` 的固定 ASCII 字段格式在本版本任一验收 issue 添加
+`DEVICE_ACCEPTANCE_PASS` 评论；评论必须绑定 schema、全部 `accepted_issues`、build run
+ID、source SHA、目标设备/ROM、三份 APK SHA-256、最低持续时间、温控/失败计数与报告
+SHA-256。移除这些 issues 的 `status:needs-verification` 并逐项关闭。
 
 ## 5. 创建发布标签
 
@@ -107,7 +107,7 @@ accepted run 的 source commit、当前 `origin/main` 与准备标记的 commit 
 ```bash
 git switch main
 git pull --ff-only
-VERSION=2.0.0
+VERSION=2.1.0
 git tag -a "v$VERSION" -m "ScreenTranslation v$VERSION"
 git push origin "v$VERSION"
 ```
@@ -124,8 +124,9 @@ git push origin "v$VERSION"
 再次在 Actions 手动运行 `Signed release and acceptance`，选择 `operation=publish` 并填写：
 
 - `acceptance_run_id`：完成真机验收的 `operation=build` run ID；
-- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.0.0`；
-- `device_evidence_comment`：Issue #47 中 `DEVICE_ACCEPTANCE_PASS` 评论的完整 URL。
+- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.1.0`；
+- `device_evidence_comment`：本版本任一 accepted issue 中 `DEVICE_ACCEPTANCE_PASS`
+  评论的完整 URL。
 
 promotion job 采用 fail-closed 顺序：
 
@@ -133,9 +134,11 @@ promotion job 采用 fail-closed 顺序：
 2. 要求 tag 名匹配 Gradle `versionName`，tag 为 annotated/signed object；
 3. 核验 accepted run 来自本仓库 release workflow 的成功 `workflow_dispatch`，并取得唯一、
    未过期、具有 SHA-256 digest 的 acceptance Artifact；
-4. 要求 Issue #47 已关闭、`status:needs-verification` 已移除，证据评论来自仓库所有者或
-   协作者，时间晚于 accepted run 且早于 Issue 关闭；评论须一次写定且所有必需字段唯一，
-   promotion 会冻结正文 SHA-256 并在公开前再次核对；
+4. 从证据评论解析唯一、无重复的 `accepted_issues`；要求评论所在 issue 属于该集合，
+   每项均已关闭、milestone 与 release tag 相同且 `status:needs-verification` 已移除；证据
+   评论来自仓库所有者或协作者，时间晚于 accepted run 且早于每项关闭；评论须一次写定，
+   最低 15 分钟区域/全屏时长、Thermal status、失败计数、报告哈希与仓库内持续基准文档
+   哈希全部通过后，promotion 冻结正文 SHA-256 并在公开前再次核对；
 5. 下载 Artifact ZIP 并核对 GitHub digest，要求 ZIP entry 精确等于预期九个平面文件，
    拒绝额外/缺失/嵌套路径和符号链接，随后执行 `sha256sum -c SHA256SUMS`；
 6. 重新核验三 APK 的包名、版本、targetSdk 36、应用标签、非 debuggable、仅 ARM64、
@@ -163,7 +166,7 @@ promotion job 采用 fail-closed 顺序：
 维护者从 GitHub release 重新下载产物：
 
 ```bash
-VERSION=2.0.0
+VERSION=2.1.0
 sha256sum -c SHA256SUMS
 apksigner verify --verbose --print-certs "ScreenTranslation-$VERSION-lite-bergamot.apk"
 apksigner verify --verbose --print-certs \
@@ -173,7 +176,7 @@ apksigner verify --verbose --print-certs \
 ```
 
 核对公开 Release 九个资产的名称、字节数与 SHA-256 均匹配 accepted Artifact；检查
-Release notes 中的 source commit、build run、Artifact digest、Issue #47 证据 URL、许可、
+Release notes 中的 source commit、build run、Artifact digest、accepted issues 证据 URL、许可、
 隐私链接和已知问题。由于 promotion 上传的是已验收的同一组文件，无需用重构建产物重复
 替代原验收结论。
 

@@ -2,7 +2,7 @@
 
 > 状态：BYOK 单链路已实现；托管 Hy-MT2 provider 已在发布前移除
 >
-> 发布基线：v2.0.0 Online edition
+> 发布基线：v2.1.0 Online edition
 >
 > 目标设备：Android 16 / Xiaomi 15 Pro / 最新 HyperOS
 

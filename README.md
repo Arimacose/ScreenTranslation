@@ -2,14 +2,14 @@
 
 **简体中文** | [English](README.en.md)
 
-> v2.0.0 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
+> v2.1.0 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
 > Monet 动态取色的 Material 3。参见 [UI 风格设计与边界](docs/UI_STYLES.md)。
 
 ![Apple、MIUIX 与 Material 3 静态设计预览](docs/assets/ui-style-comparison.png)
 
 面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面；默认只裁剪用户框选区域，Experimental 模式则对全屏变化分块增量识别。在本机完成 OCR 后，应用按所选 edition 进行端侧或在线翻译并用悬浮层显示结果。
 
-> 项目状态：面向单一设备/ROM 基线的 `v2.0.0`。运行基线为 Android 16 / API 36，`minSdk` 与
+> 项目状态：面向单一设备/ROM 基线的 `v2.1.0`。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
@@ -19,9 +19,9 @@
 
 该动画由 [`scripts/generate_demo_preview.py`](scripts/generate_demo_preview.py)
 从仓库当前 UI 规则确定性生成，用于展示交互目标，**不是真机录屏**。历史签名
-Release 证据与最终 v2.0.0 真机门禁清单位于
+Release 证据与最终 v2.1.0 真机门禁清单位于
 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)。最终候选由带 source SHA 的签名
-acceptance Artifact 固定，真机结果写入 Issue #47，并由发布工作流把同一组字节原样提升到
+acceptance Artifact 固定，持续识别结果写入 Issues #38/#39，并由发布工作流把同一组字节原样提升到
 GitHub Release。
 
 ## 功能
@@ -29,7 +29,9 @@ GitHub Release。
 - 用系统 `MediaProjection` 授权捕获屏幕，不使用无障碍服务。
 - 可拖拽框选识别区域，并可调节采样间隔。
 - 保留“框选区域”为默认模式；新增 **全屏增量覆盖（Experimental）**：按 `3×6`
-  分块检测画面变化，只对脏块 OCR，跨帧跟踪文字框，并把译文直接覆盖在对应原文上方。
+  分块检测画面变化；直接从 `Image.Plane` 计算亮度签名，静态帧在构造 Bitmap 前退出；
+  只对脏块 OCR，跨帧跟踪文字框，并把译文直接覆盖在对应原文上方。标签会避开系统
+  安全区、控制条和其他译文，找不到合法空位时不叠放。
 - 静态画面自动降低采样频率，检测到变化后恢复用户设置的活跃频率。
 - 翻译前以确定性规则恢复高置信独立块句尾、段落句界和缺失右侧成对标点；单换行视觉折行保持原样，URL、邮箱、日期、金额、小数和版本号先保护后逐字节恢复。
 - 结果面板可分别复制原文和译文；模型管理页可查看状态、大小、固定版本，直接发起当前语言模型准备，并删除下载权重。准备成功后主页面按钮变为灰色不可点击的“已就绪”；界面重建时会先复核当前应用私有模型/配置 identity，冷进程与服务启动仍执行完整固定 SHA-256 校验，切换语言对或配置后恢复准备动作。
@@ -161,10 +163,12 @@ llama-android/                        # JNI/Kotlin Android 推理封装
 third_party/llama.cpp/                # 固定提交的 Git submodule
 ```
 
-设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，全屏增量算法与未验收
+设计细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，全屏增量算法与签名门禁
 门禁见 [`docs/FULL_SCREEN_INCREMENTAL_DESIGN.md`](docs/FULL_SCREEN_INCREMENTAL_DESIGN.md)，真机验收见
 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)，PP-OCRv6 与候选翻译模型的可复现
 数据见 [`docs/MODEL_BENCHMARK_2026-07-28.md`](docs/MODEL_BENCHMARK_2026-07-28.md)，
+持续识别 A/B、温控和内存证据见
+[`docs/PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md`](docs/PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)，
 Bergamot Android 核心 PoC 见
 [`docs/BERGAMOT_ANDROID_POC_2026-07-29.md`](docs/BERGAMOT_ANDROID_POC_2026-07-29.md)，
 多语言翻译质量对比见
@@ -366,7 +370,7 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。
 - 停止服务时释放 `VirtualDisplay`、`MediaProjection`、`ImageReader`、OCR/翻译客户端和悬浮窗。
 - 项目代码不上传屏幕图像；Online 之外的生产 edition 不上传 OCR 原文或译文。
-- v2.0.0 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
+- v2.1.0 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
   `benchmark` build type。完整数据流见 [`PRIVACY.md`](PRIVACY.md)。
 - Online edition 的数据发送确认、密钥存储和请求边界见
   [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。

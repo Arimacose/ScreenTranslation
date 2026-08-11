@@ -99,7 +99,9 @@ class ImageTileSignatureExtractorTest {
         val rowStride = width * 4
         assertThrows(IllegalArgumentException::class.java) {
             ImageTileSignatureExtractor.extractRgbaPlane(
-                buffer = ByteBuffer.allocate(rowStride * height - 2),
+                // Missing only the final alpha byte used by the bulk row copy.
+                // RGB component bounds alone would not catch this truncation.
+                buffer = ByteBuffer.allocate(rowStride * height - 1),
                 imageWidth = width,
                 imageHeight = height,
                 rowStride = rowStride,
