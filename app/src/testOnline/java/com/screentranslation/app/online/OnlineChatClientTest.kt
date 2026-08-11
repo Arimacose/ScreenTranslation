@@ -98,7 +98,7 @@ class OnlineChatClientTest {
     }
 
     @Test
-    fun `zero-delay retry starts only after the prior response body closes`() {
+    fun `429 retry starts after the prior response closes and succeeds once`() {
         val priorBodyClosed = AtomicBoolean(false)
         val retryObservedPriorBodyClosed = AtomicBoolean(false)
         val factory = RecordingCallFactory { callIndex ->
@@ -125,6 +125,38 @@ class OnlineChatClientTest {
                 """{"choices":[{"message":{"content":"重试成功"}}]}""",
             )
             assertEquals("重试成功", checkNotNull(result).getOrThrow())
+            assertEquals(2, factory.calls.size)
+        } finally {
+            scheduler.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `second 429 settles as rate limit without a third attempt`() {
+        val factory = RecordingCallFactory()
+        val scheduler = ImmediateScheduledExecutor()
+        try {
+            val client = client(factory, scheduler)
+            var result: Result<String>? = null
+            client.translate("retry twice") { result = it }
+
+            factory.calls.single().respond(
+                code = 429,
+                body = "{}".toResponseBody("application/json".toMediaType()),
+                headers = mapOf("Retry-After" to "0"),
+            )
+            assertEquals(2, factory.calls.size)
+
+            factory.calls[1].respond(
+                code = 429,
+                body = "{}".toResponseBody("application/json".toMediaType()),
+                headers = mapOf("Retry-After" to "0"),
+            )
+
+            val failure = checkNotNull(result).exceptionOrNull() as OnlineTranslationException
+            assertEquals(OnlineFailureCategory.RATE_LIMIT, failure.category)
+            assertEquals(429, failure.statusCode)
+            assertEquals(2, factory.calls.size)
         } finally {
             scheduler.shutdownNow()
         }

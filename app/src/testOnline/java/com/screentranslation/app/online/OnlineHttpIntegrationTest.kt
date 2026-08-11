@@ -1,9 +1,7 @@
 package com.screentranslation.app.online
 
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -17,7 +15,6 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class OnlineHttpIntegrationTest {
@@ -76,42 +73,6 @@ class OnlineHttpIntegrationTest {
         assertEquals(OnlineFailureCategory.CREDENTIALS, failure.category)
         assertTrue(failure.message.orEmpty().contains("API Key"))
         assertEquals(1, server.requestCount)
-    }
-
-    @Test
-    fun `429 honors retry-after and succeeds on the one bounded retry`() {
-        val dispatchCount = AtomicInteger(0)
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse =
-                when (dispatchCount.getAndIncrement()) {
-                    0 -> MockResponse.Builder()
-                        .code(429)
-                        .addHeader("Retry-After", "0")
-                        .body("{}")
-                        .build()
-                    1 -> MockResponse(
-                        code = 200,
-                        body = """{"choices":[{"message":{"content":"重试后的译文"}}]}""",
-                    )
-                    else -> MockResponse(code = 500, body = "unexpected extra request")
-                }
-        }
-
-        val result = translateAndAwait()
-
-        val translation = result.fold(
-            onSuccess = { it },
-            onFailure = { error ->
-                throw AssertionError(
-                    "429 retry failed: dispatchCount=${dispatchCount.get()}, " +
-                        "requestCount=${server.requestCount}, protocols=${server.protocols}",
-                    error,
-                )
-            },
-        )
-        assertEquals("重试后的译文", translation)
-        assertEquals(2, dispatchCount.get())
-        assertEquals(2, server.requestCount)
     }
 
     @Test
