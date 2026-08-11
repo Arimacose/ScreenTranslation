@@ -1,0 +1,3 @@
+package com.screentranslation.app.capture
+
+internal object CapturePerformanceTelemetryBaseline
