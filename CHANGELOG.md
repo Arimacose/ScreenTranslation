@@ -5,6 +5,42 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-08-12
+
+### Added
+
+- 新增可重复的 Android 16 持续识别采集器，按固定间隔记录 PID、PSS/RSS/VmHWM、
+  CPU ticks、电池/thermal 状态、服务/MediaProjection/虚拟显示连续性，以及帧、脏块、
+  Bitmap、OCR、翻译和自适应间隔计数；采集器默认不保存 OCR 文本或屏幕内容，落盘
+  Logcat 只保留目标 PID 或明确包含目标包名的行。
+- 新增独立动态屏幕夹具，按固定周期切换大块、小块和 `BATON/BATMAN` 短字幕，用于验证
+  小范围变化检出、旧译文移除、稳定门、缓存和标签位置。
+- 新增全屏译文标签碰撞规避：依次避开状态栏/导航安全区、顶部控制条和已经放置的标签，
+  优先显示在原文上方；找不到合法空位时跳过该标签，避免叠字遮挡。
+
+### Changed
+
+- 全屏增量签名从 Bitmap-first 改为直接读取 RGBA `Image.Plane`：按 stride 批量抽取
+  1/4 亮度缩略图，先完成脏块判断，仅在出现脏块或计划复核块时才构造整屏 Bitmap。
+- 5 分钟同机 A/B 中，新的静态路径把位图构造次数/字节减少 83.58%，单核等效 CPU
+  降低 15.01%，PSS 峰值降低 12.52%，RSS 中位数降低 15.48%；117 个静态帧合计避免
+  约 2.01 GiB 位图分配。完整边界见
+  [`docs/PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md`](docs/PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)。
+- 签名 Artifact promotion 的设备证据从固定 Issue #47 扩展为版本无关的验收 schema：
+  证据评论列出全部 accepted issues，工作流逐个验证已关闭、里程碑等于发布版本、
+  验收时长/温控/失败计数与报告 SHA-256 字段，并继续冻结评论正文哈希。
+
+### Verification
+
+- 固定 10 张 PP-OCRv6 夹具保持 9/10 exact、CER `0.0617%`、WER `0.2809%`；已知唯一
+  差异仍为 Unicode em dash 归一化成 ASCII hyphen。
+- Benchmark 预验收在小米 15 Pro / Android 16 / HyperOS
+  `OS3.0.304.0.WOBCNXM` 上完成 5 分钟 A/B；两轮均为单一 PID、21/21 服务/投影/虚拟
+  显示连续、Thermal status 0、0 OCR/处理错误、0 crash/ANR/OOM。
+- 最终三 edition 签名 Release 的区域模式与全屏模式各 15 分钟耐久、生命周期恢复和
+  精确 APK 哈希由 Issues #38/#39 的最终证据评论与 Release notes 绑定；为保持
+  immutable promotion，最终真机数据不会在验收后反向移动已固定的 source commit。
+
 ## [2.0.0] - 2026-08-11
 
 ### Added
@@ -218,7 +254,8 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/Arimacose/ScreenTranslation/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.1...v2.0.0
 [0.3.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.2.1...v0.3.0

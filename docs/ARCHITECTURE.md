@@ -200,11 +200,17 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 Experimental 全屏模式使用另外两层：
 
 - **译文层**覆盖整个显示区域但不可触摸；每个标签宽度参考 OCR 原文框，测量后优先放在
-  原文框上方，顶部空间不足时才放到下方。
+  原文框上方，顶部空间不足时才放到下方；放置器依次避开状态栏/导航安全区、顶部
+  控制条和已有译文标签，找不到合法空位时跳过当前标签。
 - **控制条**位于顶部、可触摸，只承担状态和停止操作，不拦截其余目标应用输入。
 - 两层设置 `FLAG_SECURE`，设计目标是让用户看到译文但不让本应用的后续
-  MediaProjection 帧再次捕获这些标签，避免 OCR/翻译递归。该行为在目标 HyperOS
-  签名 Release 上尚待 Issue #38 验收，因此区域模式继续作为默认与回滚路径。
+  MediaProjection 帧再次捕获这些标签，避免 OCR/翻译递归。v2.1.0 的最终签名结果由
+  Issue #38 的 immutable Artifact 证据绑定；区域模式继续作为默认与回滚路径。
+
+全屏脏块签名先直接读取 `Image.Plane` 的 RGBA stride，并生成 1/4 亮度缩略图；排除
+悬浮层的矩形在该阶段写为白色。只有存在自然脏块或计划强制复核块时才把原始 `Image`
+转成 Bitmap，静态帧直接关闭，避免为了证明“无变化”仍分配整屏像素。5 分钟同机 A/B
+见 [`PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md`](PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)。
 
 HyperOS 的“显示在其他应用上层”属于用户可撤销的特殊权限。每次添加窗口前都应重新检查，不把过去的授权状态当成永久状态。
 
@@ -271,7 +277,7 @@ stateDiagram-v2
 
 - 不写入截图，不记录 OCR/译文历史，不上传截图。Online 仅在用户确认后发送 OCR 文本。
 - 翻译模型按需下载；项目代码不把屏幕图像、OCR 原文或译文发送到项目服务器。
-- v2.0.0 Lite/Full/Online Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
+- v2.1.0 Lite/Full/Online Release 不含 ML Kit OCR 或 ML Kit Translate；ML Kit 只在
   `benchmark` 变体中用于基线测量。各 edition 的数据边界见
   [`PRIVACY.md`](../PRIVACY.md)。
 - `FLAG_SECURE`、DRM、工作资料策略保护的窗口可能是黑屏或空白，视为系统拒绝捕获，而不是 OCR 故障。

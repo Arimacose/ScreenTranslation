@@ -32,6 +32,7 @@ class FrameProcessor(
     private val onOriginalRecognized: (String) -> Unit = {},
     private val onTranslation: (FrameTranslation) -> Unit,
     private val onError: (Throwable) -> Unit = {},
+    private val performanceTelemetry: CapturePerformanceTelemetry? = null,
     elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : FramePipeline {
     data class FrameTranslation(
@@ -55,8 +56,10 @@ class FrameProcessor(
                             translatedText = protected?.restore(translated) ?: translated,
                         ),
                     )
+                    performanceTelemetry?.recordTranslationPublished()
                 },
                 onError = onError,
+                performanceTelemetry = performanceTelemetry,
             )
         } else {
             null
@@ -70,6 +73,7 @@ class FrameProcessor(
             eldest: MutableMap.MutableEntry<String, ProtectedTextCodec.ProtectedText>,
         ): Boolean = size > WHOLE_REGION_PROTECTION_ENTRIES
     }
+    private var enabled = true
 
     /**
      * Most of a UI is unchanged between frames, so the same block text is
@@ -86,6 +90,9 @@ class FrameProcessor(
     }
 
     override fun setEnabled(value: Boolean) {
+        if (enabled == value) return
+        enabled = value
+        performanceTelemetry?.recordEnabled(value)
         gate.setEnabled(value)
         if (!value) {
             wholeRegionCoordinator?.reset()
@@ -96,6 +103,7 @@ class FrameProcessor(
     }
 
     override fun resetStability() {
+        performanceTelemetry?.recordLifecycleReset()
         gate.invalidate()
         stableTextGate.reset()
         wholeRegionCoordinator?.reset()
@@ -118,12 +126,15 @@ class FrameProcessor(
             if (!gate.isClosed) onError(error)
             return
         } ?: return
+        performanceTelemetry?.recordFrameAvailable()
 
         val frameGeneration = gate.tryAcquire()
         if (frameGeneration == null) {
+            performanceTelemetry?.recordFrameRejected()
             image.close()
             return
         }
+        performanceTelemetry?.recordFrameAdmitted()
 
         val bitmap = try {
             image.use {
@@ -138,12 +149,18 @@ class FrameProcessor(
             onError(error)
             return
         }
+        performanceTelemetry?.recordBitmapMaterialized(bitmap.allocationByteCount.toLong())
 
         recognize(bitmap, frameGeneration)
     }
 
     private fun recognize(bitmap: Bitmap, frameGeneration: Long) {
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.REGION,
+            bitmap.width.toLong() * bitmap.height,
+        )
         ocrEngine.recognize(bitmap) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             bitmap.recycleSafely()
 
             if (!gate.isCurrent(frameGeneration)) {
@@ -251,6 +268,7 @@ class FrameProcessor(
 
         parts.forEachIndexed { index, part ->
             cached(part)?.let { hit ->
+                performanceTelemetry?.recordTranslationCacheHit()
                 translated[index] = hit
                 if (remaining.decrementAndGet() == 0) {
                     settle { publish(originalText, translationPlan, translated, frameGeneration) }
@@ -259,7 +277,11 @@ class FrameProcessor(
             }
 
             val protected = ProtectedTextCodec.protect(part)
+            val timing = performanceTelemetry?.startTranslation()
             translationEngine.translate(protected.encoded) { translation ->
+                timing?.let {
+                    performanceTelemetry?.finishTranslation(it, translation.isSuccess)
+                }
                 translation.fold(
                     onSuccess = { text ->
                         val restored = protected.restore(text)
@@ -286,6 +308,7 @@ class FrameProcessor(
         frameGeneration: Long,
     ) {
         if (!gate.isCurrent(frameGeneration)) return
+        performanceTelemetry?.recordTranslationPublished()
         onTranslation(
             FrameTranslation(
                 originalText = originalText,

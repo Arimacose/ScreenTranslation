@@ -53,6 +53,7 @@ internal class TranslationCoordinator(
     private val scheduler: TranslationTaskScheduler = ExecutorTranslationTaskScheduler(),
     private val onTranslation: (originalText: String, translatedText: String) -> Unit,
     private val onError: (Throwable) -> Unit,
+    private val performanceTelemetry: CapturePerformanceTelemetry? = null,
 ) : AutoCloseable {
     private data class Pending(
         val generation: Long,
@@ -67,6 +68,7 @@ internal class TranslationCoordinator(
         val cacheKey: String,
     ) {
         var call: TranslationCall? = null
+        var performanceToken: CapturePerformanceTelemetry.TimingToken? = null
     }
 
     private val lock = Any()
@@ -163,6 +165,7 @@ internal class TranslationCoordinator(
         }
 
         cacheHit?.let { (next, translated) ->
+            performanceTelemetry?.recordTranslationCacheHit()
             val publish = synchronized(lock) {
                 !closed && next.generation == generation && pending == null
             }
@@ -171,6 +174,7 @@ internal class TranslationCoordinator(
         }
 
         val request = checkNotNull(slot)
+        request.performanceToken = performanceTelemetry?.startTranslation()
         val call = backend.translate(request.text) { result ->
             complete(request, result)
         }
@@ -192,6 +196,9 @@ internal class TranslationCoordinator(
         synchronized(lock) {
             if (active !== request) return
             active = null
+            request.performanceToken?.let {
+                performanceTelemetry?.finishTranslation(it, result.isSuccess)
+            }
 
             result.fold(
                 onSuccess = { translated ->
@@ -217,6 +224,7 @@ internal class TranslationCoordinator(
     }
 
     override fun close() {
+        var unfinishedToken: CapturePerformanceTelemetry.TimingToken? = null
         synchronized(lock) {
             if (closed) return
             closed = true
@@ -224,10 +232,12 @@ internal class TranslationCoordinator(
             pending = null
             scheduled?.cancel()
             scheduled = null
+            unfinishedToken = active?.performanceToken
             active?.call?.cancel()
             active = null
             cache.clear()
         }
+        unfinishedToken?.let { performanceTelemetry?.finishTranslation(it, successful = false) }
         scheduler.close()
     }
 

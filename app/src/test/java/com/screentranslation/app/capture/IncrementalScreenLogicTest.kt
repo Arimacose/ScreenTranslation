@@ -2,6 +2,7 @@ package com.screentranslation.app.capture
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -282,11 +283,11 @@ class IncrementalScreenLogicTest {
     @Test
     fun `tile differ reports natural and forced tiles separately`() {
         val differ = TileSignatureDiffer()
-        val baseline = listOf(IntArray(100) { 120 }, IntArray(100) { 80 })
+        val baseline = listOf(ByteArray(100) { 120 }, ByteArray(100) { 80 })
         assertEquals(setOf(0, 1), differ.compare(baseline).natural)
 
         val changed = baseline.map { it.clone() }
-        repeat(10) { changed[1][it] = 10 }
+        repeat(10) { changed[1][it] = 10.toByte() }
         val result = differ.compare(changed, forced = setOf(0))
 
         assertEquals(setOf(1), result.natural)
@@ -296,12 +297,12 @@ class IncrementalScreenLogicTest {
     @Test
     fun `overlay mask changes suppress only touched tiles and keep forced verification`() {
         val differ = TileSignatureDiffer()
-        val baseline = listOf(IntArray(100) { 120 }, IntArray(100) { 80 })
+        val baseline = listOf(ByteArray(100) { 120 }, ByteArray(100) { 80 })
         differ.compare(baseline)
         assertTrue(differ.hasBaseline)
 
         val masked = baseline.map { it.clone() }
-        repeat(20) { masked[0][it] = 255 }
+        repeat(20) { masked[0][it] = 255.toByte() }
         val rebased = differ.compare(
             current = masked,
             forced = setOf(1),
@@ -316,12 +317,12 @@ class IncrementalScreenLogicTest {
     @Test
     fun `real changes outside a changed overlay mask remain visible`() {
         val differ = TileSignatureDiffer()
-        val baseline = listOf(IntArray(100) { 120 }, IntArray(100) { 80 })
+        val baseline = listOf(ByteArray(100) { 120 }, ByteArray(100) { 80 })
         differ.compare(baseline)
         val changed = baseline.map { it.clone() }
         repeat(20) {
-            changed[0][it] = 255
-            changed[1][it] = 10
+            changed[0][it] = 255.toByte()
+            changed[1][it] = 10.toByte()
         }
 
         val result = differ.compare(changed, suppressedNaturalTiles = setOf(0))
@@ -430,6 +431,58 @@ class IncrementalScreenLogicTest {
         )
 
         assertEquals(83, placement.top)
+    }
+
+    @Test
+    fun `top label moves below the control bar and remains inside the safe area`() {
+        val placement = resolveNonOverlappingTranslationPlacement(
+            bounds = bounds(0.1f, 0.02f, 0.4f, 0.08f),
+            screenWidth = 1_000,
+            screenHeight = 1_000,
+            labelHeight = 80,
+            minimumWidth = 96,
+            maximumWidth = 720,
+            gap = 3,
+            minimumTop = 100,
+            maximumBottom = 950,
+            occupied = listOf(TranslationObstacle(0, 100, 900, 200)),
+        )
+
+        assertEquals(203, placement?.top)
+    }
+
+    @Test
+    fun `later translation label searches upward instead of overlapping`() {
+        val placement = resolveNonOverlappingTranslationPlacement(
+            bounds = bounds(0.1f, 0.52f, 0.4f, 0.60f),
+            screenWidth = 1_000,
+            screenHeight = 1_000,
+            labelHeight = 80,
+            minimumWidth = 96,
+            maximumWidth = 720,
+            gap = 3,
+            occupied = listOf(TranslationObstacle(100, 417, 400, 497)),
+        )
+
+        assertEquals(334, placement?.top)
+    }
+
+    @Test
+    fun `label is omitted when every safe slot is occupied`() {
+        val placement = resolveNonOverlappingTranslationPlacement(
+            bounds = bounds(0.1f, 0.5f, 0.4f, 0.6f),
+            screenWidth = 1_000,
+            screenHeight = 1_000,
+            labelHeight = 80,
+            minimumWidth = 96,
+            maximumWidth = 720,
+            gap = 3,
+            minimumTop = 100,
+            maximumBottom = 900,
+            occupied = listOf(TranslationObstacle(0, 100, 1_000, 900)),
+        )
+
+        assertNull(placement)
     }
 
     private fun block(

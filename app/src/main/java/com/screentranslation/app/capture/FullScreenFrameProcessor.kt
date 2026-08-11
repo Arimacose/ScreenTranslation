@@ -30,6 +30,7 @@ class FullScreenFrameProcessor(
     frameIntervalMs: Long,
     private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
     private val onError: (Throwable) -> Unit = {},
+    private val performanceTelemetry: CapturePerformanceTelemetry? = null,
     elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : FramePipeline {
     data class TranslatedScreenBlock(
@@ -40,6 +41,12 @@ class FullScreenFrameProcessor(
     )
 
     private data class TranslationValue(val sourceText: String, val translatedText: String)
+
+    private data class MaterializedFrame(
+        val bitmap: Bitmap,
+        val tiles: List<PixelTile>,
+        val changes: TileChangeSet,
+    )
 
     private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
     private val adaptiveInterval = AdaptiveFrameInterval(frameIntervalMs)
@@ -58,14 +65,17 @@ class FullScreenFrameProcessor(
             synchronized(translations) {
                 translations[id] = TranslationValue(source, translation)
             }
+            performanceTelemetry?.recordTranslationPublished()
             publishBlocks()
         },
         onError = onError,
+        performanceTelemetry = performanceTelemetry,
     )
 
     override fun setEnabled(value: Boolean) {
         if (enabled == value) return
         enabled = value
+        performanceTelemetry?.recordEnabled(value)
         gate.setEnabled(value)
         if (value) {
             translationQueue.resume()
@@ -76,6 +86,7 @@ class FullScreenFrameProcessor(
     }
 
     override fun resetStability() {
+        performanceTelemetry?.recordLifecycleReset()
         gate.invalidate()
         clearTrackingState()
     }
@@ -105,64 +116,81 @@ class FullScreenFrameProcessor(
             if (!gate.isClosed) onError(error)
             return
         } ?: return
+        performanceTelemetry?.recordFrameAvailable()
 
         val generation = gate.tryAcquire()
         if (generation == null) {
+            performanceTelemetry?.recordFrameRejected()
             image.close()
             return
         }
+        performanceTelemetry?.recordFrameAdmitted()
 
-        val bitmap = try {
-            image.use {
-                BitmapExtractor.extract(
-                    image = it,
-                    normalizedRegion = normalizedRegion,
-                    normalizedExclusions = normalizedExclusions,
-                )
+        val materialized = try {
+            val signatureStartedAt = System.nanoTime()
+            val signatureFrame = ImageTileSignatureExtractor.extract(
+                image = image,
+                normalizedRegion = normalizedRegion,
+                normalizedExclusions = normalizedExclusions,
+            )
+            val exclusionChangedTiles = changedExclusionTiles(
+                previous = lastExclusions,
+                current = normalizedExclusions,
+            )
+            val hadSignatureBaseline = signatureDiffer.hasBaseline
+            val changes = signatureDiffer.compare(
+                current = signatureFrame.signatures,
+                forced = verificationTiles,
+                // Adding/removing a label changes which samples are white.
+                // Ignore only tiles touched by changed mask rectangles;
+                // suppressing the whole frame can hide a target-app switch.
+                suppressedNaturalTiles = if (hadSignatureBaseline) {
+                    exclusionChangedTiles
+                } else {
+                    emptySet()
+                },
+            )
+            lastExclusions = normalizedExclusions.map(::RectF)
+            val nextIntervalMs = adaptiveInterval.recordChanged(changes.natural.isNotEmpty())
+            gate.setFrameIntervalMs(nextIntervalMs)
+            performanceTelemetry?.recordSignatureScan(
+                durationNanos = System.nanoTime() - signatureStartedAt,
+                naturalTileCount = changes.natural.size,
+                scheduledTileCount = changes.all.size,
+                intervalMs = nextIntervalMs,
+            )
+            if (changes.natural.isNotEmpty()) {
+                val visibleBlocks = blocksOutsideTiles(currentBlocks, changes.natural)
+                if (visibleBlocks.size != currentBlocks.size) {
+                    currentBlocks = visibleBlocks
+                    // A changed source must never retain its old translation while
+                    // OCR and translation for the replacement are still in flight.
+                    publishBlocks()
+                }
             }
+            if (changes.all.isEmpty()) {
+                performanceTelemetry?.recordBitmapSkipped(signatureFrame.avoidedBitmapBytes)
+                gate.release()
+                return
+            }
+            val bitmap = BitmapExtractor.extract(
+                image = image,
+                normalizedRegion = normalizedRegion,
+                normalizedExclusions = normalizedExclusions,
+            )
+            performanceTelemetry?.recordBitmapMaterialized(bitmap.allocationByteCount.toLong())
+            MaterializedFrame(bitmap, signatureFrame.tiles, changes)
         } catch (error: Throwable) {
             gate.release()
             onError(error)
             return
+        } finally {
+            image.close()
         }
 
-        val tiles = ScreenTileGrid.create(bitmap.width, bitmap.height)
-        val signatures = tileSignatures(bitmap, tiles)
-        val exclusionChangedTiles = changedExclusionTiles(
-            previous = lastExclusions,
-            current = normalizedExclusions,
-        )
-        val changes = signatureDiffer.compare(
-            current = signatures,
-            forced = verificationTiles,
-            // Adding/removing a label changes which pixels are painted white.
-            // Ignore only tiles touched by changed mask rectangles; suppressing
-            // the whole frame can hide a simultaneous target-app switch.
-            suppressedNaturalTiles = if (signatureDiffer.hasBaseline) {
-                exclusionChangedTiles
-            } else {
-                emptySet()
-            },
-        )
-        lastExclusions = normalizedExclusions.map(::RectF)
-        gate.setFrameIntervalMs(
-            adaptiveInterval.recordChanged(changes.natural.isNotEmpty()),
-        )
-        if (changes.natural.isNotEmpty()) {
-            val visibleBlocks = blocksOutsideTiles(currentBlocks, changes.natural)
-            if (visibleBlocks.size != currentBlocks.size) {
-                currentBlocks = visibleBlocks
-                // A changed source must never retain its old translation while
-                // OCR and translation for the replacement are still in flight.
-                publishBlocks()
-            }
-        }
-        if (changes.all.isEmpty()) {
-            bitmap.recycleSafely()
-            gate.release()
-            return
-        }
-
+        val bitmap = materialized.bitmap
+        val tiles = materialized.tiles
+        val changes = materialized.changes
         val tileIndices = changes.all.sorted()
         if (tileIndices.size >= FULL_FRAME_OCR_TILE_THRESHOLD) {
             recognizeWholeFrame(bitmap, tiles, naturallyChanged = changes.natural, generation)
@@ -184,7 +212,12 @@ class FullScreenFrameProcessor(
         naturallyChanged: Set<Int>,
         generation: Long,
     ) {
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.FULL_FRAME,
+            bitmap.width.toLong() * bitmap.height,
+        )
         ocrEngine.recognize(bitmap) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             if (!gate.isCurrent(generation)) {
                 bitmap.recycleSafely()
                 gate.release()
@@ -260,7 +293,12 @@ class FullScreenFrameProcessor(
             cropTile.width,
             cropTile.height,
         )
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.TILE,
+            crop.width.toLong() * crop.height,
+        )
         ocrEngine.recognize(crop) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             crop.recycleSafely()
             if (!gate.isCurrent(generation)) {
                 bitmap.recycleSafely()
@@ -356,36 +394,6 @@ class FullScreenFrameProcessor(
         )
     }
 
-    private fun tileSignatures(bitmap: Bitmap, tiles: List<PixelTile>): List<IntArray> {
-        val thumbnailWidth = max(1, bitmap.width / SIGNATURE_SCALE_DIVISOR)
-        val thumbnailHeight = max(1, bitmap.height / SIGNATURE_SCALE_DIVISOR)
-        val thumbnail = Bitmap.createScaledBitmap(bitmap, thumbnailWidth, thumbnailHeight, true)
-        return try {
-            val pixels = IntArray(thumbnailWidth * thumbnailHeight)
-            thumbnail.getPixels(pixels, 0, thumbnailWidth, 0, 0, thumbnailWidth, thumbnailHeight)
-            tiles.map { tile ->
-                val left = tile.left * thumbnailWidth / bitmap.width
-                val top = tile.top * thumbnailHeight / bitmap.height
-                val right = max(left + 1, tile.right * thumbnailWidth / bitmap.width)
-                val bottom = max(top + 1, tile.bottom * thumbnailHeight / bitmap.height)
-                IntArray((right - left) * (bottom - top)).also { signature ->
-                    var output = 0
-                    for (y in top until bottom) {
-                        for (x in left until right) {
-                            val color = pixels[y * thumbnailWidth + x]
-                            val red = (color ushr 16) and 0xFF
-                            val green = (color ushr 8) and 0xFF
-                            val blue = color and 0xFF
-                            signature[output++] = (red * 77 + green * 150 + blue * 29) ushr 8
-                        }
-                    }
-                }
-            }
-        } finally {
-            if (thumbnail !== bitmap) thumbnail.recycleSafely()
-        }
-    }
-
     private fun expandedTile(tile: PixelTile, width: Int, height: Int): PixelTile {
         val margin = max(MIN_TILE_OVERLAP_PX, minOf(width, height) / 80)
         return tile.copy(
@@ -446,7 +454,6 @@ class FullScreenFrameProcessor(
     }
 
     private companion object {
-        private const val SIGNATURE_SCALE_DIVISOR = 4
         private const val MIN_TILE_OVERLAP_PX = 16
         private const val MAX_CHANGED_BLOCKS_PER_SCAN = 12
         private const val FULL_FRAME_OCR_TILE_THRESHOLD = 6
@@ -460,9 +467,15 @@ internal class BlockTranslationQueue(
     private val backend: TranslationBackend,
     private val onTranslation: (Long, String, String) -> Unit,
     private val onError: (Throwable) -> Unit,
+    private val performanceTelemetry: CapturePerformanceTelemetry? = null,
 ) : AutoCloseable {
     private data class Work(val id: Long, val text: String)
-    private data class Active(val token: Long, val work: Work, var call: TranslationCall)
+    private data class Active(
+        val token: Long,
+        val work: Work,
+        var call: TranslationCall,
+        var performanceToken: CapturePerformanceTelemetry.TimingToken? = null,
+    )
 
     private val pending = linkedMapOf<Long, Work>()
     private val cache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
@@ -532,11 +545,13 @@ internal class BlockTranslationQueue(
         }
         val cached = synchronized(cache) { cache[activeWork.work.text] }
         if (cached != null) {
+            performanceTelemetry?.recordTranslationCacheHit()
             complete(activeWork.token, Result.success(cached))
             return
         }
 
         val protected = ProtectedTextCodec.protect(activeWork.work.text)
+        activeWork.performanceToken = performanceTelemetry?.startTranslation()
         val call = backend.translate(protected.encoded) { result ->
             complete(activeWork.token, result.map(protected::restore))
         }
@@ -553,6 +568,9 @@ internal class BlockTranslationQueue(
         val work = synchronized(this) {
             val current = active?.takeIf { it.token == token } ?: return
             active = null
+            current.performanceToken?.let {
+                performanceTelemetry?.finishTranslation(it, result.isSuccess)
+            }
             current.work
         }
         result.fold(
@@ -568,13 +586,16 @@ internal class BlockTranslationQueue(
     }
 
     override fun close() {
+        var unfinishedToken: CapturePerformanceTelemetry.TimingToken? = null
         val call = synchronized(this) {
             if (closed) return
             closed = true
             pending.clear()
+            unfinishedToken = active?.performanceToken
             active?.call.also { active = null }
         }
         call?.cancel()
+        unfinishedToken?.let { performanceTelemetry?.finishTranslation(it, successful = false) }
         synchronized(cache) { cache.clear() }
     }
 }

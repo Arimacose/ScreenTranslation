@@ -9,14 +9,87 @@
 - `operation=build` 只接受当前 `origin/main`，执行三 edition Release/R8 构建、证书摘要、
   16 KiB 对齐、包名/版本、ABI、许可证与 SHA-256 校验；签名 APK/AAB、许可证和
   `SHA256SUMS` 作为 30 天 acceptance Artifact 保存；
-- `operation=publish` 接受已经通过真机矩阵的 build run ID、annotated tag 和 Issue #47
-  证据评论 URL。它核验 tag、当前 `main`、accepted run 与 Artifact SHA-256 全部指向
-  同一 commit，再从该 immutable Artifact 提取并复验九个文件；资产先进入 Draft Release，
-  公开前再次核验分支、tag、Issue 与不可编辑的证据正文。
+- `operation=publish` 接受已经通过真机矩阵的 build run ID、annotated tag 和一条
+  `DEVICE_ACCEPTANCE_PASS` 证据评论 URL。评论中的 `accepted_issues` 列出本版本全部
+  验收 issue；工作流逐个核验已关闭、里程碑等于 tag 版本且不再带
+  `status:needs-verification`。tag、当前 `main`、accepted run 与 Artifact SHA-256 必须
+  全部指向同一 commit；资产先进入 Draft Release，公开前再次核验分支、tag、issues
+  与不可编辑的证据正文。
 
 因此真机安装的三份 APK 与最终公开 APK 是同一组字节；推送 tag 本身不会触发重构建或
-换包。发布证据保存在 Issue #47 评论与 Release notes，源码文档保留可重复步骤和字段
+换包。发布证据保存在版本对应的 issue 评论与 Release notes，源码文档保留可重复步骤和字段
 约束，避免为了回写测试结论再次移动已经验收的 commit。
+
+## v2.1.0 持续识别最终签名验收矩阵（Issues #38/#39）
+
+### 候选与预验收边界
+
+- 基础版本：`versionCode=7`、`versionName=2.1.0`；三 edition 分别为
+  `2.1.0-lite`、`2.1.0-full`、`2.1.0-online`；
+- 全屏静态路径改为直接从 `Image.Plane` 计算亮度签名，没有脏块时在构造 Bitmap 前
+  退出；译文标签增加系统安全区、控制条和标签间碰撞规避；
+- 固定 10 张 PP-OCRv6 夹具保持 9/10 exact、CER `0.0617%`、WER `0.2809%`；
+- 5 分钟 Benchmark A/B 中，候选的位图构造次数/字节降低 83.58%，单核等效 CPU
+  降低 15.01%，PSS 峰值降低 12.52%，RSS 中位数降低 15.48%；两侧均为单一 PID、
+  Thermal status 0、0 OCR/处理错误、0 crash/ANR/OOM；
+- 预验收不是最终发布证明。最终门禁只能安装 `operation=build` 从最终 `main` 生成的
+  三份签名 Release APK，并把设备端 `base.apk` SHA-256 与 Artifact 中的
+  `SHA256SUMS` 逐字节核对。
+
+### 最终执行顺序
+
+1. 下载最终 signed acceptance Artifact，核对九个文件、`SHA256SUMS`、三 APK/AAB
+   版本、签名证书、16 KiB 对齐、包名、ABI 与 edition 隔离；
+2. 安装三份 APK 并做启动/模型就绪 smoke；Lite 作为持续识别基线，保留区域模式默认；
+3. 在固定动态夹具上运行**区域模式 15 分钟**，记录 cold/warm OCR、翻译次数、PSS、RSS、
+   VmHWM、单核等效 CPU、电池温度/电量/充电状态、Thermal status、服务/投影/虚拟显示
+   连续性和目标进程 crash/ANR/OOM；
+4. 在相同夹具上运行**全屏增量覆盖 15 分钟**并记录相同指标，额外记录签名扫描、
+   自适应间隔、自然/计划脏块、Bitmap 构造/跳过字节、tile OCR、缓存命中和发布译文；
+5. 在 `BATON` 与 `BATMAN` 两相分别等待稳定，确认小变化被识别、旧译文移除；译文标签
+   位于对应原文附近且互不重叠，悬浮译文没有回流成新 OCR；中文原文不进入翻译队列；
+6. 验证译文层点击穿透，顶部控制条只拦截自身并可停止；标签避开状态栏、导航区和控制条；
+7. 依次执行旋转、熄屏/亮屏、主动撤销投影、停止、通知快捷启动与五轮快速启停；每一步
+   检查状态机、悬浮窗、ImageReader、VirtualDisplay、MediaProjection 和模型后端最终收敛；
+8. 报告门禁：两段观测时长均不少于 900 秒；单一 PID；服务/投影/虚拟显示全采样连续；
+   Thermal status 最大值不超过 1；PSS 首末增长不超过 64 MiB；处理/OCR 失败与
+   crash/ANR/native fatal/OOM 均为 0；
+9. 通过后，在 Issue #38 或 #39 新建一条一次写定的评论。`accepted_issues` 必须包含
+   两项，三个 summary/report hash 来自最终本地证据，APK hash 来自 accepted Artifact：
+
+   ```text
+   DEVICE_ACCEPTANCE_PASS
+   acceptance_schema: screen-translation-device-v2
+   accepted_issues: 38,39
+   acceptance_run_id: RUN_ID
+   source_sha: 40_HEX_COMMIT
+   device: Xiaomi 15 Pro
+   device_model: 2410DPN6CC
+   android: 16
+   rom: HyperOS
+   rom_build: OS_VERSION_TOKEN
+   lite_apk_sha256: 64_HEX_SHA256
+   full_apk_sha256: 64_HEX_SHA256
+   online_apk_sha256: 64_HEX_SHA256
+   region_duration_seconds: 900_OR_MORE
+   full_screen_duration_seconds: 900_OR_MORE
+   thermal_status_max: 0_OR_1
+   capture_failures: 0
+   region_summary_sha256: 64_HEX_SHA256
+   full_screen_summary_sha256: 64_HEX_SHA256
+   lifecycle_report_sha256: 64_HEX_SHA256
+   ocr_fixture_score_sha256: 64_HEX_SHA256
+   sustained_benchmark_doc_sha256: 64_HEX_SHA256
+   ```
+
+10. 移除 #38/#39 的验证状态标签并关闭两项；将未纳入本版本的 #43/#44/#45 移到下一
+    milestone，保证 v2.1.0 milestone 没有 open issue；为同一 source commit 创建 annotated
+    `v2.1.0` tag，再运行 `operation=publish`；
+11. 从公开 Release 复核九个资产的名称、大小与 SHA-256 均与 accepted Artifact 相同，
+    确认 `Latest` 指向 v2.1.0 后再清理测试包和临时设备状态。
+
+详细 A/B、固定语料和边界解释见
+[`PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md`](PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)。
 
 ## v2.0.0 最终签名验收矩阵（发布门禁）
 
