@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.Executor
@@ -64,6 +65,18 @@ class OnlineHttpPolicyTest {
                 SocketTimeoutException("already may have been processed"),
                 completedAttempts = 0,
             ),
+        )
+        val callTimeout = InterruptedIOException("call timeout")
+        assertNull(
+            OnlineHttpPolicy.retryDelayForNetwork(
+                callTimeout,
+                completedAttempts = 0,
+            ),
+        )
+        assertEquals(
+            OnlineFailureCategory.TIMEOUT,
+            (OnlineHttpPolicy.sanitizeNetworkFailure(callTimeout)
+                as OnlineTranslationException).category,
         )
     }
 
