@@ -11,8 +11,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.BufferedSource
 import okio.Timeout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -21,6 +23,10 @@ import org.junit.Test
 import java.io.IOException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.reflect.KClass
 
 class OnlineChatClientTest {
@@ -92,6 +98,39 @@ class OnlineChatClientTest {
     }
 
     @Test
+    fun `zero-delay retry starts only after the prior response body closes`() {
+        val priorBodyClosed = AtomicBoolean(false)
+        val retryObservedPriorBodyClosed = AtomicBoolean(false)
+        val factory = RecordingCallFactory { callIndex ->
+            if (callIndex == 1) {
+                retryObservedPriorBodyClosed.set(priorBodyClosed.get())
+            }
+        }
+        val scheduler = ImmediateScheduledExecutor()
+        try {
+            val client = client(factory, scheduler)
+            var result: Result<String>? = null
+            client.translate("retry me") { result = it }
+
+            factory.calls.single().respond(
+                code = 429,
+                body = CloseTrackingResponseBody("{}", priorBodyClosed),
+                headers = mapOf("Retry-After" to "0"),
+            )
+
+            assertEquals(2, factory.calls.size)
+            assertTrue(retryObservedPriorBodyClosed.get())
+            factory.calls[1].respond(
+                200,
+                """{"choices":[{"message":{"content":"重试成功"}}]}""",
+            )
+            assertEquals("重试成功", checkNotNull(result).getOrThrow())
+        } finally {
+            scheduler.shutdownNow()
+        }
+    }
+
+    @Test
     fun `gets bearer-authenticated model catalog and preserves returned ids`() {
         val factory = RecordingCallFactory()
         val client = OnlineModelCatalogClient(
@@ -132,10 +171,15 @@ class OnlineChatClientTest {
     )
 }
 
-private class RecordingCallFactory : Call.Factory {
+private class RecordingCallFactory(
+    private val onNewCall: (callIndex: Int) -> Unit = {},
+) : Call.Factory {
     lateinit var lastCall: FakeCall
+    val calls = mutableListOf<FakeCall>()
 
     override fun newCall(request: Request): Call = FakeCall(request).also {
+        onNewCall(calls.size)
+        calls += it
         lastCall = it
     }
 }
@@ -184,14 +228,52 @@ private class FakeCall(
     override fun clone(): Call = FakeCall(originalRequest)
 
     fun respond(code: Int, json: String) {
+        respond(code, json.toResponseBody("application/json".toMediaType()))
+    }
+
+    fun respond(
+        code: Int,
+        body: ResponseBody,
+        headers: Map<String, String> = emptyMap(),
+    ) {
         check(!cancelled)
-        val response = Response.Builder()
+        val responseBuilder = Response.Builder()
             .request(originalRequest)
             .protocol(Protocol.HTTP_1_1)
             .code(code)
             .message("test")
-            .body(json.toResponseBody("application/json".toMediaType()))
-            .build()
+            .body(body)
+        headers.forEach { (name, value) -> responseBuilder.header(name, value) }
+        val response = responseBuilder.build()
         checkNotNull(callback).onResponse(this, response)
+    }
+}
+
+private class CloseTrackingResponseBody(
+    json: String,
+    private val closed: AtomicBoolean,
+) : ResponseBody() {
+    private val delegate = json.toResponseBody("application/json".toMediaType())
+
+    override fun contentType() = delegate.contentType()
+
+    override fun contentLength() = delegate.contentLength()
+
+    override fun source(): BufferedSource = delegate.source()
+
+    override fun close() {
+        closed.set(true)
+        delegate.close()
+    }
+}
+
+private class ImmediateScheduledExecutor : ScheduledThreadPoolExecutor(1) {
+    override fun schedule(
+        command: Runnable,
+        delay: Long,
+        unit: TimeUnit,
+    ): ScheduledFuture<*> {
+        command.run()
+        return super.schedule({}, 0L, TimeUnit.MILLISECONDS)
     }
 }
