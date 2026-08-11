@@ -82,6 +82,16 @@ class AppleLayoutContractTest {
     }
 
     @Test
+    fun `full screen hint describes the accepted platform baseline`() {
+        val mainStrings = source("src/main/res/values/strings.xml")
+        val hint = stringValue(mainStrings, "capture_mode_full_screen_hint")
+
+        assertTrue("Android 16" in hint)
+        assertTrue("HyperOS" in hint)
+        assertTrue("\u5c1a\u672a\u5b8c\u6210" !in hint)
+    }
+
+    @Test
     fun `ready preparation button uses explicit neutral disabled colors in every style`() {
         val activity = source(
             "src/main/java/com/screentranslation/app/MainActivity.kt",
