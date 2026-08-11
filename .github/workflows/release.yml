@@ -474,6 +474,19 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Preserve failed release verification reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenTranslation-release-verification-failure-${{ github.sha }}
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.sarif
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Remove signing material
         if: always()
         shell: bash

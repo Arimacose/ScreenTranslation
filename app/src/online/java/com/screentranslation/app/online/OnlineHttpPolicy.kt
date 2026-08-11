@@ -2,7 +2,7 @@ package com.screentranslation.app.online
 
 import okhttp3.OkHttpClient
 import java.io.IOException
-import java.net.SocketTimeoutException
+import java.io.InterruptedIOException
 import java.net.UnknownHostException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -81,7 +81,7 @@ internal object OnlineHttpPolicy {
         if (
             error is SSLException ||
             error is UnknownHostException ||
-            error is SocketTimeoutException
+            error is InterruptedIOException
         ) {
             return null
         }
@@ -91,7 +91,7 @@ internal object OnlineHttpPolicy {
     fun sanitizeNetworkFailure(error: Throwable): Throwable = when (error) {
         is OnlineTranslationException -> error
         is CancellationException -> error
-        is SocketTimeoutException ->
+        is InterruptedIOException ->
             OnlineTranslationException(OnlineFailureCategory.TIMEOUT, cause = error)
         is UnknownHostException ->
             OnlineTranslationException(OnlineFailureCategory.DNS, cause = error)
