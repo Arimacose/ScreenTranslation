@@ -1,16 +1,36 @@
 name: Signed release and acceptance
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Build a signed acceptance bundle or publish an accepted bundle
+        required: true
+        default: build
+        type: choice
+        options:
+          - build
+          - publish
+      acceptance_run_id:
+        description: Successful build-operation run ID (publish only)
+        required: false
+        type: string
+      release_tag:
+        description: Existing annotated vMAJOR.MINOR.PATCH tag (publish only)
+        required: false
+        type: string
+      device_evidence_comment:
+        description: "Issue #47 DEVICE_ACCEPTANCE_PASS comment URL (publish only)"
+        required: false
+        type: string
 
 permissions:
-  contents: write
+  actions: read
+  contents: read
+  issues: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.operation }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -22,7 +42,8 @@ env:
 
 jobs:
   release:
-    name: Build, verify, and publish versioned editions
+    if: ${{ inputs.operation == 'build' }}
+    name: Build and verify versioned editions
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -32,7 +53,7 @@ jobs:
       RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
 
     steps:
-      - name: Check out tagged source and native submodules
+      - name: Check out main source and native submodules
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -122,24 +143,14 @@ jobs:
           version_code="$(printf '%s\n' "$version_info" | sed -n 's/^versionCode=//p')"
           [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            if [[ "$GITHUB_REF_NAME" != "v$version_name" ]]; then
-              echo "::error::Tag $GITHUB_REF_NAME does not match base version $version_name"
-              exit 1
-            fi
-            if [[ "$(git cat-file -t "$GITHUB_REF")" != "tag" ]]; then
-              echo "::error::Release refs must be annotated or signed tag objects"
-              exit 1
-            fi
-            tag_commit="$(git rev-parse "$GITHUB_REF^{commit}")"
-            git fetch --no-tags origin \
-              "+refs/heads/main:refs/remotes/origin/main"
-            if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
-              echo "::error::Release tag commit is not contained in origin/main"
-              exit 1
-            fi
-          elif [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "::error::Manual signed acceptance must run from main"
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "::error::Manual signed acceptance must use the current origin/main commit"
             exit 1
           fi
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
@@ -244,10 +255,21 @@ jobs:
             [[ "$("$apkanalyzer" manifest version-name "$apk")" == "$expected_name" ]]
             [[ "$("$apkanalyzer" manifest target-sdk "$apk")" == "36" ]]
             badging="$("$aapt" dump badging "$apk")"
-            grep -F 'application-label:' <<<"$badging" |
-              grep -Fq "$expected_label_token"
+            grep -Fqx "application-label:'$expected_label_token'" \
+              <<<"$badging"
+            if grep -Fq 'application-debuggable' <<<"$badging"; then
+              echo "::error::Release APK is debuggable: $apk"
+              exit 1
+            fi
 
             listing="$(unzip -Z1 "$apk")"
+            grep -Eq '^lib/arm64-v8a/[^/]+\.so$' <<<"$listing"
+            if grep -E '^lib/' <<<"$listing" |
+              grep -Ev '^lib/arm64-v8a/[^/]+$' >/dev/null
+            then
+              echo "::error::Release APK contains a non-arm64 native library: $apk"
+              exit 1
+            fi
             assert_entry "$listing" "assets/ppocrv6_small/det.onnx"
             assert_entry "$listing" "assets/ppocrv6_small/rec.onnx"
             assert_entry "$listing" "assets/ppocrv6_small/characters.txt"
@@ -276,14 +298,14 @@ jobs:
             "$lite_apk" \
             "com.screentranslation.app" \
             "${version}-lite" \
-            "ScreenTranslation Lite" \
+            "ScreenTranslation Lite · 识屏翻译" \
             "lib/arm64-v8a/libbergamot_runner.so" \
             "lib/arm64-v8a/libhymt2_jni.so"
           verify_apk \
             "$full_apk" \
             "com.screentranslation.app.full" \
             "${version}-full" \
-            "HY-MT2 Q4 Experimental" \
+            "识屏翻译 Full · HY-MT2 Q4 Experimental" \
             "lib/arm64-v8a/libhymt2_jni.so" \
             "lib/arm64-v8a/libbergamot_runner.so"
           verify_apk \
@@ -326,9 +348,34 @@ jobs:
           grep -Fq 'boolean isConfigurationReady(android.content.Context)' \
             app/build/outputs/mapping/onlineRelease/mapping.txt
 
-          jarsigner -verify "$lite_aab" >/dev/null
-          jarsigner -verify "$full_aab" >/dev/null
-          jarsigner -verify "$online_aab" >/dev/null
+          verify_aab_signature() {
+            local aab="$1"
+            local verify_output cert_sha
+            verify_output="$(
+              jarsigner \
+                -J-Duser.language=en \
+                -J-Duser.country=US \
+                -verify "$aab"
+            )"
+            grep -Fq 'jar verified.' <<<"$verify_output"
+            cert_sha="$(
+              keytool \
+                -J-Duser.language=en \
+                -J-Duser.country=US \
+                -printcert -jarfile "$aab" |
+                sed -nE 's/^[[:space:]]*SHA256: //p' |
+                tr -d ':' |
+                tr '[:upper:]' '[:lower:]'
+            )"
+            if [[ "$cert_sha" != "$EXPECTED_SIGNER_SHA256" ]]; then
+              echo "::error::AAB signer certificate mismatch: $aab"
+              exit 1
+            fi
+          }
+
+          verify_aab_signature "$lite_aab"
+          verify_aab_signature "$full_aab"
+          verify_aab_signature "$online_aab"
           lite_aab_listing="$(unzip -Z1 "$lite_aab")"
           full_aab_listing="$(unzip -Z1 "$full_aab")"
           online_aab_listing="$(unzip -Z1 "$online_aab")"
@@ -389,7 +436,7 @@ jobs:
           name: ScreenTranslation-${{ steps.version.outputs.version_name }}-signed-acceptance-${{ github.sha }}
           path: dist/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Preserve Lite R8 mapping
         uses: actions/upload-artifact@v7
@@ -427,37 +474,606 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Create GitHub release
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/screen-translation-release.jks"
+          rm -f "$RUNNER_TEMP/release-notes.md"
+          rm -rf "$RUNNER_TEMP/screen-translation-third-party"
+
+  publish:
+    if: ${{ inputs.operation == 'publish' }}
+    name: Promote the accepted signed bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+      issues: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      DEVICE_EVIDENCE_COMMENT: ${{ inputs.device_evidence_comment }}
+
+    steps:
+      - name: Check out the current main commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4.0.1
+
+      - name: Install release verification tools
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ steps.version.outputs.version_name }}"
-          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          sdkmanager \
+            "platforms;android-36" \
+            "build-tools;$ANDROID_BUILD_TOOLS"
+
+      - name: Verify tag, accepted run, and device evidence
+        id: promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Publish promotion must be dispatched from main"
+            exit 1
+          fi
+          [[ "$ACCEPTANCE_RUN_ID" =~ ^[1-9][0-9]+$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          evidence_pattern='^https://github\.com/Arimacose/ScreenTranslation/issues/47#issuecomment-([1-9][0-9]*)$'
+          if [[ ! "$DEVICE_EVIDENCE_COMMENT" =~ $evidence_pattern ]]; then
+            echo "::error::Device evidence must be an Issue #47 comment URL"
+            exit 1
+          fi
+          comment_id="${BASH_REMATCH[1]}"
+
+          git fetch --force origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          if [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" != "tag" ]]; then
+            echo "::error::$RELEASE_TAG must be an annotated or signed tag object"
+            exit 1
+          fi
+          tag_commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          main_commit="$(git rev-parse origin/main)"
+          if ! [[ "$tag_commit" == "$main_commit" &&
+                  "$tag_commit" == "$GITHUB_SHA" ]]; then
+            echo "::error::Tag, dispatch commit, and current origin/main must be identical"
+            exit 1
+          fi
+
+          version_name="$({
+            sed -nE \
+              's/^[[:space:]]*versionName = "([0-9]+\.[0-9]+\.[0-9]+)"/\1/p' \
+              app/build.gradle.kts
+          } | head -n1)"
+          version_code="$({
+            sed -nE \
+              's/^[[:space:]]*versionCode = ([1-9][0-9]*)/\1/p' \
+              app/build.gradle.kts
+          } | head -n1)"
+          [[ "$RELEASE_TAG" == "v$version_name" ]]
+          [[ "$version_code" =~ ^[1-9][0-9]*$ ]]
+
+          run_json="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTANCE_RUN_ID"
+          )"
+          jq -e \
+            --arg sha "$tag_commit" \
+            '.status == "completed" and
+             .conclusion == "success" and
+             .event == "workflow_dispatch" and
+             .head_branch == "main" and
+             .head_sha == $sha and
+             .path == ".github/workflows/release.yml"' \
+            <<<"$run_json" >/dev/null
+          run_updated_at="$(jq -r '.updated_at' <<<"$run_json")"
+          jobs_json="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTANCE_RUN_ID/jobs?per_page=100"
+          )"
+          jq -e \
+            '([.jobs[] |
+                 select(.name == "Build and verify versioned editions" and
+                        .conclusion == "success")] | length) == 1 and
+             ([.jobs[] |
+                 select(.name == "Promote the accepted signed bundle" and
+                        .conclusion != "skipped")] | length) == 0' \
+            <<<"$jobs_json" >/dev/null
+
+          artifact_name="ScreenTranslation-$version_name-signed-acceptance-$tag_commit"
+          artifacts_json="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTANCE_RUN_ID/artifacts?per_page=100"
+          )"
+          artifact_count="$(
+            jq --arg name "$artifact_name" \
+              '[.artifacts[] | select(.name == $name)] | length' \
+              <<<"$artifacts_json"
+          )"
+          [[ "$artifact_count" == "1" ]]
+          artifact_json="$(
+            jq --arg name "$artifact_name" \
+              '.artifacts[] | select(.name == $name)' \
+              <<<"$artifacts_json"
+          )"
+          jq -e \
+            --arg sha "$tag_commit" \
+            '.expired == false and
+             .workflow_run.head_sha == $sha and
+             (.digest | test("^sha256:[0-9a-f]{64}$"))' \
+            <<<"$artifact_json" >/dev/null
+          artifact_id="$(jq -r '.id' <<<"$artifact_json")"
+          artifact_digest="$(jq -r '.digest' <<<"$artifact_json")"
+
+          issue_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/issues/47"
+          )"
+          jq -e \
+            '.state == "closed" and
+             .milestone.title == "v2.0.0" and
+             ([.labels[].name] | index("status:needs-verification") | not)' \
+            <<<"$issue_json" >/dev/null
+          issue_closed_at="$(jq -r '.closed_at' <<<"$issue_json")"
+
+          comment_json="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id"
+          )"
+          jq -e \
+            --arg issue_url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/47" \
+            '.issue_url == $issue_url and
+             (.author_association == "OWNER" or
+              .author_association == "MEMBER" or
+              .author_association == "COLLABORATOR")' \
+            <<<"$comment_json" >/dev/null
+          comment_created_at="$(jq -r '.created_at' <<<"$comment_json")"
+          comment_updated_at="$(jq -r '.updated_at' <<<"$comment_json")"
+          if [[ "$comment_created_at" < "$run_updated_at" ||
+                "$issue_closed_at" < "$comment_created_at" ]]; then
+            echo "::error::Device evidence must follow the accepted build and precede issue closure"
+            exit 1
+          fi
+          if [[ "$comment_updated_at" != "$comment_created_at" ]]; then
+            echo "::error::Device evidence comment must be final and unedited"
+            exit 1
+          fi
+          comment_body="$(jq -r '.body' <<<"$comment_json")"
+
+          assert_single_marker() {
+            local marker="$1"
+            local count
+            count="$(
+              awk -v marker="$marker" \
+                '$0 == marker { count++ } END { print count + 0 }' \
+                <<<"$comment_body"
+            )"
+            if [[ "$count" != "1" ]]; then
+              echo "::error::Evidence marker must occur exactly once: $marker" >&2
+              return 1
+            fi
+          }
+          assert_single_field() {
+            local key="$1"
+            local expected="$2"
+            local prefix="$key: "
+            local count
+            count="$(
+              awk -v prefix="$prefix" \
+                'index($0, prefix) == 1 { count++ } END { print count + 0 }' \
+                <<<"$comment_body"
+            )"
+            if [[ "$count" != "1" ]] ||
+              ! grep -Fqx "$prefix$expected" <<<"$comment_body"
+            then
+              echo "::error::Evidence field is missing, duplicated, or mismatched: $key" >&2
+              return 1
+            fi
+          }
+          read_single_sha_field() {
+            local key="$1"
+            local prefix="$key: "
+            local line value count
+            count="$(
+              awk -v prefix="$prefix" \
+                'index($0, prefix) == 1 { count++ } END { print count + 0 }' \
+                <<<"$comment_body"
+            )"
+            if [[ "$count" != "1" ]]; then
+              echo "::error::Evidence hash field must occur exactly once: $key" >&2
+              return 1
+            fi
+            line="$(
+              awk -v prefix="$prefix" \
+                'index($0, prefix) == 1 { print }' \
+                <<<"$comment_body"
+            )"
+            value="${line#"$prefix"}"
+            if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::Evidence hash field must be lowercase SHA-256: $key" >&2
+              return 1
+            fi
+            printf '%s' "$value"
+          }
+          read_single_token_field() {
+            local key="$1"
+            local pattern="$2"
+            local prefix="$key: "
+            local line value count
+            count="$(
+              awk -v prefix="$prefix" \
+                'index($0, prefix) == 1 { count++ } END { print count + 0 }' \
+                <<<"$comment_body"
+            )"
+            if [[ "$count" != "1" ]]; then
+              echo "::error::Evidence token field must occur exactly once: $key" >&2
+              return 1
+            fi
+            line="$(
+              awk -v prefix="$prefix" \
+                'index($0, prefix) == 1 { print }' \
+                <<<"$comment_body"
+            )"
+            value="${line#"$prefix"}"
+            if [[ ! "$value" =~ $pattern ]]; then
+              echo "::error::Evidence token field has an invalid value: $key" >&2
+              return 1
+            fi
+            printf '%s' "$value"
+          }
+
+          assert_single_marker 'DEVICE_ACCEPTANCE_PASS'
+          assert_single_field 'acceptance_run_id' "$ACCEPTANCE_RUN_ID"
+          assert_single_field 'source_sha' "$tag_commit"
+          assert_single_field 'device' 'Xiaomi 15 Pro'
+          assert_single_field 'device_model' '2410DPN6CC'
+          assert_single_field 'android' '16'
+          assert_single_field 'rom' 'HyperOS'
+          rom_build="$(
+            read_single_token_field \
+              'rom_build' \
+              '^[A-Za-z0-9][A-Za-z0-9._-]{2,79}$'
+          )"
+          lite_apk_sha="$(read_single_sha_field 'lite_apk_sha256')"
+          full_apk_sha="$(read_single_sha_field 'full_apk_sha256')"
+          online_apk_sha="$(read_single_sha_field 'online_apk_sha256')"
+          comment_body_sha="$(
+            printf '%s' "$comment_body" | sha256sum | awk '{ print $1 }'
+          )"
+
+          releases_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100"
+          )"
+          if ! jq -e --arg tag "$RELEASE_TAG" \
+            '([.[] | select(.tag_name == $tag)] | length) == 0' \
+            <<<"$releases_json" >/dev/null
+          then
+            echo "::error::Release $RELEASE_TAG already exists"
+            exit 1
+          fi
+
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "tag_commit=$tag_commit" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "comment_id=$comment_id" >> "$GITHUB_OUTPUT"
+          echo "comment_body_sha=$comment_body_sha" >> "$GITHUB_OUTPUT"
+          echo "rom_build=$rom_build" >> "$GITHUB_OUTPUT"
+          echo "lite_apk_sha=$lite_apk_sha" >> "$GITHUB_OUTPUT"
+          echo "full_apk_sha=$full_apk_sha" >> "$GITHUB_OUTPUT"
+          echo "online_apk_sha=$online_apk_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify the immutable acceptance Artifact ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_id="${{ steps.promotion.outputs.artifact_id }}"
+          expected_digest="${{ steps.promotion.outputs.artifact_digest }}"
+          version="${{ steps.promotion.outputs.version_name }}"
+          archive="$RUNNER_TEMP/signed-acceptance.zip"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            > "$archive"
+          actual_digest="sha256:$(sha256sum "$archive" | awk '{print $1}')"
+          if [[ "$actual_digest" != "$expected_digest" ]]; then
+            echo "::error::Downloaded Artifact ZIP digest mismatch"
+            exit 1
+          fi
+          expected_names="$(
+            printf '%s\n' \
+              "ScreenTranslation-$version-lite-bergamot.apk" \
+              "ScreenTranslation-$version-lite-bergamot.aab" \
+              "ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
+              "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
+              "ScreenTranslation-$version-online-llm.apk" \
+              "ScreenTranslation-$version-online-llm.aab" \
+              "ScreenTranslation-$version-LICENSE.txt" \
+              "ScreenTranslation-$version-THIRD-PARTY.zip" \
+              'SHA256SUMS' |
+              LC_ALL=C sort
+          )"
+          archive_names="$(unzip -Z1 "$archive" | LC_ALL=C sort)"
+          if [[ "$archive_names" != "$expected_names" ]]; then
+            echo "::error::Artifact ZIP entries do not match the nine-file manifest"
+            exit 1
+          fi
+          mkdir dist
+          unzip -q "$archive" -d dist
+          [[ "$(find dist -maxdepth 1 -type f | wc -l)" -eq 9 ]]
+          [[ "$(find dist -type l | wc -l)" -eq 0 ]]
+          expected_checksum_names="$(
+            grep -Fxv 'SHA256SUMS' <<<"$expected_names"
+          )"
+          checksum_names="$(
+            sed -nE \
+              's/^[0-9a-f]{64}  ([^/]+)$/\1/p' \
+              dist/SHA256SUMS |
+              LC_ALL=C sort
+          )"
+          checksum_line_count="$(
+            awk 'END { print NR + 0 }' dist/SHA256SUMS
+          )"
+          checksum_name_count="$(
+            awk 'END { print NR + 0 }' <<<"$checksum_names"
+          )"
+          if [[ "$checksum_line_count" != "8" ||
+                "$checksum_name_count" != "8" ||
+                "$checksum_names" != "$expected_checksum_names" ]]; then
+            echo "::error::SHA256SUMS does not bind the exact eight payload files"
+            exit 1
+          fi
+          (
+            cd dist
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Verify promoted packages and device-evidence hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.promotion.outputs.version_name }}"
+          version_code="${{ steps.promotion.outputs.version_code }}"
+          tag_commit="${{ steps.promotion.outputs.tag_commit }}"
+          comment_id="${{ steps.promotion.outputs.comment_id }}"
+          apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
+          zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
+          apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner"
+          lite_apk="dist/ScreenTranslation-$version-lite-bergamot.apk"
+          full_apk="dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk"
+          online_apk="dist/ScreenTranslation-$version-online-llm.apk"
+          lite_aab="dist/ScreenTranslation-$version-lite-bergamot.aab"
+          full_aab="dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
+          online_aab="dist/ScreenTranslation-$version-online-llm.aab"
+
+          assert_entry() {
+            local listing="$1"
+            local entry="$2"
+            grep -Fxq "$entry" <<<"$listing"
+          }
+          reject_entry() {
+            local listing="$1"
+            local entry="$2"
+            ! grep -Fxq "$entry" <<<"$listing"
+          }
+          verify_apk() {
+            local apk="$1"
+            local expected_id="$2"
+            local expected_name="$3"
+            local expected_label_token="$4"
+            local required_backend="$5"
+            local forbidden_backend="$6"
+            local signer_output signer_sha listing badging
+
+            "$zipalign" -c -P 16 -v 4 "$apk"
+            signer_output="$(
+              "$apksigner" verify --verbose --print-certs "$apk"
+            )"
+            grep -Fq \
+              'Verified using v2 scheme (APK Signature Scheme v2): true' \
+              <<<"$signer_output"
+            signer_sha="$({
+              sed -nE \
+                's/^(Signer #1|V[234] Signer): certificate SHA-256 digest: //p' \
+                <<<"$signer_output"
+            } | tr '[:upper:]' '[:lower:]' | sort -u)"
+            [[ "$signer_sha" == "$EXPECTED_SIGNER_SHA256" ]]
+            [[ "$("$apkanalyzer" manifest application-id "$apk")" == "$expected_id" ]]
+            [[ "$("$apkanalyzer" manifest version-code "$apk")" == "$version_code" ]]
+            [[ "$("$apkanalyzer" manifest version-name "$apk")" == "$expected_name" ]]
+            [[ "$("$apkanalyzer" manifest target-sdk "$apk")" == "36" ]]
+            badging="$("$aapt" dump badging "$apk")"
+            grep -Fqx "application-label:'$expected_label_token'" \
+              <<<"$badging"
+            if grep -Fq 'application-debuggable' <<<"$badging"; then
+              echo "::error::Promoted APK is debuggable: $apk"
+              exit 1
+            fi
+            listing="$(unzip -Z1 "$apk")"
+            grep -Eq '^lib/arm64-v8a/[^/]+\.so$' <<<"$listing"
+            if grep -E '^lib/' <<<"$listing" |
+              grep -Ev '^lib/arm64-v8a/[^/]+$' >/dev/null
+            then
+              echo "::error::Promoted APK contains a non-arm64 native library: $apk"
+              exit 1
+            fi
+            assert_entry "$listing" "assets/ppocrv6_small/det.onnx"
+            assert_entry "$listing" "assets/ppocrv6_small/rec.onnx"
+            assert_entry "$listing" "assets/ppocrv6_small/characters.txt"
+            assert_entry "$listing" "assets/licenses/COMMON.md"
+            assert_entry "$listing" \
+              "assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+            assert_entry "$listing" "$required_backend"
+            reject_entry "$listing" "$forbidden_backend"
+            reject_entry "$listing" "lib/arm64-v8a/libtranslate_jni.so"
+            if grep -Eiq \
+              '^assets/.+\.(gguf|bin|marian|model|npz|safetensors|spm)$' \
+              <<<"$listing"
+            then
+              echo "::error::Translation model weights are present in $apk"
+              exit 1
+            fi
+          }
+
+          verify_apk \
+            "$lite_apk" \
+            "com.screentranslation.app" \
+            "$version-lite" \
+            "ScreenTranslation Lite · 识屏翻译" \
+            "lib/arm64-v8a/libbergamot_runner.so" \
+            "lib/arm64-v8a/libhymt2_jni.so"
+          verify_apk \
+            "$full_apk" \
+            "com.screentranslation.app.full" \
+            "$version-full" \
+            "识屏翻译 Full · HY-MT2 Q4 Experimental" \
+            "lib/arm64-v8a/libhymt2_jni.so" \
+            "lib/arm64-v8a/libbergamot_runner.so"
+          verify_apk \
+            "$online_apk" \
+            "com.screentranslation.app.online" \
+            "$version-online" \
+            "识屏翻译 Online" \
+            "assets/licenses/ONLINE.md" \
+            "lib/arm64-v8a/libbergamot_runner.so"
+
+          verify_aab_signature() {
+            local aab="$1"
+            local verify_output cert_sha
+            verify_output="$(
+              jarsigner \
+                -J-Duser.language=en \
+                -J-Duser.country=US \
+                -verify "$aab"
+            )"
+            grep -Fq 'jar verified.' <<<"$verify_output"
+            cert_sha="$(
+              keytool \
+                -J-Duser.language=en \
+                -J-Duser.country=US \
+                -printcert -jarfile "$aab" |
+                sed -nE 's/^[[:space:]]*SHA256: //p' |
+                tr -d ':' |
+                tr '[:upper:]' '[:lower:]'
+            )"
+            [[ "$cert_sha" == "$EXPECTED_SIGNER_SHA256" ]]
+          }
+
+          verify_aab_signature "$lite_aab"
+          verify_aab_signature "$full_aab"
+          verify_aab_signature "$online_aab"
+          assert_entry "$(unzip -Z1 "$lite_aab")" \
+            "base/assets/licenses/bergamot-9271618/SOURCE-CODE.md"
+          assert_entry "$(unzip -Z1 "$full_aab")" \
+            "base/assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
+          assert_entry "$(unzip -Z1 "$online_aab")" \
+            "base/assets/licenses/ONLINE.md"
+
+          cmp -s LICENSE "dist/ScreenTranslation-$version-LICENSE.txt"
+          third_party_dir="$RUNNER_TEMP/third-party-promotion"
+          mkdir "$third_party_dir"
+          third_party_listing="$(
+            unzip -Z1 \
+              "dist/ScreenTranslation-$version-THIRD-PARTY.zip"
+          )"
+          if grep -Eq '(^/|(^|/)\.\.(/|$))' \
+            <<<"$third_party_listing" ||
+            grep -Ev '^(THIRD_PARTY_NOTICES\.md|licenses/.*)$' \
+              <<<"$third_party_listing" >/dev/null
+          then
+            echo "::error::THIRD-PARTY.zip contains an unexpected path"
+            exit 1
+          fi
+          unzip -q \
+            "dist/ScreenTranslation-$version-THIRD-PARTY.zip" \
+            -d "$third_party_dir"
+          [[ "$(find "$third_party_dir" -type l | wc -l)" -eq 0 ]]
+          test -s "$third_party_dir/THIRD_PARTY_NOTICES.md"
+          (
+            cd "$third_party_dir/licenses"
+            sha256sum -c SHA256SUMS
+          )
+
+          lite_sha="$(sha256sum "$lite_apk" | awk '{print $1}')"
+          full_sha="$(sha256sum "$full_apk" | awk '{print $1}')"
+          online_sha="$(sha256sum "$online_apk" | awk '{print $1}')"
+          [[ "$lite_sha" == "${{ steps.promotion.outputs.lite_apk_sha }}" ]]
+          [[ "$full_sha" == "${{ steps.promotion.outputs.full_apk_sha }}" ]]
+          [[ "$online_sha" == "${{ steps.promotion.outputs.online_apk_sha }}" ]]
+          comment_body="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" \
+              --jq '.body'
+          )"
+          current_comment_sha="$(
+            printf '%s' "$comment_body" | sha256sum | awk '{ print $1 }'
+          )"
+          [[ "$current_comment_sha" == \
+             "${{ steps.promotion.outputs.comment_body_sha }}" ]]
+          grep -Fxq "source_sha: $tag_commit" <<<"$comment_body"
+
+      - name: Publish the exact accepted files
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.promotion.outputs.version_name }}"
+          tag="${{ inputs.release_tag }}"
+          artifact_digest="${{ steps.promotion.outputs.artifact_digest }}"
+          cat > "$RUNNER_TEMP/release-notes.md" <<NOTES
+          ## Signed device evidence
+
+          - Accepted source: \`${{ steps.promotion.outputs.tag_commit }}\`
+          - Signed acceptance run: [${{ inputs.acceptance_run_id }}](https://github.com/$GITHUB_REPOSITORY/actions/runs/${{ inputs.acceptance_run_id }})
+          - Immutable Actions Artifact ZIP: \`$artifact_digest\`
+          - Target-device evidence: ${{ inputs.device_evidence_comment }}
+          - Device-evidence body SHA-256: \`${{ steps.promotion.outputs.comment_body_sha }}\`
+          - Tested ROM build: \`${{ steps.promotion.outputs.rom_build }}\`
+
+          The nine files attached to this release are the same files extracted from the accepted Actions Artifact; the publish job verifies the Artifact ZIP digest, \`SHA256SUMS\`, package IDs, versions, APK v2 signer, 16 KiB alignment, edition isolation, AAB signatures, and third-party license hashes before upload.
+
           ## Editions
 
           - **Lite · Bergamot**: PP-OCRv6-small OCR with the Bergamot translation backend. Translation models are downloaded at runtime.
           - **Full · HY-MT2 Q4 Experimental**: PP-OCRv6-small OCR with the HY-MT2 Q4 backend. This edition and model integration are explicitly **Experimental**; model weights are downloaded at runtime.
-          - **Online · BYOK API**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. The app fetches the endpoint's model list after explicit data-flow consent; OCR text is sent only to the selected service and screenshots are not uploaded.
+          - **Online · BYOK API**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. OCR text is sent only to the service selected by the user after explicit data-flow consent.
 
-          The Lite package keeps `com.screentranslation.app` for upgrades from v0.1.0. Full and Online use `.full` and `.online`, so all three editions can coexist.
-
-          ## Highlights
-
-          - Apple-inspired (default), MIUIX, and Material 3 visual languages, with optional Monet dynamic color for Material 3.
-          - Region capture remains the default; the Experimental full-screen incremental path recognizes changed tiles and positions translations above the corresponding source text.
-          - Model management, copyable source/translation panels, protected URLs/dates/amounts/versions, and conservative OCR punctuation restoration.
-          - Explicit Lite/Full/Online provider profiles plus a fail-closed evaluation boundary for non-shipping middle-tier candidates.
-          - A redistributable English-to-Chinese and Japanese-to-Chinese regression suite with strict candidate evidence and Online failure contracts.
-
-          The supported device baseline remains Android 16 on Xiaomi 15 Pro / current HyperOS. The Full edition and full-screen incremental mode remain Experimental. Long-run full-screen endurance and sustained PP-OCRv6 power/thermal measurements remain tracked in the open roadmap and are not claimed by this release.
-
-          Complete third-party license texts, native dependency notices, immutable model coordinates, and the MPL corresponding-source instructions are included in `ScreenTranslation-${{ steps.version.outputs.version_name }}-THIRD-PARTY.zip` and embedded in the applicable APK/AAB.
+          Lite keeps \`com.screentranslation.app\`; Full and Online use \`.full\` and \`.online\`. The supported device baseline is Android 16 on Xiaomi 15 Pro / current HyperOS. Long-run full-screen endurance and sustained PP-OCRv6 power/thermal measurements remain tracked for v2.1.0.
           NOTES
 
-          gh release create "$GITHUB_REF_NAME" \
+          release_id=''
+          cleanup_draft() {
+            trap - ERR INT TERM
+            if [[ -z "$release_id" ]]; then
+              release_id="$(
+                gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+                  jq -r --arg tag "$tag" \
+                    '.[] |
+                     select(.tag_name == $tag and .draft == true) |
+                     .id' |
+                  head -n1
+              )"
+            fi
+            if [[ "$release_id" =~ ^[1-9][0-9]*$ ]]; then
+              gh api -X DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/$release_id" || true
+            fi
+          }
+          trap cleanup_draft ERR INT TERM
+
+          gh release create "$tag" \
             "dist/ScreenTranslation-$version-lite-bergamot.apk" \
             "dist/ScreenTranslation-$version-lite-bergamot.aab" \
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
@@ -467,15 +1083,95 @@ jobs:
             "dist/ScreenTranslation-$version-LICENSE.txt" \
             "dist/ScreenTranslation-$version-THIRD-PARTY.zip" \
             "dist/SHA256SUMS" \
+            --draft \
             --verify-tag \
             --generate-notes \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --title "ScreenTranslation $GITHUB_REF_NAME"
+            --title "ScreenTranslation $tag"
 
-      - name: Remove signing material
+          matching_releases="$(
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+              jq --arg tag "$tag" \
+                '[.[] | select(.tag_name == $tag)]'
+          )"
+          [[ "$(jq 'length' <<<"$matching_releases")" == "1" ]]
+          release_json="$(jq '.[0]' <<<"$matching_releases")"
+          jq -e '.draft == true and .prerelease == false' \
+            <<<"$release_json" >/dev/null
+          release_id="$(jq -r '.id' <<<"$release_json")"
+          [[ "$release_id" =~ ^[1-9][0-9]*$ ]]
+          verify_uploaded_assets() {
+            local json="$1"
+            local asset name size digest
+            for asset in dist/*; do
+              [[ -f "$asset" && ! -L "$asset" ]]
+              name="$(basename "$asset")"
+              size="$(stat -c '%s' "$asset")"
+              digest="sha256:$(sha256sum "$asset" | awk '{ print $1 }')"
+              if ! jq -e \
+                --arg name "$name" \
+                --argjson size "$size" \
+                --arg digest "$digest" \
+                '([.assets[] | select(.name == $name)] | length) == 1 and
+                 ([.assets[] | select(.name == $name)][0] |
+                    .size == $size and .digest == $digest)' \
+                <<<"$json" >/dev/null
+              then
+                echo "::error::Uploaded Release asset size/digest mismatch: $name" >&2
+                return 1
+              fi
+            done
+          }
+          expected_names="$(
+            find dist -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort
+          )"
+          actual_names="$(
+            jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort
+          )"
+          [[ "$expected_names" == "$actual_names" ]]
+          [[ "$(jq '.assets | length' <<<"$release_json")" == "9" ]]
+          verify_uploaded_assets "$release_json"
+
+          git fetch --force origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/$tag:refs/tags/$tag"
+          [[ "$(git rev-parse origin/main)" == \
+             "${{ steps.promotion.outputs.tag_commit }}" ]]
+          [[ "$(git rev-parse "refs/tags/$tag^{commit}")" == \
+             "${{ steps.promotion.outputs.tag_commit }}" ]]
+          issue_json="$(gh api "repos/$GITHUB_REPOSITORY/issues/47")"
+          jq -e \
+            '.state == "closed" and
+             ([.labels[].name] | index("status:needs-verification") | not)' \
+            <<<"$issue_json" >/dev/null
+          current_comment_body="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/issues/comments/${{ steps.promotion.outputs.comment_id }}" \
+              --jq '.body'
+          )"
+          current_comment_sha="$(
+            printf '%s' "$current_comment_body" |
+              sha256sum |
+              awk '{ print $1 }'
+          )"
+          [[ "$current_comment_sha" == \
+             "${{ steps.promotion.outputs.comment_body_sha }}" ]]
+
+          gh release edit "$tag" --draft=false
+          trap - ERR INT TERM
+          release_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id"
+          )"
+          jq -e '.draft == false and .prerelease == false' \
+            <<<"$release_json" >/dev/null
+          [[ "$(jq '.assets | length' <<<"$release_json")" == "9" ]]
+          verify_uploaded_assets "$release_json"
+
+      - name: Remove promotion staging
         if: always()
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/screen-translation-release.jks"
+          rm -rf dist
+          rm -f "$RUNNER_TEMP/signed-acceptance.zip"
           rm -f "$RUNNER_TEMP/release-notes.md"
-          rm -rf "$RUNNER_TEMP/screen-translation-third-party"
+          rm -rf "$RUNNER_TEMP/third-party-promotion"
