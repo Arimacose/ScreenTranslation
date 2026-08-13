@@ -45,4 +45,18 @@ class HyMt2ModelStorageManager(context: Context) : ModelStorageManager {
     }
 
     override fun deleteDownloadedModels(): Long = deleteModelDirectory(modelsRoot, root)
+
+    override fun preparationDescriptor(
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): ModelPreparationDescriptor = ModelPreparationDescriptor(
+        edition = "full",
+        modelIds = listOf("hymt2-q4"),
+        revisions = listOf(HyMt2Q4ModelDescriptor.MODEL_REVISION),
+        expectedSha256 = listOf(HyMt2Q4ModelDescriptor.MODEL_SHA256),
+        downloadBytes = HyMt2Q4ModelDescriptor.MODEL_SIZE_BYTES,
+        // The verified .part file is atomically renamed to the final GGUF; no
+        // second extracted copy exists at peak storage usage.
+        installedBytes = 0L,
+    )
 }

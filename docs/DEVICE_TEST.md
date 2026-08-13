@@ -20,6 +20,60 @@
 换包。发布证据保存在版本对应的 issue 评论与 Release notes，源码文档保留可重复步骤和字段
 约束，避免为了回写测试结论再次移动已经验收的 commit。
 
+## v2.2.0 任务优先与供应链最终签名验收矩阵（Issues #70/#71/#72/#45/#43/#44）
+
+本节只接受由 `origin/main` 上 `operation=build` 生成的同一份签名 acceptance Artifact；
+本地 unsigned APK、Debug/Contributor 包和重构建产物不替代签名真机结论。
+
+### 候选基线
+
+- 基础版本：`versionCode=8`、`versionName=2.2.0`；三 edition 分别为
+  `2.2.0-lite`、`2.2.0-full`、`2.2.0-online`；
+- 目标真机：小米 15 Pro / Android 16 / 当前 HyperOS，记录完整 ROM build；
+- acceptance Artifact 精确包含 6 个 APK/AAB、3 个 edition SBOM、LICENSE、
+  THIRD-PARTY.zip 与 `SHA256SUMS`，共 12 个平面文件；`SHA256SUMS` 绑定其余 11 项；
+- `accepted_issues=70,71,72,45,43,44`，最终证据评论和每项关闭时间均晚于候选构建。
+
+### 自动化与包边界
+
+1. Lite/Full/Online 单元测试、Release Lint、R8 APK/AAB 与 `generateReleaseSboms` 全部通过；
+2. 三个 Release APK 只含 `arm64-v8a`；`onlineContributor` 只含 `x86_64` 并实际加载
+   PP-OCRv6/ONNX Runtime；Online BYOK 是该 contributor 包唯一翻译路径；
+3. 三份 CycloneDX 1.5 SBOM 分别列出 Gradle、ONNX Runtime、edition native runtime、
+   模型 revision/SHA 与 license coordinate，且不含本机路径、签名材料或秘密；
+4. 每个 Release APK 离线包含 Privacy、Security、Apache-2.0 与第三方 notices；About 页
+   identity 与该包的 BuildConfig/模型状态一致。
+
+### 模型任务恢复（#70）
+
+对 Lite 英中与 Full Q4 分别执行：
+
+1. 启动新下载，记录 task ID、阶段、已下载字节、速度与 ETA；旋转、切换三种 UI、按 Home
+   再返回，确认仍是同一任务且没有第二个同 revision Worker；
+2. 下载中断网，确认进入 waiting；恢复相同网络后从已校验 `.part` 字节继续，而非从零开始；
+3. 暂停、继续、取消各一次；取消后不得显示 ready，重新准备可复用合法 partial；
+4. 用空间不足条件启动全新任务，确认在网络传输前失败并显示所需/可用字节；
+5. 完成 SHA-256 校验后强制停止进程并重启，确认 ready；替换为同尺寸错误字节后再次冷启动，
+   确认 ready 失效；
+6. 从空闲通知和 Tile 触发 quick start，模型缺失时必须先回主页面准备，不得先出现
+   MediaProjection 同意页。
+
+### 首页、通知、Tile 与信任中心（#71/#72/#45）
+
+1. 清除应用数据后按主按钮依次完成模型/Online BYOK、通知、悬浮窗和投影授权，所有返回
+   都恢复到正确下一步；准备中按钮显示阻塞原因，运行中同一主按钮执行停止；
+2. Apple、MIUIX、Material 3（含 Monet 开/关）分别覆盖日/夜、font scale 1.0/2.0、
+   竖屏/横屏；任务摘要、原因文本、主按钮和 About 长文均可访问且不截断关键动作；
+3. 默认空闲通知存在；关闭开关后空闲通知消失，但活动捕获 FGS 通知继续存在；
+4. Tile 逐一记录 not-ready、ready、running、paused；点击 ready 进入 quick start，运行时点击
+   停止并确认投影、虚拟显示、ImageReader、overlay、OCR 与翻译资源全部释放；长按打开应用；
+5. Lite/Full/Online About 页记录版本、包名、edition、OCR/翻译 backend 和模型 revision/state；
+   Online 只显示 host、model、consent/key 是否配置，不出现 API Key 内容，且明确只上传文本。
+
+上述矩阵、三 APK SHA-256、签名证书、截图/录屏索引与报告哈希进入不可编辑的
+`DEVICE_ACCEPTANCE_PASS` 评论。任何一项失败时保留 issues 的
+`status:needs-verification`，不创建 `v2.2.0` tag。
+
 ## v2.1.0 持续识别最终签名验收矩阵（Issues #38/#39）
 
 ### 候选与预验收边界

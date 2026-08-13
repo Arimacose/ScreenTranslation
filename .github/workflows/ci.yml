@@ -111,6 +111,8 @@ jobs:
             lintLiteRelease \
             lintFullRelease \
             lintOnlineRelease \
+            generateReleaseSboms \
+            assembleOnlineContributor \
             assembleLiteRelease \
             assembleFullRelease \
             assembleOnlineRelease \
@@ -292,6 +294,30 @@ jobs:
           grep -Fq 'boolean isConfigurationReady(android.content.Context)' \
             app/build/outputs/mapping/onlineRelease/mapping.txt
 
+          contributor_apk="app/build/outputs/apk/online/contributor/app-online-contributor.apk"
+          test -f "$contributor_apk"
+          contributor_listing="$(unzip -Z1 "$contributor_apk")"
+          assert_entry "$contributor_listing" "lib/x86_64/libonnxruntime.so"
+          if grep -Eq '^lib/arm64-v8a/' <<<"$contributor_listing"; then
+            echo "::error::Online contributor APK contains release-only arm64 libraries"
+            exit 1
+          fi
+          for release_listing in "$lite_listing" "$full_listing" "$online_listing"; do
+            if grep -Eq '^lib/x86_64/' <<<"$release_listing"; then
+              echo "::error::Release APK contains contributor-only x86_64 libraries"
+              exit 1
+            fi
+          done
+
+      - name: Verify per-edition CycloneDX SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(./gradlew -q :app:printVersionInfo | sed -n 's/^versionName=//p')"
+          python tools/release/verify_sbom.py \
+            app/build/reports/sbom \
+            --version "$version"
+
       - name: Upload edition build outputs
         uses: actions/upload-artifact@v7
         with:
@@ -300,6 +326,7 @@ jobs:
             app/build/outputs/apk/lite/release/*.apk
             app/build/outputs/apk/full/release/*.apk
             app/build/outputs/apk/online/release/*.apk
+            app/build/outputs/apk/online/contributor/*.apk
             app/build/outputs/bundle/liteRelease/app-lite-release.aab
             app/build/outputs/bundle/fullRelease/app-full-release.aab
             app/build/outputs/bundle/onlineRelease/app-online-release.aab
@@ -322,6 +349,7 @@ jobs:
             app/build/outputs/mapping/fullRelease/
             app/build/outputs/mapping/onlineRelease/
             app/build/model-benchmark/translation-regression/
+            app/build/reports/sbom/*.cdx.json
           if-no-files-found: warn
           retention-days: 14
 

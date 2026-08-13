@@ -5,6 +5,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- 新增由 WorkManager 承载、按 edition/语言/模型 revision/SHA-256 稳定去重的模型准备任务；
+  支持应用退出后继续、网络约束、空间预检、暂停/继续/取消、`.part` 续传，以及下载速度和
+  ETA 展示。完成状态仅在当前模型文件 identity 再次匹配时成立。
+- 首页改为任务优先的信息架构：先展示当前动作与唯一主按钮，再按翻译、模型、权限、外观
+  排列设置；启动前统一检查语言、Online 配置、模型、通知、悬浮窗和 MediaProjection。
+- 增加可关闭的空闲快捷通知与 Quick Settings Tile；Tile 区分未就绪、就绪、运行和暂停，
+  并继续遵守每次启动都由用户确认的 MediaProjection 流程。
+- 增加应用内“关于与信任中心”，离线展示 edition/OCR/翻译后端 identity、模型版本、
+  Lite/Full/Online 数据流、Apache-2.0、第三方 notices、隐私与安全文档，且不显示 API Key。
+- 增加仅 Online 可用的 `onlineContributor` x86_64 Debug 构建，供 Android 16 模拟器验证
+  PP-OCRv6/ONNX Runtime；所有 Release edition 继续仅打包 `arm64-v8a`。
+- 为 Lite、Full、Online 生成独立 CycloneDX 1.5 SBOM，并把三份 SBOM 纳入签名
+  acceptance Artifact、`SHA256SUMS` 和 GitHub Release 的逐字节 promotion 门禁。
+
+### Verification
+
+- Lite、Full、Online Debug 单元测试共同覆盖任务门控、模型任务 identity、速度/ETA、空间
+  预检、快捷通知开关、Tile 四态、edition identity 与信任文档一致性。
+- CI 同时构建 `onlineContributor`，断言其包含 x86_64 ONNX Runtime，并拒绝任何 Release
+  APK 混入 x86_64 库；SBOM 校验器拒绝缺少固定组件、非法 SHA 或本机路径泄漏的清单。
+
 ## [2.1.0] - 2026-08-12
 
 ### Added

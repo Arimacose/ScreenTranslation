@@ -31,6 +31,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
+import androidx.work.WorkInfo
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
@@ -42,6 +43,9 @@ import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.model.CaptureMode
 import com.screentranslation.app.model.UiStyle
+import com.screentranslation.app.model.preparation.ModelPreparationCoordinator
+import com.screentranslation.app.model.preparation.ModelPreparationPhase
+import com.screentranslation.app.model.preparation.ModelPreparationSnapshot
 import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.service.CapturePermissionPreconditions
 import com.screentranslation.app.service.CapturePermissionStep
@@ -258,8 +262,11 @@ class MainActivity : AppCompatActivity() {
     private val modelReadinessViewModel: ModelReadinessViewModel by viewModels()
     private lateinit var preferences: AppPreferences
     private lateinit var projectionManager: MediaProjectionManager
+    private lateinit var modelPreparationCoordinator: ModelPreparationCoordinator
 
     private lateinit var experimentalBannerView: TextView
+    private lateinit var taskSummaryView: TextView
+    private lateinit var readinessSummaryView: TextView
     private lateinit var uiStyleGroup: MaterialButtonToggleGroup
     private lateinit var materialMonetSwitch: MaterialSwitch
     private lateinit var materialMonetHintView: TextView
@@ -284,6 +291,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var overlayPermissionStatusView: TextView
     private lateinit var batteryPolicyButton: Button
     private lateinit var batteryPolicyStatusView: TextView
+    private lateinit var idleShortcutSwitch: MaterialSwitch
+    private lateinit var modelWifiOnlySwitch: MaterialSwitch
+    private lateinit var aboutButton: Button
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
     private lateinit var serviceStatusView: TextView
@@ -298,9 +308,9 @@ class MainActivity : AppCompatActivity() {
     private val availableTargetOptions: List<LanguageOption> =
         targetOptionsForEdition(targetsChineseOnly)
 
-    private var modelPreparationEngine: TranslationBackend? = null
-    private var modelPreparationGeneration = 0
     private var modelReadyFor: Pair<String, String>? = null
+    private var modelPreparationWorkInfos: List<WorkInfo> = emptyList()
+    private var pendingStartAfterModelPreparation = false
     private val modelReadinessController =
         GenerationOwnedResourceController<TranslationBackend>()
     private val modelReadinessExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -420,6 +430,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         preferences = AppPreferences(this)
+        modelPreparationCoordinator = ModelPreparationCoordinator(this)
         projectionManager = getSystemService(MediaProjectionManager::class.java)
         bindViews()
         applySystemBarInsets()
@@ -432,6 +443,10 @@ class MainActivity : AppCompatActivity() {
         refreshPermissionState()
         setServiceRunningUi(false)
         refreshOnlineConfigurationStatus()
+        modelPreparationCoordinator.observeAll().observe(this) { workInfos ->
+            modelPreparationWorkInfos = workInfos
+            renderModelPreparationTask()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -470,9 +485,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         cancelModelReadinessCheck()
         modelReadinessExecutor.shutdownNow()
-        modelPreparationGeneration += 1
-        modelPreparationEngine?.close()
-        modelPreparationEngine = null
         experimentalSmokeTestGeneration += 1
         experimentalSmokeTestEngine?.close()
         experimentalSmokeTestEngine = null
@@ -491,6 +503,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindViews() {
         experimentalBannerView = findViewById(R.id.text_experimental_banner)
+        taskSummaryView = findViewById(R.id.text_task_summary)
+        readinessSummaryView = findViewById(R.id.text_readiness_summary)
         experimentalBannerView.visibility = if (
             BuildConfig.HYMT2_Q4_EXPERIMENTAL || BuildConfig.ONLINE_LLM
         ) {
@@ -540,6 +554,9 @@ class MainActivity : AppCompatActivity() {
         overlayPermissionStatusView = findViewById(R.id.text_overlay_permission_status)
         batteryPolicyButton = findViewById(R.id.button_battery_policy)
         batteryPolicyStatusView = findViewById(R.id.text_battery_policy_status)
+        idleShortcutSwitch = findViewById(R.id.switch_idle_shortcut)
+        modelWifiOnlySwitch = findViewById(R.id.switch_model_wifi_only)
+        aboutButton = findViewById(R.id.button_about)
         startButton = findViewById(R.id.button_start)
         stopButton = findViewById(R.id.button_stop)
         serviceStatusView = findViewById(R.id.text_service_status)
@@ -590,6 +607,16 @@ class MainActivity : AppCompatActivity() {
                 preferences.materialMonetEnabled = enabled
                 recreate()
             }
+        }
+        idleShortcutSwitch.isChecked = preferences.idleShortcutEnabled
+        idleShortcutSwitch.setOnCheckedChangeListener { _, enabled ->
+            preferences.idleShortcutEnabled = enabled
+            if (enabled) CaptureShortcutNotification.show(this)
+            else CaptureShortcutNotification.cancel(this)
+        }
+        modelWifiOnlySwitch.isChecked = preferences.modelWifiOnly
+        modelWifiOnlySwitch.setOnCheckedChangeListener { _, enabled ->
+            preferences.modelWifiOnly = enabled
         }
     }
 
@@ -667,6 +694,7 @@ class MainActivity : AppCompatActivity() {
                 persistCurrentConfiguration()
                 invalidatePreparedModel()
                 reconcileModelReadiness()
+                renderHomeReadiness()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -725,6 +753,7 @@ class MainActivity : AppCompatActivity() {
             ) {
                 updateCaptureModeHint()
                 persistCurrentConfiguration()
+                renderHomeReadiness()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -757,31 +786,43 @@ class MainActivity : AppCompatActivity() {
         batteryPolicyButton.setOnClickListener {
             openBatteryPolicySettings()
         }
+        aboutButton.setOnClickListener {
+            startActivity(Intent(this, AboutActivity::class.java))
+        }
         startButton.setOnClickListener {
-            beginStartFlow()
+            handlePrimaryAction()
         }
         stopButton.setOnClickListener {
             stopTranslationService()
         }
     }
 
-    private fun beginStartFlow() {
-        val source = selectedSourceLanguage()
-        val target = selectedTargetLanguage()
-        if (source == target) {
-            modelStatusView.setText(R.string.model_same_language)
-            serviceStatusView.setText(R.string.model_same_language)
-            return
-        }
-
+    private fun handlePrimaryAction() {
         persistCurrentConfiguration()
-        val selectedPair = source.languageTag to target.languageTag
-        if (modelReadyFor != selectedPair) {
-            prepareCurrentModels {
+        when (currentHomeReadiness().action) {
+            HomePrimaryAction.STOP_CAPTURE -> stopTranslationService()
+            HomePrimaryAction.CONFIGURE_ONLINE -> {
+                if (BuildConfig.ONLINE_LLM) {
+                    onlineSettingsLauncher.launch(
+                        Intent().setClassName(this, ONLINE_SETTINGS_ACTIVITY_CLASS),
+                    )
+                }
+            }
+            HomePrimaryAction.PREPARE_MODEL -> prepareCurrentModels {
                 continueStartAfterModelPreparation()
             }
-        } else {
-            continueStartAfterModelPreparation()
+            HomePrimaryAction.REQUEST_NOTIFICATION -> {
+                pendingStartAfterNotificationPermission = true
+                requestNotificationPermission()
+            }
+            HomePrimaryAction.REQUEST_OVERLAY -> {
+                pendingStartAfterOverlayPermission = true
+                openOverlayPermissionSettings()
+            }
+            HomePrimaryAction.REQUEST_PROJECTION -> requestProjectionPermission()
+            HomePrimaryAction.FIX_LANGUAGE_PAIR,
+            HomePrimaryAction.WAIT_FOR_MODEL,
+            -> Unit
         }
     }
 
@@ -793,89 +834,27 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val requestedPair = source.languageTag to target.languageTag
         cancelModelReadinessCheck()
         modelReadinessViewModel.invalidate()
-        val generation = ++modelPreparationGeneration
-        modelPreparationEngine?.close()
-        val engine = TranslationBackendFactory.create(
-            context = this,
-            sourceLanguage = source.languageTag,
-            targetLanguage = target.languageTag,
-        )
-        modelPreparationEngine = engine
         modelReadyFor = null
-        prepareModelsButton.isEnabled = false
-        startButton.isEnabled = false
-        modelStatusView.text = getString(
-            R.string.model_preparing,
-            source.displayName(this),
-            target.displayName(this),
-        )
-
-        engine.prepare(
-            requireWifi = false,
-            warmRuntime = false,
-            onProgress = { progress ->
-                runOnUiThread {
-                    if (generation == modelPreparationGeneration && !isDestroyed) {
-                        modelStatusView.text = modelPreparationStatus(progress)
-                    }
-                }
-            },
-        ) { result ->
-            runOnUiThread {
-                if (generation != modelPreparationGeneration || isDestroyed) {
-                    engine.close()
-                    return@runOnUiThread
-                }
-                if (modelPreparationEngine === engine) {
-                    modelPreparationEngine = null
-                }
-                val preparedIdentity = result.getOrNull()?.let {
-                    runCatching { engine.currentPreparationIdentity() }.getOrNull()
-                }
-                engine.close()
-                setServiceRunningUi(ScreenTranslationService.isRunning)
-
-                val currentPair = selectedSourceLanguage().languageTag to
-                    selectedTargetLanguage().languageTag
-                if (currentPair != requestedPair) {
-                    modelStatusView.setText(R.string.model_not_prepared)
-                    setServiceRunningUi(ScreenTranslationService.isRunning)
-                    return@runOnUiThread
-                }
-
-                result.fold(
-                    onSuccess = {
-                        if (preparedIdentity == null) {
-                            modelReadyFor = null
-                            modelReadinessViewModel.invalidate()
-                            modelStatusView.setText(R.string.model_not_prepared)
-                            setServiceRunningUi(ScreenTranslationService.isRunning)
-                            return@fold
-                        }
-                        modelReadyFor = requestedPair
-                        modelReadinessViewModel.markReady(requestedPair, preparedIdentity)
-                        modelStatusView.text = getString(
-                            R.string.model_ready,
-                            source.displayName(this),
-                            target.displayName(this),
-                        )
-                        setServiceRunningUi(ScreenTranslationService.isRunning)
-                        onReady?.invoke()
-                    },
-                    onFailure = { error ->
-                        modelReadyFor = null
-                        modelStatusView.text = getString(
-                            R.string.model_failed,
-                            error.localizedMessage ?: getString(R.string.unknown_error),
-                        )
-                        setServiceRunningUi(ScreenTranslationService.isRunning)
-                    },
-                )
-            }
+        pendingStartAfterModelPreparation = onReady != null
+        runCatching {
+            modelPreparationCoordinator.enqueue(
+                sourceLanguage = source.languageTag,
+                targetLanguage = target.languageTag,
+                requireUnmeteredNetwork = preferences.modelWifiOnly,
+            )
+        }.getOrElse { error ->
+            pendingStartAfterModelPreparation = false
+            modelStatusView.text = getString(
+                R.string.model_failed,
+                error.localizedMessage ?: getString(R.string.unknown_error),
+            )
+            setServiceRunningUi(ScreenTranslationService.isRunning)
+            return
         }
+        modelStatusView.setText(R.string.model_progress_queued)
+        setServiceRunningUi(ScreenTranslationService.isRunning)
     }
 
     private fun modelPreparationStatus(progress: ModelPreparationProgress): String =
@@ -898,6 +877,7 @@ class MainActivity : AppCompatActivity() {
                     percent,
                 )
             }
+            ModelPreparationStage.EXTRACTING -> getString(R.string.model_progress_extracting)
         }
 
     private fun runExperimentalSmokeTest() {
@@ -1204,14 +1184,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             CaptureShortcutNotification.show(this)
         }
+        renderHomeReadiness()
     }
 
     private fun invalidatePreparedModel() {
         cancelModelReadinessCheck()
         modelReadinessViewModel.invalidate()
-        modelPreparationGeneration += 1
-        modelPreparationEngine?.close()
-        modelPreparationEngine = null
+        pendingStartAfterModelPreparation = false
         modelReadyFor = null
         setServiceRunningUi(ScreenTranslationService.isRunning)
         modelStatusView.setText(
@@ -1233,6 +1212,14 @@ class MainActivity : AppCompatActivity() {
             // large model artifacts concurrently from a hidden Activity.
             cancelModelReadinessCheck()
             setServiceRunningUi(true)
+            return
+        }
+
+        val taskSnapshot = currentModelTaskSnapshot()
+        if (taskSnapshot?.isActive == true || taskSnapshot?.phase == ModelPreparationPhase.PAUSED) {
+            modelReadyFor = null
+            modelStatusView.text = modelPreparationTaskStatus(taskSnapshot)
+            setServiceRunningUi(serviceRunning)
             return
         }
 
@@ -1263,7 +1250,7 @@ class MainActivity : AppCompatActivity() {
         )
         setServiceRunningUi(serviceRunning)
 
-        val operationIdle = modelPreparationEngine == null &&
+        val operationIdle = currentModelTaskSnapshot()?.isActive != true &&
             experimentalSmokeTestEngine == null && !modelReadinessController.inFlight
         if (
             source != target && shouldStartModelReadinessCheck(
@@ -1297,7 +1284,7 @@ class MainActivity : AppCompatActivity() {
             !shouldStartModelReadinessCheck(
                 activityStarted = activityStarted,
                 serviceRunning = ScreenTranslationService.isRunning,
-                operationIdle = modelPreparationEngine == null &&
+                operationIdle = currentModelTaskSnapshot()?.isActive != true &&
                     experimentalSmokeTestEngine == null && !modelReadinessController.inFlight,
                 readyForSelectedPair = modelReadyFor == requestedPair,
             )
@@ -1397,6 +1384,98 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun selectedModelTaskId(): String? {
+        if (!::modelPreparationCoordinator.isInitialized || !::sourceSpinner.isInitialized) return null
+        val source = selectedSourceLanguage().languageTag
+        val target = selectedTargetLanguage().languageTag
+        if (source == target) return null
+        return runCatching { modelPreparationCoordinator.descriptor(source, target).taskId }
+            .getOrNull()
+    }
+
+    private fun currentModelTaskSnapshot(): ModelPreparationSnapshot? {
+        val taskId = selectedModelTaskId() ?: return null
+        return modelPreparationCoordinator.snapshotFor(modelPreparationWorkInfos, taskId)
+    }
+
+    private fun renderModelPreparationTask() {
+        if (!::modelStatusView.isInitialized || !::sourceSpinner.isInitialized) return
+        val snapshot = currentModelTaskSnapshot() ?: return
+        when (snapshot.phase) {
+            ModelPreparationPhase.READY -> {
+                val source = selectedSourceLanguage().languageTag
+                val target = selectedTargetLanguage().languageTag
+                val identity = modelPreparationCoordinator.verifiedCurrentIdentity(source, target)
+                if (identity != null) {
+                    val pair = source to target
+                    modelReadyFor = pair
+                    modelReadinessViewModel.markReady(pair, identity)
+                    showSelectedPairReady()
+                    if (pendingStartAfterModelPreparation) {
+                        pendingStartAfterModelPreparation = false
+                        continueStartAfterModelPreparation()
+                    }
+                } else {
+                    modelReadyFor = null
+                    modelReadinessViewModel.invalidate()
+                    modelStatusView.setText(R.string.model_not_prepared)
+                }
+            }
+            ModelPreparationPhase.FAILED -> {
+                pendingStartAfterModelPreparation = false
+                modelReadyFor = null
+                modelStatusView.text = getString(
+                    R.string.model_failed,
+                    snapshot.message ?: getString(R.string.unknown_error),
+                )
+            }
+            ModelPreparationPhase.CANCELLED -> {
+                pendingStartAfterModelPreparation = false
+                modelReadyFor = null
+                modelStatusView.setText(R.string.model_progress_cancelled)
+            }
+            else -> {
+                modelReadyFor = null
+                modelStatusView.text = modelPreparationTaskStatus(snapshot)
+            }
+        }
+        setServiceRunningUi(ScreenTranslationService.isRunning)
+    }
+
+    private fun modelPreparationTaskStatus(snapshot: ModelPreparationSnapshot): String = when (
+        snapshot.phase
+    ) {
+        ModelPreparationPhase.IDLE -> getString(R.string.model_not_prepared)
+        ModelPreparationPhase.QUEUED -> getString(R.string.model_progress_queued)
+        ModelPreparationPhase.WAITING_FOR_NETWORK -> getString(R.string.model_progress_waiting_network)
+        ModelPreparationPhase.STORAGE_PREFLIGHT -> getString(R.string.model_progress_storage_preflight)
+        ModelPreparationPhase.PREPARING -> getString(R.string.model_progress_preparing)
+        ModelPreparationPhase.EXTRACTING -> getString(R.string.model_progress_extracting)
+        ModelPreparationPhase.VERIFYING -> getString(R.string.model_progress_verifying)
+        ModelPreparationPhase.PAUSED -> getString(R.string.model_progress_paused)
+        ModelPreparationPhase.CANCELLED -> getString(R.string.model_progress_cancelled)
+        ModelPreparationPhase.READY -> getString(R.string.model_prepare_ready)
+        ModelPreparationPhase.FAILED -> getString(
+            R.string.model_failed,
+            snapshot.message ?: getString(R.string.unknown_error),
+        )
+        ModelPreparationPhase.DOWNLOADING -> {
+            val percent = if (snapshot.totalBytes > 0L) {
+                snapshot.completedBytes * 100L / snapshot.totalBytes
+            } else {
+                0L
+            }
+            getString(
+                R.string.model_progress_downloading_detailed,
+                Formatter.formatFileSize(this, snapshot.completedBytes),
+                Formatter.formatFileSize(this, snapshot.totalBytes),
+                percent.coerceIn(0L, 100L),
+                Formatter.formatFileSize(this, snapshot.bytesPerSecond),
+                snapshot.etaSeconds ?: 0L,
+            )
+        }
+    }
+
     private fun persistCurrentConfiguration() {
         if (!::preferences.isInitialized) return
         preferences.save(
@@ -1462,7 +1541,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setServiceRunningUi(running: Boolean) {
         val operationIdle =
-            modelPreparationEngine == null && experimentalSmokeTestEngine == null &&
+            currentModelTaskSnapshot()?.isActive != true && experimentalSmokeTestEngine == null &&
                 !modelReadinessController.inFlight
         val currentPair = selectedSourceLanguage().languageTag to selectedTargetLanguage().languageTag
         val prepareState = resolveModelPreparationButtonState(
@@ -1503,6 +1582,68 @@ class MainActivity : AppCompatActivity() {
         if (running && serviceStatusView.text == getString(R.string.service_idle)) {
             serviceStatusView.setText(R.string.service_running)
         }
+        renderHomeReadiness()
+    }
+
+    private fun currentHomeReadiness(): HomeReadinessState {
+        val pair = selectedSourceLanguage().languageTag to selectedTargetLanguage().languageTag
+        return resolveHomeReadiness(
+            serviceRunning = ScreenTranslationService.isRunning,
+            sameLanguage = pair.first == pair.second,
+            onlineConfigurationReady = !BuildConfig.ONLINE_LLM || isOnlineConfigurationReady(),
+            modelTaskActive = currentModelTaskSnapshot()?.isActive == true,
+            modelReady = modelReadyFor == pair,
+            notificationGranted = hasNotificationPermission(),
+            overlayGranted = Settings.canDrawOverlays(this),
+        )
+    }
+
+    private fun renderHomeReadiness() {
+        if (!::taskSummaryView.isInitialized || !::sourceSpinner.isInitialized) return
+        val state = currentHomeReadiness()
+        val captureMode = getString(
+            if (selectedCaptureMode() == CaptureMode.FULL_SCREEN_INCREMENTAL) {
+                R.string.capture_mode_full_screen
+            } else {
+                R.string.capture_mode_region
+            },
+        )
+        taskSummaryView.text = getString(
+            R.string.home_task_summary,
+            selectedSourceLanguage().displayName(this),
+            selectedTargetLanguage().displayName(this),
+            captureMode,
+        )
+        val actionAndReason = when (state.action) {
+            HomePrimaryAction.FIX_LANGUAGE_PAIR ->
+                R.string.home_action_fix_languages to R.string.home_reason_fix_languages
+            HomePrimaryAction.CONFIGURE_ONLINE ->
+                R.string.home_action_configure_online to R.string.home_reason_configure_online
+            HomePrimaryAction.PREPARE_MODEL ->
+                R.string.home_action_prepare_model to R.string.home_reason_prepare_model
+            HomePrimaryAction.WAIT_FOR_MODEL ->
+                R.string.home_action_wait_model to R.string.home_reason_wait_model
+            HomePrimaryAction.REQUEST_NOTIFICATION ->
+                R.string.home_action_notification to R.string.home_reason_notification
+            HomePrimaryAction.REQUEST_OVERLAY ->
+                R.string.home_action_overlay to R.string.home_reason_overlay
+            HomePrimaryAction.REQUEST_PROJECTION ->
+                R.string.home_action_start to R.string.home_reason_start
+            HomePrimaryAction.STOP_CAPTURE ->
+                R.string.stop_translation to R.string.home_reason_running
+        }
+        startButton.setText(actionAndReason.first)
+        startButton.isEnabled = !state.blocked
+        readinessSummaryView.setText(actionAndReason.second)
+    }
+
+    private fun isOnlineConfigurationReady(): Boolean {
+        if (!BuildConfig.ONLINE_LLM) return true
+        return runCatching {
+            val bridge = Class.forName(ONLINE_EDITION_BRIDGE_CLASS)
+            val method = bridge.getMethod("isConfigurationReady", Context::class.java)
+            method.invoke(null, this) as Boolean
+        }.getOrDefault(false)
     }
 
     private fun refreshOnlineConfigurationStatus() {

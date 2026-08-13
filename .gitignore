@@ -46,3 +46,4 @@ dist/
 # Local captures and diagnostics
 captures/
 logs/
+work/

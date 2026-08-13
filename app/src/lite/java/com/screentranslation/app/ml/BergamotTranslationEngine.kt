@@ -526,6 +526,7 @@ private class BergamotModelStore(
         if (partialOutput.exists()) {
             check(partialOutput.delete()) { "Failed to reset Bergamot output partial" }
         }
+        onProgress(ModelPreparationProgress(ModelPreparationStage.EXTRACTING))
         GZIPInputStream(BufferedInputStream(compressed.inputStream(), BUFFER_SIZE)).use { input ->
             BufferedOutputStream(
                 FileOutputStream(partialOutput),

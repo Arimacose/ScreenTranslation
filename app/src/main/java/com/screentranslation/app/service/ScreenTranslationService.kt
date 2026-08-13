@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -22,6 +23,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.service.quicksettings.TileService
 import android.os.Looper
 import android.os.PowerManager
 import android.text.format.Formatter
@@ -449,6 +451,7 @@ class ScreenTranslationService : Service() {
         lifecycle.dispatch(CaptureLifecycleEvent.ProjectionReady)
         sessionStarted = true
         isRunning = true
+        currentLifecyclePhase = lifecycle.snapshot.phase
         notifySessionStateChanged()
         Log.i(
             PERFORMANCE_TAG,
@@ -514,6 +517,11 @@ class ScreenTranslationService : Service() {
     }
 
     private fun notifySessionStateChanged() {
+        currentLifecyclePhase = lifecycle.snapshot.phase
+        TileService.requestListeningState(
+            this,
+            ComponentName(this, CaptureQuickSettingsTileService::class.java),
+        )
         sendBroadcast(
             Intent(ACTION_SESSION_STATE_CHANGED)
                 .setPackage(packageName),
@@ -556,6 +564,7 @@ class ScreenTranslationService : Service() {
         when (progress.stage) {
             ModelPreparationStage.PREPARING -> getString(R.string.model_progress_preparing)
             ModelPreparationStage.VERIFYING -> getString(R.string.model_progress_verifying)
+            ModelPreparationStage.EXTRACTING -> getString(R.string.model_progress_extracting)
             ModelPreparationStage.LOADING_RUNTIME -> getString(R.string.model_progress_loading_runtime)
             ModelPreparationStage.DOWNLOADING -> {
                 val completed = progress.completedBytes ?: 0L
@@ -675,6 +684,7 @@ class ScreenTranslationService : Service() {
     private fun refreshProcessorState() {
         if (closing) return
         val state = lifecycle.snapshot
+        currentLifecyclePhase = state.phase
         frameProcessor?.setEnabled(state.processorEnabled)
         updateOverlayStatus(
             when {
@@ -824,6 +834,7 @@ class ScreenTranslationService : Service() {
         }
         sessionStarted = false
         isRunning = false
+        currentLifecyclePhase = CaptureLifecyclePhase.IDLE
         notifySessionStateChanged()
 
         screenReceiver?.let { receiver ->
@@ -993,6 +1004,10 @@ class ScreenTranslationService : Service() {
 
         @Volatile
         var isRunning: Boolean = false
+            private set
+
+        @Volatile
+        internal var currentLifecyclePhase: CaptureLifecyclePhase = CaptureLifecyclePhase.IDLE
             private set
 
         /**

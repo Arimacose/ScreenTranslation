@@ -2,8 +2,9 @@
 
 ## 1. 目标与约束
 
-ScreenTranslation 是主入口 Activity、单前台服务的 Android 16 原生应用；Online
-edition 额外提供一个非导出的设置 Activity。目标设备为小米 15 Pro（HyperOS 最新稳定版）。设计优先级依次为：
+ScreenTranslation 是任务优先主入口、捕获前台服务和后台模型准备 Worker 组成的 Android 16
+原生应用；Online edition 额外提供非导出的设置 Activity，所有 edition 共享非导出的模型管理
+与信任中心页面。目标设备为小米 15 Pro（HyperOS 最新稳定版）。设计优先级依次为：
 
 1. 系统授权链正确，用户能随时看见并停止屏幕捕获。
 2. 屏幕帧不落盘，OCR 始终在设备端完成；远程文字数据流必须由用户明确配置和确认。
@@ -47,6 +48,10 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 |---|---|---|
 | `MainActivity` | 收集语言、采样间隔和系统授权结果；发送显式 Intent 启停服务 | 只在前台发起 MediaProjection 授权 |
 | `ProjectionPermissionActivity` | 从常驻通知在当前目标应用上方请求新的屏幕共享授权 | 独立透明任务；授权完成即退出并回到目标应用 |
+| `ModelPreparationCoordinator` | 按 edition/语言/模型 revision/SHA-256 生成稳定任务 ID，并以唯一 WorkManager 任务排队、暂停、取消和恢复 | Activity 只观察 WorkInfo；任务和状态属于应用进程/WorkManager |
+| `ModelPreparationWorker` | 空间预检、下载/解压/校验、速度/ETA 与 dataSync 前台通知 | 先进入 FGS 再发布进度；`.part` 文件保留供下一次续传 |
+| `AboutActivity` / `TrustDocumentActivity` | 离线展示 edition identity、数据流、许可证、隐私与安全文档 | 非导出；Online 摘要不得读取或显示 API Key |
+| `CaptureQuickSettingsTileService` | 展示未就绪/就绪/运行/暂停状态并提供用户主动入口 | 系统绑定的导出 Tile；启动仍进入 MediaProjection 用户确认 |
 | `ScreenTranslationService` | 前台通知、投影会话、虚拟显示、整条流水线的所有权 | 启动后立即进入 FGS；销毁时幂等清理 |
 | `OverlayController` | 添加/更新/移除默认区域选择层和可展开译文层 | 所有 WindowManager 操作在主线程 |
 | `FullScreenOverlayController` | 把每个译文标签定位到对应 OCR 原文框上方，并提供独立停止条 | 译文层不可触摸；控制条可触摸；WindowManager 操作在主线程 |
@@ -98,6 +103,12 @@ flowchart LR
     D --> L["运行通知：停止入口"]
     L --> Q["停止后常驻通知：按已保存模式重新授权"]
 ```
+
+模型准备与捕获授权是两条独立链路：首页先根据语言/Online 配置解析
+`ModelPreparationDescriptor`，由 WorkManager 在 Activity 之外执行空间预检、下载、解压和
+SHA-256 校验；只有持久化的 verified identity 与当前文件重新计算的 identity 完全相等时，
+启动门才进入通知、悬浮窗和 MediaProjection。暂停/取消终止当前 Worker，但保留可复用的
+`.part` 文件；取消同时清除 verified identity。
 
 ### 3.1 捕获
 
@@ -224,6 +235,7 @@ HyperOS 的“显示在其他应用上层”属于用户可撤销的特殊权限
 | `POST_NOTIFICATIONS` | Android 13+ 前台服务通知体验 | 运行时权限 |
 | `FOREGROUND_SERVICE` | 启动前台服务 | Manifest 普通权限 |
 | `FOREGROUND_SERVICE_MEDIA_PROJECTION` | API 34+ mediaProjection 类型 FGS | Manifest 普通权限 |
+| `FOREGROUND_SERVICE_DATA_SYNC` | 长时模型下载/校验的 WorkManager 前台服务类型 | Manifest 普通权限 |
 
 服务在 Manifest 中设置：
 
@@ -232,7 +244,9 @@ android:exported="false"
 android:foregroundServiceType="mediaProjection"
 ```
 
-入口 Activity 是唯一导出组件，且只导出给 `MAIN/LAUNCHER`。应用不声明无障碍、相册、麦克风、位置、联系人或存储权限。
+主入口 Activity 只导出给 `MAIN/LAUNCHER`；Quick Settings Tile 仅以
+`BIND_QUICK_SETTINGS_TILE` 系统权限导出。其他 Activity、Receiver 与服务均不导出。应用不声明
+无障碍、相册、麦克风、位置、联系人或存储权限。
 
 ## 5. 状态机
 

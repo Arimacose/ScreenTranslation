@@ -12,6 +12,7 @@ import java.security.MessageDigest
 enum class ModelPreparationStage {
     PREPARING,
     DOWNLOADING,
+    EXTRACTING,
     VERIFYING,
     LOADING_RUNTIME,
 }

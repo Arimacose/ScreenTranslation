@@ -15,6 +15,8 @@ the Xiaomi 15 Pro acceptance matrix.
 - application ID: `com.screentranslation.app.online.instrumentation`;
 - Debug signing and Debug code semantics;
 - x86_64 ONNX Runtime for an API 36 Google APIs emulator;
+- a PP-OCRv6 runtime smoke test that materializes both pinned ONNX models and completes
+  one inference, proving the contributor/emulator native path starts rather than only packages;
 - independent from the ARM64 Lite, Full, Online Debug, Benchmark, and Release APKs.
 
 The ordinary product build types remain ARM64-only. Lite and Full instrumentation
