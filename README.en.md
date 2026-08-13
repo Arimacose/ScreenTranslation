@@ -18,6 +18,12 @@ memory by PP-OCRv6-small; translation is provided by one of three isolated editi
 > 37, and release APKs are currently ARM64-only. Source code is Apache-2.0; bundled and
 > downloaded third-party components retain their own licenses.
 
+The next user-experience work is now tracked as an acceptance-driven v2.1.1–v2.4.0
+program. See the
+[`product experience roadmap`](docs/PRODUCT_EXPERIENCE_ROADMAP.md) and
+[cross-version tracker #80](https://github.com/Arimacose/ScreenTranslation/issues/80).
+The program keeps Xiaomi 15 Pro / Android 16 / HyperOS as the only promised ROM baseline.
+
 ## 30-second workflow preview
 
 ![ScreenTranslation workflow preview](docs/assets/demo-preview.gif)

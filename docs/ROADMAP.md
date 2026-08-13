@@ -2,6 +2,10 @@
 
 路线图表达方向而非发布日期承诺。具体实现以对应 issue、设计讨论和真机证据为准。
 
+当前从 v2.1.1 到 v2.4.0 的体验审计、依赖顺序、完成定义与 GitHub Issue 映射见
+[`PRODUCT_EXPERIENCE_ROADMAP.md`](PRODUCT_EXPERIENCE_ROADMAP.md) 和跨版本总控
+[#80](https://github.com/Arimacose/ScreenTranslation/issues/80)。
+
 ## v0.1 — Android 16 可验证基线
 
 - [x] MediaProjection 用户授权与前台服务生命周期
@@ -20,7 +24,7 @@
   15 分钟温升验收绑定到签名 Release 证据（[#39](https://github.com/Arimacose/ScreenTranslation/issues/39)；
   [A/B 报告](PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)）
 - [x] 构建 Firefox Translations / Bergamot Android arm64 运行时并完成真机比较
-- [ ] 在实验特性开关后实现 Bergamot JNI 适配器，并与 PP-OCRv6 联合做内存/温升验收
+- [x] 将固定 Bergamot ARM64 runner 接入 Lite 生产链路，并与 PP-OCRv6 完成真机内存/温升验收
 - [x] 在翻译前遮蔽、翻译后恢复版本号、邮箱、金额、日期和 URL
 - [x] 让原文与译文面板可复制
 - [x] 在不保存历史的前提下增加长结果展开与限高滚动
@@ -28,7 +32,7 @@
 - [x] 以类型化 `TranslationProviderProfile` 分离 Lite、Full、Online 能力与中间档门禁（[#41](https://github.com/Arimacose/ScreenTranslation/issues/41)）
 - [x] 为固定公开文本建立质量回归夹具与人工评分规范（[#46](https://github.com/Arimacose/ScreenTranslation/issues/46)）
 - [x] 增加模型管理页面：大小、状态、下载与删除
-- [ ] 增加“关于/开源许可/隐私”应用内页面（v2.2；[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
+- [ ] 增加“关于/开源许可/隐私/数据流”应用内页面（v2.2；[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
 
 验收重点：长句不因面板省略而丢失可访问性；翻译后端的数据流和归属清晰可选。
 
@@ -36,7 +40,9 @@
 
 - [ ] 扩大 Android 16 ROM 验证矩阵（当前里程碑明确延期）
 - [ ] 增加 x86_64 调试构建或独立模拟器 flavor（v2.2；[#43](https://github.com/Arimacose/ScreenTranslation/issues/43)）
-- [x] 增加 Android instrumentation 与 UI 自动化测试（[#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
+- [x] 增加 Android instrumentation 基线测试（[#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
+- [ ] 以注入固定帧覆盖“捕获 → OCR → 翻译 → Overlay → 复制 → 停止”完整旅程，
+  并增加 golden 与 macrobenchmark（v2.4；[#79](https://github.com/Arimacose/ScreenTranslation/issues/79)）
 - [x] 覆盖旋转、锁屏、投影撤销和任务移除状态机（并入 [#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
 - [ ] 增加内存压力与系统回收进程后的专项状态恢复回归
 - [x] 建立可重复的性能、温升和持续运行基准（不保存 OCR 文本/屏幕内容）
@@ -47,6 +53,13 @@
   [#47](https://github.com/Arimacose/ScreenTranslation/issues/47) 与对应 Release notes
   保存，避免为回写验收状态移动已经固定的发布 commit。
 - [ ] 生成可发布的依赖清单或 SBOM（v2.2；[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
+
+## v2.1.1–v2.4 — 产品体验计划
+
+- **v2.1.1：** 低风险 UI/错误信息/触控修补与发布可发现性（[#68](https://github.com/Arimacose/ScreenTranslation/issues/68)、[#69](https://github.com/Arimacose/ScreenTranslation/issues/69)）；
+- **v2.2.0：** 可恢复模型准备、任务优先首次使用、通知/Quick Settings 与应用内信任页（[#70](https://github.com/Arimacose/ScreenTranslation/issues/70)–[#72](https://github.com/Arimacose/ScreenTranslation/issues/72)、[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）；
+- **v2.3.0：** 全屏阅读模式、区域预设和三套 UI 可访问性矩阵（[#73](https://github.com/Arimacose/ScreenTranslation/issues/73)–[#75](https://github.com/Arimacose/ScreenTranslation/issues/75)）；
+- **v2.4.0：** 混合脚本、小字 OCR、Online 批处理与完整 E2E/性能门禁（[#76](https://github.com/Arimacose/ScreenTranslation/issues/76)–[#79](https://github.com/Arimacose/ScreenTranslation/issues/79)）。
 
 ## v2.x 跨设备稳定性边界
 

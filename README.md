@@ -13,6 +13,11 @@
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
+后续体验改进已经拆分为可验收的 v2.1.1–v2.4.0 计划，详见
+[`docs/PRODUCT_EXPERIENCE_ROADMAP.md`](docs/PRODUCT_EXPERIENCE_ROADMAP.md) 和
+[跨版本总控 #80](https://github.com/Arimacose/ScreenTranslation/issues/80)。当前仍只承诺
+小米 15 Pro / Android 16 / HyperOS 基线，不在该计划中扩大其他 ROM 支持。
+
 ## 30 秒工作流预览
 
 ![ScreenTranslation 工作流预览](docs/assets/demo-preview.gif)
@@ -269,7 +274,7 @@ x86_64 Debug 签名包并在 API 36 模拟器运行：
 
 ### Lite · Bergamot
 
-Lite 使用 `com.screentranslation.app` 和 `2.0.0-lite`，可覆盖升级 v0.1.0。
+Lite 使用 `com.screentranslation.app` 和 `2.1.0-lite`，可覆盖升级 v0.1.0。
 APK 随包提供固定的 ARM64 Bergamot runner；构建时
 `verifyBergamotRunner` 校验其 8,416,304 bytes 与 SHA-256。英语→中文使用
 直模，日语→中文使用 `ja→en→zh` 级联。压缩模型和解压文件均校验长度与
@@ -281,7 +286,7 @@ SHA-256。
 
 ### Full · HY-MT2 Q4 Experimental
 
-Full 使用 `com.screentranslation.app.full` 和 `2.0.0-full`，可与 Lite
+Full 使用 `com.screentranslation.app.full` 和 `2.1.0-full`，可与 Lite
 并存。应用名称、标题、Banner、通知和 attribution 均包含
 `Full · HY-MT2 Q4 Experimental`。
 
@@ -294,7 +299,7 @@ Full 使用 `com.screentranslation.app.full` 和 `2.0.0-full`，可与 Lite
 
 ### Online · BYOK API
 
-Online 使用 `com.screentranslation.app.online` 和 `2.0.0-online`，可与 Lite/Full
+Online 使用 `com.screentranslation.app.online` 和 `2.1.0-online`，可与 Lite/Full
 并存。设置页只保留用户自带密钥（BYOK）链路：填写 HTTPS Base URL 与 API Key、
 确认数据流，再点击“获取可用模型”；应用通过 `GET /models` 获取并展示模型 ID，
 无需手工输入。根地址会自动补充 `/models` 和 `/chat/completions`。API Key 由
