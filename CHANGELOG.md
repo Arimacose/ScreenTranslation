@@ -5,8 +5,18 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-08-16
+
 ### Added
 
+- 全屏增量覆盖新增暂停/继续、显示/隐藏、阅读模式、字号、透明度和停止控制；阅读模式逐块
+  保留完整原文/译文、block identity、复制入口与原文位置高亮，隐藏标签仍进入可发现计数。
+- 译文放置新增上方、下方、水平两侧与栈式回退，并在相邻块合并时保留每个原始 block 的
+  identity 和完整文本对；新增 20 block 密集页面回归夹具。
+- 框选结果面板可独立拖动且不改变裁剪区域，并可原子冻结/继续当前原文译文；新增横竖屏
+  分离的归一化区域预设，以及“底部字幕”“中心对话”启动预设。
+- Apple、MIUIX、Material 3/Monet 新增统一语义、状态描述、阅读顺序、48 dp 目标与触觉反馈；
+  增加覆盖日/夜、横/竖屏和 font scale 1.0/1.3/2.0 的确定性渲染矩阵。
 - 新增由 WorkManager 承载、按 edition/语言/模型 revision/SHA-256 稳定去重的模型准备任务；
   支持应用退出后继续、网络约束、空间预检、暂停/继续/取消、`.part` 续传，以及下载速度和
   ETA 展示。完成状态仅在当前模型文件 identity 再次匹配时成立。
@@ -21,8 +31,25 @@
 - 为 Lite、Full、Online 生成独立 CycloneDX 1.5 SBOM，并把三份 SBOM 纳入签名
   acceptance Artifact、`SHA256SUMS` 和 GitHub Release 的逐字节 promotion 门禁。
 
+### Changed
+
+- 框选手势排除区域从全屏收窄为说明区域与活动选框，继续允许系统返回与导航手势。
+- 移除首页“仅在不计费网络上准备模型”开关；模型准备统一使用可用网络，避免保留不可见的
+  历史网络约束。
+- 快速全屏译文标签保持在 TalkBack 树外，阅读模式提供稳定且完整的可访问内容树；所有
+  悬浮控制与状态更新通过 state description 和可访问性 announcement 暴露。
+
+### Fixed
+
+- Android 16 强制 edge-to-edge 下，动态 OCR 验收夹具现在按状态栏、导航栏与刘海屏 inset
+  布局自绘内容；状态栏背后保持纯色背景，避免顶端出现重复正文像素。
+
 ### Verification
 
+- Lite、Full、Online 单元测试覆盖放置回退、密集块可发现性、预设坐标/方向/隐私边界与
+  三套视觉样式契约；真机 instrumentation 检查活动样式的主交互目标和状态描述。
+- `docs/assets/ui-accessibility-matrix.png` 由仓库脚本确定性生成，覆盖 12 组样式/主题/
+  方向/字号配置，并由测试固定其 SHA-256。
 - Lite、Full、Online Debug 单元测试共同覆盖任务门控、模型任务 identity、速度/ETA、空间
   预检、快捷通知开关、Tile 四态、edition identity 与信任文档一致性。
 - CI 同时构建 `onlineContributor`，断言其包含 x86_64 ONNX Runtime，并拒绝任何 Release
@@ -277,7 +304,8 @@
 发布时将 `Unreleased` 中的内容移动到 `## [x.y.z] - YYYY-MM-DD`，同步提高
 `versionCode` 与 `versionName`，完成真机验收后再创建 `vx.y.z` 标签。
 
-[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/Arimacose/ScreenTranslation/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/Arimacose/ScreenTranslation/compare/v2.1.0...v2.3.0
 [2.1.0]: https://github.com/Arimacose/ScreenTranslation/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.1...v2.0.0
 [0.3.1]: https://github.com/Arimacose/ScreenTranslation/compare/v0.3.0...v0.3.1

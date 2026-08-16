@@ -3,6 +3,7 @@ package com.screentranslation.app.overlay
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -15,11 +16,15 @@ import android.text.TextUtils
 import android.view.Gravity
 import android.view.ContextThemeWrapper
 import android.view.KeyEvent
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -27,7 +32,9 @@ import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import com.google.android.material.button.MaterialButton
+import androidx.core.view.ViewCompat
 import com.screentranslation.app.R
+import com.screentranslation.app.RegionPresetActivity
 import com.screentranslation.app.SelectionGestureGuardActivity
 
 /**
@@ -111,6 +118,7 @@ class OverlayController(
      * the very text the user expanded in order to read.
      */
     private val onExpandedChanged: (Boolean) -> Unit = {},
+    private val onFrozenChanged: (Boolean) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val widgetContext = ContextThemeWrapper(
@@ -134,13 +142,21 @@ class OverlayController(
     private var expandButton: Button? = null
     private var copyOriginalButton: Button? = null
     private var copyTranslationButton: Button? = null
+    private var freezeButton: Button? = null
+    private var presetButton: Button? = null
     private var textExpanded = false
+    private var frozen = false
     private var layoutParams: WindowManager.LayoutParams? = null
     private var selectedRegion: Rect? = null
     private var currentOriginal = ""
     private var currentTranslation = ""
     private var currentStatus = ""
     private var selectionModeActive = false
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var dragStartWindowX = 0
+    private var dragStartWindowY = 0
+    private var panelDragging = false
     private var registeredBackDispatcher: OnBackInvokedDispatcher? = null
     private val selectionBackCallback = OnBackInvokedCallback {
         cancelSelectionFromBack()
@@ -170,9 +186,6 @@ class OverlayController(
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 dispatchOverlayBounds()
-                if (selectionModeActive) {
-                    systemGestureExclusionRects = listOf(Rect(0, 0, width, height))
-                }
             }
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, _ ->
@@ -236,6 +249,7 @@ class OverlayController(
             // new region ends it -- otherwise recognition stays paused and the
             // freshly selected region never produces anything.
             clearExpanded()
+            clearFrozen()
 
             selector.visibility = View.VISIBLE
             selector.startSelection()
@@ -284,6 +298,27 @@ class OverlayController(
         }
     }
 
+    /** Applies a normalized preset converted by the service for the current display. */
+    fun applySelectedRegion(region: Rect) {
+        runOnMain {
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            val clamped = Rect(
+                region.left.coerceIn(0, bounds.width() - 1),
+                region.top.coerceIn(0, bounds.height() - 1),
+                region.right.coerceIn(1, bounds.width()),
+                region.bottom.coerceIn(1, bounds.height()),
+            )
+            if (clamped.right <= clamped.left || clamped.bottom <= clamped.top) return@runOnMain
+            clearExpanded()
+            clearFrozen()
+            selectedRegion = clamped
+            selectionView?.setRegion(clamped)
+            onRegionChanged(Rect(clamped))
+            switchToCompactMode()
+            rootView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+        }
+    }
+
     fun updateOriginal(text: String) {
         val pending = RegionOverlayContentPolicy.pending(
             currentOriginal = currentOriginal,
@@ -305,6 +340,7 @@ class OverlayController(
         runOnMain {
             currentStatus = status
             statusView?.text = status
+            statusView?.let { ViewCompat.setStateDescription(it, status) }
         }
     }
 
@@ -470,6 +506,13 @@ class OverlayController(
             textSize = 12f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            minHeight = dp(48)
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            contentDescription = appContext.getString(R.string.overlay_drag_panel_description)
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            setOnTouchListener(::handlePanelDrag)
         }
         originalView = TextView(appContext).apply {
             text = appContext.getString(R.string.overlay_waiting_for_text)
@@ -562,6 +605,24 @@ class OverlayController(
                 collapseToPanel(showResults = true)
             }
         }
+        freezeButton = createOverlayButton().apply {
+            isAllCaps = false
+            setOnClickListener {
+                frozen = !frozen
+                onFrozenChanged(frozen)
+                performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                renderFreezeState()
+            }
+        }
+        presetButton = createOverlayButton().apply {
+            text = appContext.getString(R.string.overlay_presets)
+            isAllCaps = false
+            contentDescription = appContext.getString(R.string.overlay_presets_description)
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                launchPresetManager()
+            }
+        }
         reselectButton = createOverlayButton().apply {
             text = appContext.getString(R.string.overlay_reselect)
             isAllCaps = false
@@ -571,6 +632,7 @@ class OverlayController(
             text = appContext.getString(R.string.overlay_stop)
             isAllCaps = false
             setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.REJECT)
                 onStop()
                 close()
             }
@@ -581,6 +643,20 @@ class OverlayController(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
+        )
+        actionRow.addView(
+            freezeButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(8) },
+        )
+        actionRow.addView(
+            presetButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(8) },
         )
         actionRow.addView(
             reselectButton,
@@ -601,8 +677,14 @@ class OverlayController(
         panel.addView(textScrollView)
         panel.addView(attributionView)
         panel.addView(copyRow)
-        panel.addView(actionRow)
+        panel.addView(
+            HorizontalScrollView(appContext).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(actionRow)
+            },
+        )
         applyTextExpansion()
+        renderFreezeState()
         return panel
     }
 
@@ -615,7 +697,8 @@ class OverlayController(
         )
         return MaterialButton(widgetContext).apply {
             isAllCaps = false
-            minHeight = dp(40)
+            minHeight = dp(48)
+            minWidth = dp(48)
             cornerRadius = dp(visualStyle.controlCornerDp)
             insetTop = 0
             insetBottom = 0
@@ -669,6 +752,100 @@ class OverlayController(
         textExpanded = false
         applyTextExpansion()
         onExpandedChanged(false)
+    }
+
+    private fun clearFrozen() {
+        if (!frozen) return
+        frozen = false
+        onFrozenChanged(false)
+        renderFreezeState()
+    }
+
+    private fun renderFreezeState() {
+        freezeButton?.apply {
+            text = appContext.getString(
+                if (frozen) R.string.overlay_unfreeze else R.string.overlay_freeze,
+            )
+            contentDescription = text
+            ViewCompat.setStateDescription(
+                this,
+                appContext.getString(
+                    if (frozen) R.string.overlay_state_frozen else R.string.overlay_state_live,
+                ),
+            )
+        }
+    }
+
+    private fun launchPresetManager() {
+        val metrics = windowManager.maximumWindowMetrics.bounds
+        val region = selectedRegion
+        val intent = Intent(appContext, RegionPresetActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (region != null && metrics.width() > 0 && metrics.height() > 0) {
+                putExtra(RegionPresetActivity.EXTRA_LEFT, region.left.toFloat() / metrics.width())
+                putExtra(RegionPresetActivity.EXTRA_TOP, region.top.toFloat() / metrics.height())
+                putExtra(RegionPresetActivity.EXTRA_RIGHT, region.right.toFloat() / metrics.width())
+                putExtra(RegionPresetActivity.EXTRA_BOTTOM, region.bottom.toFloat() / metrics.height())
+            }
+        }
+        appContext.startActivity(intent)
+    }
+
+    private fun handlePanelDrag(view: View, event: MotionEvent): Boolean {
+        val params = layoutParams ?: return false
+        val root = rootView ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragStartRawX = event.rawX
+                dragStartRawY = event.rawY
+                dragStartWindowX = params.x
+                dragStartWindowY = params.y
+                panelDragging = false
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val deltaX = (event.rawX - dragStartRawX).toInt()
+                val deltaY = (event.rawY - dragStartRawY).toInt()
+                if (!panelDragging && (kotlin.math.abs(deltaX) > dp(4) || kotlin.math.abs(deltaY) > dp(4))) {
+                    panelDragging = true
+                }
+                if (panelDragging) {
+                    val metrics = windowManager.maximumWindowMetrics
+                    val screen = metrics.bounds
+                    val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                        WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
+                    )
+                    val margin = dp(8)
+                    val safeLeft = insets.left + margin
+                    val safeTop = insets.top + margin
+                    val safeRight = screen.width() - insets.right - margin
+                    val safeBottom = screen.height() - insets.bottom - margin
+                    val panelWidth = root.width.takeIf { it > 0 } ?: params.width.coerceAtLeast(dp(240))
+                    val panelHeight = root.height.takeIf { it > 0 } ?: dp(160)
+                    params.x = (dragStartWindowX + deltaX).coerceIn(
+                        safeLeft,
+                        (safeRight - panelWidth).coerceAtLeast(safeLeft),
+                    )
+                    params.y = (dragStartWindowY + deltaY).coerceIn(
+                        safeTop,
+                        (safeBottom - panelHeight).coerceAtLeast(safeTop),
+                    )
+                    safelyUpdateViewLayout(root, params)
+                    root.post { dispatchOverlayBounds() }
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (panelDragging) {
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    view.performClick()
+                }
+                panelDragging = false
+                return true
+            }
+        }
+        return false
     }
 
     private fun applyTextExpansion() {
@@ -762,12 +939,14 @@ class OverlayController(
 
     private fun copyToClipboard(label: String, text: String) {
         if (text.isBlank()) return
+        rootView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
         Toast.makeText(appContext, R.string.overlay_copy_success, Toast.LENGTH_SHORT).show()
     }
 
     private fun clearViewReferences() {
+        if (frozen) onFrozenChanged(false)
         SelectionGestureGuardActivity.dismiss()
         unregisterSelectionBackCallback()
         selectionModeActive = false
@@ -784,7 +963,11 @@ class OverlayController(
         expandButton = null
         copyOriginalButton = null
         copyTranslationButton = null
+        freezeButton = null
+        presetButton = null
         textExpanded = false
+        frozen = false
+        panelDragging = false
         layoutParams = null
         selectedRegion = null
     }

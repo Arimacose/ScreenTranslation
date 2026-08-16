@@ -73,12 +73,6 @@ class AppPreferences(context: Context) {
             preferences.edit { putBoolean(KEY_IDLE_SHORTCUT_ENABLED, value) }
         }
 
-    var modelWifiOnly: Boolean
-        get() = preferences.getBoolean(KEY_MODEL_WIFI_ONLY, false)
-        set(value) {
-            preferences.edit { putBoolean(KEY_MODEL_WIFI_ONLY, value) }
-        }
-
     fun save(
         sourceLanguage: String,
         targetLanguage: String,
@@ -109,6 +103,5 @@ class AppPreferences(context: Context) {
         private const val KEY_UI_STYLE = "ui_style"
         private const val KEY_MATERIAL_MONET_ENABLED = "material_monet_enabled"
         private const val KEY_IDLE_SHORTCUT_ENABLED = "idle_shortcut_enabled"
-        private const val KEY_MODEL_WIFI_ONLY = "model_wifi_only"
     }
 }

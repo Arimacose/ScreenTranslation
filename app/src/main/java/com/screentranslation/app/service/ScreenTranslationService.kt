@@ -44,6 +44,9 @@ import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.overlay.OverlayController
 import com.screentranslation.app.overlay.FullScreenOverlayController
+import com.screentranslation.app.prefs.NormalizedRegionBounds
+import com.screentranslation.app.prefs.RegionPresetOrientation
+import com.screentranslation.app.prefs.RegionPresetStore
 import com.screentranslation.app.util.StableTextGate
 import java.io.FileDescriptor
 import java.io.PrintWriter
@@ -72,6 +75,10 @@ class ScreenTranslationService : Service() {
     private var frameProcessor: FramePipeline? = null
     private var performanceTelemetry: CapturePerformanceTelemetry? = null
     private var captureMode = CaptureMode.REGION
+    private var regionFrozen = false
+    private var fullScreenUserPaused = false
+    private var activeRegionPresetName: String? = null
+    private var applyingRegionPreset = false
     private val performanceLogRunnable = object : Runnable {
         override fun run() {
             val telemetry = performanceTelemetry ?: return
@@ -120,6 +127,12 @@ class ScreenTranslationService : Service() {
                 CaptureLifecycleEvent.StopRequested(CaptureStopReason.USER),
             )
             stopSelf()
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_APPLY_REGION_PRESET) {
+            if (sessionStarted && !closing && captureMode == CaptureMode.REGION) {
+                applyRegionPresetRequest(intent)
+            }
             return START_NOT_STICKY
         }
 
@@ -224,7 +237,10 @@ class ScreenTranslationService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (!sessionStarted || closing) return
-        captureHandler?.post { resizeCaptureIfNeeded() }
+        captureHandler?.post {
+            resizeCaptureIfNeeded()
+            mainHandler.post { applyActivePresetForConfiguration(newConfig) }
+        }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -278,6 +294,7 @@ class ScreenTranslationService : Service() {
                 context = this,
                 onStop = ::requestUserStop,
                 onOverlayBoundsChanged = ::onFullScreenOverlayBoundsChanged,
+                onPausedChanged = ::onFullScreenPausedChanged,
             )
             check(overlay.show()) { "Overlay permission is required" }
             overlay.updateStatus(STATUS_PREPARING_MODEL)
@@ -290,6 +307,7 @@ class ScreenTranslationService : Service() {
                 onStop = ::requestUserStop,
                 onRegionCleared = ::onRegionCleared,
                 onExpandedChanged = ::onResultsExpandedChanged,
+                onFrozenChanged = ::onRegionFrozenChanged,
             )
             check(overlay.show()) { "Overlay permission is required" }
             overlay.updateStatus(STATUS_SELECT_REGION)
@@ -607,6 +625,10 @@ class ScreenTranslationService : Service() {
 
     private fun onPixelRegionChanged(region: Rect) {
         if (captureWidth <= 0 || captureHeight <= 0) return
+        if (!applyingRegionPreset) {
+            activeRegionPresetName = null
+            RegionPresetStore(this).activeName = null
+        }
         normalizedRegion = NormalizedRegion.fromPixels(
             region = region,
             screenWidth = captureWidth,
@@ -640,6 +662,65 @@ class ScreenTranslationService : Service() {
             frameProcessor?.resetStability()
         }
         refreshProcessorState()
+    }
+
+    private fun onRegionFrozenChanged(frozen: Boolean) {
+        if (closing) return
+        regionFrozen = frozen
+        if (frozen) {
+            frameProcessor?.setEnabled(false)
+        } else {
+            frameProcessor?.resetStability()
+        }
+        refreshProcessorState()
+    }
+
+    private fun onFullScreenPausedChanged(paused: Boolean) {
+        if (closing) return
+        fullScreenUserPaused = paused
+        if (paused) frameProcessor?.setEnabled(false)
+        refreshProcessorState()
+    }
+
+    private fun applyRegionPresetRequest(intent: Intent) {
+        val name = intent.getStringExtra(EXTRA_REGION_PRESET_NAME)?.trim().orEmpty()
+        if (name.isBlank()) return
+        val bounds = runCatching {
+            com.screentranslation.app.prefs.clampNormalizedRegion(
+                left = intent.getFloatExtra(EXTRA_REGION_LEFT, 0f),
+                top = intent.getFloatExtra(EXTRA_REGION_TOP, 0f),
+                right = intent.getFloatExtra(EXTRA_REGION_RIGHT, 1f),
+                bottom = intent.getFloatExtra(EXTRA_REGION_BOTTOM, 1f),
+            )
+        }.getOrNull() ?: return
+        activeRegionPresetName = name
+        RegionPresetStore(this).activeName = name
+        applyPresetBounds(bounds)
+    }
+
+    private fun applyActivePresetForConfiguration(configuration: Configuration) {
+        if (closing || captureMode != CaptureMode.REGION) return
+        val store = RegionPresetStore(this)
+        val name = activeRegionPresetName ?: store.activeName ?: return
+        val bounds = store.load(name, RegionPresetOrientation.from(configuration)) ?: return
+        activeRegionPresetName = name
+        applyPresetBounds(bounds)
+    }
+
+    private fun applyPresetBounds(bounds: NormalizedRegionBounds) {
+        if (captureWidth <= 0 || captureHeight <= 0) return
+        val region = Rect(
+            (bounds.left * captureWidth).toInt().coerceIn(0, captureWidth - 1),
+            (bounds.top * captureHeight).toInt().coerceIn(0, captureHeight - 1),
+            (bounds.right * captureWidth).toInt().coerceIn(1, captureWidth),
+            (bounds.bottom * captureHeight).toInt().coerceIn(1, captureHeight),
+        )
+        applyingRegionPreset = true
+        try {
+            overlayController?.applySelectedRegion(region)
+        } finally {
+            applyingRegionPreset = false
+        }
     }
 
     private fun onRegionCleared() {
@@ -685,7 +766,9 @@ class ScreenTranslationService : Service() {
         if (closing) return
         val state = lifecycle.snapshot
         currentLifecyclePhase = state.phase
-        frameProcessor?.setEnabled(state.processorEnabled)
+        frameProcessor?.setEnabled(
+            state.processorEnabled && !regionFrozen && !fullScreenUserPaused,
+        )
         updateOverlayStatus(
             when {
                 !state.modelReady -> STATUS_PREPARING_MODEL
@@ -693,6 +776,8 @@ class ScreenTranslationService : Service() {
                 !state.screenOn -> STATUS_SCREEN_OFF
                 !state.contentVisible -> STATUS_CONTENT_HIDDEN
                 state.resultsExpanded -> STATUS_EXPANDED_PAUSED
+                regionFrozen -> STATUS_REGION_FROZEN
+                fullScreenUserPaused -> STATUS_FULL_SCREEN_PAUSED
                 captureMode == CaptureMode.FULL_SCREEN_INCREMENTAL -> STATUS_FULL_SCREEN_RUNNING
                 else -> STATUS_RUNNING
             },
@@ -875,6 +960,10 @@ class ScreenTranslationService : Service() {
         overlayController = null
         fullScreenOverlayController = null
         overlayExclusionBounds = emptyList()
+        regionFrozen = false
+        fullScreenUserPaused = false
+        activeRegionPresetName = null
+        applyingRegionPreset = false
         captureHandler = null
         captureThread = null
         performanceTelemetry = null
@@ -964,6 +1053,8 @@ class ScreenTranslationService : Service() {
             "com.screentranslation.app.action.START_SCREEN_TRANSLATION"
         private const val ACTION_STOP =
             "com.screentranslation.app.action.STOP_SCREEN_TRANSLATION"
+        private const val ACTION_APPLY_REGION_PRESET =
+            "com.screentranslation.app.action.APPLY_REGION_PRESET"
         internal const val ACTION_SESSION_STATE_CHANGED =
             "com.screentranslation.app.action.SESSION_STATE_CHANGED"
         private const val EXTRA_PROJECTION_RESULT_CODE = "projection_result_code"
@@ -972,6 +1063,11 @@ class ScreenTranslationService : Service() {
         private const val EXTRA_TARGET_LANGUAGE = "target_language"
         private const val EXTRA_FRAME_INTERVAL_MS = "frame_interval_ms"
         private const val EXTRA_CAPTURE_MODE = "capture_mode"
+        private const val EXTRA_REGION_PRESET_NAME = "region_preset_name"
+        private const val EXTRA_REGION_LEFT = "region_left"
+        private const val EXTRA_REGION_TOP = "region_top"
+        private const val EXTRA_REGION_RIGHT = "region_right"
+        private const val EXTRA_REGION_BOTTOM = "region_bottom"
 
         private const val NOTIFICATION_ID = 1101
         private const val STOP_REQUEST_CODE = 1102
@@ -988,6 +1084,8 @@ class ScreenTranslationService : Service() {
         private const val STATUS_CONTENT_HIDDEN = "投屏内容暂不可见，处理已暂停"
         private const val STATUS_SCREEN_OFF = "屏幕已熄灭，处理已暂停"
         private const val STATUS_EXPANDED_PAUSED = "已展开全文，识别暂停；收起后恢复"
+        private const val STATUS_REGION_FROZEN = "结果已冻结，区域识别暂停"
+        private const val STATUS_FULL_SCREEN_PAUSED = "全屏识别已暂停"
         private const val STATUS_RESIZE_FAILED = "屏幕尺寸变化后无法继续采集，请重新开始"
 
         private const val STARTUP_STAGE_SERVICE_ENTRY = "SERVICE_ENTRY"
@@ -1063,6 +1161,18 @@ class ScreenTranslationService : Service() {
         fun discardPendingStartRequest() {
             pendingStartRequest.set(null)
         }
+
+        fun applyRegionPresetIntent(
+            context: Context,
+            presetName: String,
+            bounds: NormalizedRegionBounds,
+        ): Intent = Intent(context, ScreenTranslationService::class.java)
+            .setAction(ACTION_APPLY_REGION_PRESET)
+            .putExtra(EXTRA_REGION_PRESET_NAME, presetName)
+            .putExtra(EXTRA_REGION_LEFT, bounds.left)
+            .putExtra(EXTRA_REGION_TOP, bounds.top)
+            .putExtra(EXTRA_REGION_RIGHT, bounds.right)
+            .putExtra(EXTRA_REGION_BOTTOM, bounds.bottom)
 
         fun stopIntent(context: Context): Intent =
             Intent(context, ScreenTranslationService::class.java)

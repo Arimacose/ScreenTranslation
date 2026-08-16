@@ -30,6 +30,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.ViewModel
 import androidx.work.WorkInfo
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -292,7 +293,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var batteryPolicyButton: Button
     private lateinit var batteryPolicyStatusView: TextView
     private lateinit var idleShortcutSwitch: MaterialSwitch
-    private lateinit var modelWifiOnlySwitch: MaterialSwitch
     private lateinit var aboutButton: Button
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
@@ -433,6 +433,11 @@ class MainActivity : AppCompatActivity() {
         modelPreparationCoordinator = ModelPreparationCoordinator(this)
         projectionManager = getSystemService(MediaProjectionManager::class.java)
         bindViews()
+        taskSummaryView.isAccessibilityHeading = true
+        ViewCompat.setAccessibilityPaneTitle(
+            findViewById(android.R.id.content),
+            getString(R.string.app_name),
+        )
         applySystemBarInsets()
         configureAppearance()
         configureLanguageSelectors()
@@ -555,7 +560,6 @@ class MainActivity : AppCompatActivity() {
         batteryPolicyButton = findViewById(R.id.button_battery_policy)
         batteryPolicyStatusView = findViewById(R.id.text_battery_policy_status)
         idleShortcutSwitch = findViewById(R.id.switch_idle_shortcut)
-        modelWifiOnlySwitch = findViewById(R.id.switch_model_wifi_only)
         aboutButton = findViewById(R.id.button_about)
         startButton = findViewById(R.id.button_start)
         stopButton = findViewById(R.id.button_stop)
@@ -613,10 +617,6 @@ class MainActivity : AppCompatActivity() {
             preferences.idleShortcutEnabled = enabled
             if (enabled) CaptureShortcutNotification.show(this)
             else CaptureShortcutNotification.cancel(this)
-        }
-        modelWifiOnlySwitch.isChecked = preferences.modelWifiOnly
-        modelWifiOnlySwitch.setOnCheckedChangeListener { _, enabled ->
-            preferences.modelWifiOnly = enabled
         }
     }
 
@@ -842,7 +842,7 @@ class MainActivity : AppCompatActivity() {
             modelPreparationCoordinator.enqueue(
                 sourceLanguage = source.languageTag,
                 targetLanguage = target.languageTag,
-                requireUnmeteredNetwork = preferences.modelWifiOnly,
+                requireUnmeteredNetwork = false,
             )
         }.getOrElse { error ->
             pendingStartAfterModelPreparation = false
@@ -1382,6 +1382,7 @@ class MainActivity : AppCompatActivity() {
             source.displayName(this),
             target.displayName(this),
         )
+        ViewCompat.setStateDescription(modelStatusView, modelStatusView.text)
     }
 
     private fun selectedModelTaskId(): String? {
@@ -1439,6 +1440,7 @@ class MainActivity : AppCompatActivity() {
                 modelStatusView.text = modelPreparationTaskStatus(snapshot)
             }
         }
+        ViewCompat.setStateDescription(modelStatusView, modelStatusView.text)
         setServiceRunningUi(ScreenTranslationService.isRunning)
     }
 
@@ -1635,6 +1637,8 @@ class MainActivity : AppCompatActivity() {
         startButton.setText(actionAndReason.first)
         startButton.isEnabled = !state.blocked
         readinessSummaryView.setText(actionAndReason.second)
+        ViewCompat.setStateDescription(readinessSummaryView, readinessSummaryView.text)
+        ViewCompat.setStateDescription(startButton, readinessSummaryView.text)
     }
 
     private fun isOnlineConfigurationReady(): Boolean {
@@ -1655,6 +1659,7 @@ class MainActivity : AppCompatActivity() {
         }.getOrElse {
             getString(R.string.online_config_status_unavailable)
         }
+        ViewCompat.setStateDescription(onlineConfigStatusView, onlineConfigStatusView.text)
     }
 
     private fun refreshServiceStatus() {
@@ -1671,6 +1676,7 @@ class MainActivity : AppCompatActivity() {
                 else -> R.string.service_idle
             },
         )
+        ViewCompat.setStateDescription(serviceStatusView, serviceStatusView.text)
     }
 
     companion object {

@@ -49,7 +49,16 @@ data class TranslationPlacement(
     val left: Int,
     val top: Int,
     val width: Int,
+    val strategy: TranslationPlacementStrategy = TranslationPlacementStrategy.ABOVE,
 )
+
+enum class TranslationPlacementStrategy {
+    ABOVE,
+    BELOW,
+    HORIZONTAL_START,
+    HORIZONTAL_END,
+    STACK,
+}
 
 data class TranslationObstacle(
     val left: Int,
@@ -60,6 +69,78 @@ data class TranslationObstacle(
     init {
         require(right > left && bottom > top)
     }
+}
+
+data class OverlayTranslationBlock(
+    val ids: List<Long>,
+    val originalTexts: List<String>,
+    val translatedTexts: List<String>,
+    val bounds: NormalizedBounds,
+) {
+    init {
+        require(ids.isNotEmpty())
+        require(ids.size == originalTexts.size && ids.size == translatedTexts.size)
+    }
+
+    val displayTranslation: String
+        get() = translatedTexts.joinToString(separator = "\n")
+}
+
+/**
+ * Coalesces geometrically adjacent source blocks for dense overlay rendering
+ * while retaining every source identity for the reading surface.
+ */
+fun mergeAdjacentOverlayBlocks(
+    blocks: List<OverlayTranslationBlock>,
+): List<OverlayTranslationBlock> {
+    val working = blocks.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))
+        .toMutableList()
+    var merged: Boolean
+    do {
+        merged = false
+        outer@ for (leftIndex in working.indices) {
+            for (rightIndex in leftIndex + 1 until working.size) {
+                val first = working[leftIndex]
+                val second = working[rightIndex]
+                if (!areAdjacentOverlayBlocks(first.bounds, second.bounds)) continue
+                working[leftIndex] = OverlayTranslationBlock(
+                    ids = first.ids + second.ids,
+                    originalTexts = first.originalTexts + second.originalTexts,
+                    translatedTexts = first.translatedTexts + second.translatedTexts,
+                    bounds = NormalizedBounds(
+                        left = min(first.bounds.left, second.bounds.left),
+                        top = min(first.bounds.top, second.bounds.top),
+                        right = max(first.bounds.right, second.bounds.right),
+                        bottom = max(first.bounds.bottom, second.bounds.bottom),
+                    ),
+                )
+                working.removeAt(rightIndex)
+                merged = true
+                break@outer
+            }
+        }
+    } while (merged)
+    return working.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }, { it.ids.first() }))
+}
+
+private fun areAdjacentOverlayBlocks(
+    left: NormalizedBounds,
+    right: NormalizedBounds,
+): Boolean {
+    val horizontalGap = max(left.left, right.left) - min(left.right, right.right)
+    val verticalGap = max(left.top, right.top) - min(left.bottom, right.bottom)
+    val verticalOverlap = (
+        min(left.bottom, right.bottom) - max(left.top, right.top)
+        ).coerceAtLeast(0f)
+    val horizontalOverlap = (
+        min(left.right, right.right) - max(left.left, right.left)
+        ).coerceAtLeast(0f)
+    val smallerHeight = min(left.bottom - left.top, right.bottom - right.top)
+    val smallerWidth = min(left.right - left.left, right.right - right.left)
+    val sameLine = verticalOverlap >= smallerHeight * 0.60f && horizontalGap in 0f..0.035f
+    val stacked = horizontalOverlap >= smallerWidth * 0.70f && verticalGap in 0f..0.018f
+    val mergedWidth = max(left.right, right.right) - min(left.left, right.left)
+    return (sameLine || stacked) && mergedWidth <= 0.82f
 }
 
 /** Resolves a label above its source box, falling below only when top space is insufficient. */
@@ -117,27 +198,73 @@ fun resolveNonOverlappingTranslationPlacement(
         .coerceAtMost(maximumWidth.coerceAtMost(screenWidth))
     val left = sourceLeft.coerceIn(0, (screenWidth - width).coerceAtLeast(0))
 
-    fun collisions(top: Int): List<TranslationObstacle> {
-        val right = left + width
+    fun collisions(candidateLeft: Int, top: Int): List<TranslationObstacle> {
+        val right = candidateLeft + width
         val bottom = top + labelHeight
         return occupied.filter { obstacle ->
-            left < obstacle.right && right > obstacle.left &&
+            candidateLeft < obstacle.right && right > obstacle.left &&
                 top < obstacle.bottom && bottom > obstacle.top
         }
     }
 
     var top = sourceTop - labelHeight - gap
     while (top >= minimumTop) {
-        val collisions = collisions(top)
-        if (collisions.isEmpty()) return TranslationPlacement(left, top, width)
+        val collisions = collisions(left, top)
+        if (collisions.isEmpty()) {
+            return TranslationPlacement(left, top, width, TranslationPlacementStrategy.ABOVE)
+        }
         top = collisions.minOf { it.top } - labelHeight - gap
     }
 
     top = max(sourceBottom + gap, minimumTop)
     while (top + labelHeight <= maximumBottom) {
-        val collisions = collisions(top)
-        if (collisions.isEmpty()) return TranslationPlacement(left, top, width)
+        val collisions = collisions(left, top)
+        if (collisions.isEmpty()) {
+            return TranslationPlacement(left, top, width, TranslationPlacementStrategy.BELOW)
+        }
         top = collisions.maxOf { it.bottom } + gap
+    }
+
+    val alignedTop = sourceTop.coerceIn(
+        minimumTop,
+        (maximumBottom - labelHeight).coerceAtLeast(minimumTop),
+    )
+    val startLeft = sourceLeft - width - gap
+    if (startLeft >= 0 && collisions(startLeft, alignedTop).isEmpty()) {
+        return TranslationPlacement(
+            startLeft,
+            alignedTop,
+            width,
+            TranslationPlacementStrategy.HORIZONTAL_START,
+        )
+    }
+    val endLeft = sourceRight + gap
+    if (endLeft + width <= screenWidth && collisions(endLeft, alignedTop).isEmpty()) {
+        return TranslationPlacement(
+            endLeft,
+            alignedTop,
+            width,
+            TranslationPlacementStrategy.HORIZONTAL_END,
+        )
+    }
+
+    val horizontalStep = (width / 2).coerceAtLeast(gap + 1)
+    val verticalStep = (labelHeight / 2).coerceAtLeast(gap + 1)
+    var stackTop = minimumTop
+    while (stackTop + labelHeight <= maximumBottom) {
+        var stackLeft = 0
+        while (stackLeft + width <= screenWidth) {
+            if (collisions(stackLeft, stackTop).isEmpty()) {
+                return TranslationPlacement(
+                    stackLeft,
+                    stackTop,
+                    width,
+                    TranslationPlacementStrategy.STACK,
+                )
+            }
+            stackLeft += horizontalStep
+        }
+        stackTop += verticalStep
     }
     return null
 }

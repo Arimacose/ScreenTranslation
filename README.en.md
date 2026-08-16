@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-> The v2.2.0 development line includes three switchable visual languages: an Apple-inspired default,
+> The v2.3.0 release candidate includes three switchable visual languages: an Apple-inspired default,
 > MIUIX, and Material 3 with optional Monet dynamic colors. See
 > [UI styles and implementation boundaries](docs/UI_STYLES.md).
 
@@ -13,7 +13,7 @@ ScreenTranslation is a native screen OCR and translation app currently targeted 
 session and approves Android's `MediaProjection` prompt. Screenshots are processed in
 memory by PP-OCRv6-small; translation is provided by one of three isolated editions.
 
-> Project status: advancing `v2.2.0` for one explicitly scoped device/ROM baseline.
+> Project status: advancing `v2.3.0` for one explicitly scoped device/ROM baseline.
 > `minSdk` and `targetSdk` are 36, `compileSdk` is
 > 37, and release APKs are currently ARM64-only. Source code is Apache-2.0; bundled and
 > downloaded third-party components retain their own licenses.
@@ -247,4 +247,4 @@ feature from Experimental to supported. Release procedure: [`docs/RELEASING.md`]
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE)
-- [v2.2.0 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/3)
+- [v2.3.0 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/5)

@@ -18,7 +18,7 @@ class ModelPreparationActionReceiver : BroadcastReceiver() {
             ACTION_RESUME -> coordinator.enqueue(
                 sourceLanguage = source,
                 targetLanguage = target,
-                requireUnmeteredNetwork = AppPreferences(context).modelWifiOnly,
+                requireUnmeteredNetwork = false,
                 replace = true,
             )
         }

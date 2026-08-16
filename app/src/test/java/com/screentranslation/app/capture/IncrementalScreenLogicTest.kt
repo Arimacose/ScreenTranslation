@@ -485,6 +485,104 @@ class IncrementalScreenLogicTest {
         assertNull(placement)
     }
 
+    @Test
+    fun `horizontal placement is used after aligned above and below slots are exhausted`() {
+        val placement = resolveNonOverlappingTranslationPlacement(
+            bounds = bounds(0.40f, 0.40f, 0.50f, 0.50f),
+            screenWidth = 1_000,
+            screenHeight = 1_000,
+            labelHeight = 80,
+            minimumWidth = 100,
+            maximumWidth = 200,
+            gap = 3,
+            occupied = listOf(TranslationObstacle(400, 0, 500, 1_000)),
+        )
+
+        assertEquals(TranslationPlacementStrategy.HORIZONTAL_START, placement?.strategy)
+        assertEquals(297, placement?.left)
+    }
+
+    @Test
+    fun `stack placement finds a safe surface after source adjacent strategies collide`() {
+        val placement = resolveNonOverlappingTranslationPlacement(
+            bounds = bounds(0.40f, 0.40f, 0.50f, 0.50f),
+            screenWidth = 1_000,
+            screenHeight = 1_000,
+            labelHeight = 80,
+            minimumWidth = 100,
+            maximumWidth = 200,
+            gap = 3,
+            occupied = listOf(
+                TranslationObstacle(297, 0, 600, 1_000),
+            ),
+        )
+
+        assertEquals(TranslationPlacementStrategy.STACK, placement?.strategy)
+        assertEquals(0, placement?.left)
+        assertEquals(0, placement?.top)
+    }
+
+    @Test
+    fun `adjacent overlay merge retains every block identity and complete pair`() {
+        val merged = mergeAdjacentOverlayBlocks(
+            listOf(
+                overlayBlock(1, "Hello", "你好", 0.10f, 0.20f, 0.28f, 0.25f),
+                overlayBlock(2, "world", "世界", 0.29f, 0.20f, 0.46f, 0.25f),
+                overlayBlock(3, "Separate", "分开", 0.10f, 0.50f, 0.35f, 0.56f),
+            ),
+        )
+
+        assertEquals(2, merged.size)
+        assertEquals(listOf(1L, 2L), merged.first().ids)
+        assertEquals(listOf("Hello", "world"), merged.first().originalTexts)
+        assertEquals("你好\n世界", merged.first().displayTranslation)
+        assertEquals(setOf(1L, 2L, 3L), merged.flatMap { it.ids }.toSet())
+    }
+
+    @Test
+    fun `twenty dense blocks remain discoverable after display merging`() {
+        val dense = (0 until 20).map { index ->
+            val row = index / 4
+            val column = index % 4
+            overlayBlock(
+                id = index.toLong() + 1,
+                original = "source-$index",
+                translation = "translation-$index",
+                left = 0.04f + column * 0.23f,
+                top = 0.12f + row * 0.13f,
+                right = 0.23f + column * 0.23f,
+                bottom = 0.18f + row * 0.13f,
+            )
+        }
+
+        val rendered = mergeAdjacentOverlayBlocks(dense)
+
+        assertEquals((1L..20L).toSet(), rendered.flatMap { it.ids }.toSet())
+        assertEquals(
+            dense.flatMap { it.originalTexts },
+            rendered.flatMap { it.originalTexts },
+        )
+        assertEquals(
+            dense.flatMap { it.translatedTexts },
+            rendered.flatMap { it.translatedTexts },
+        )
+    }
+
+    private fun overlayBlock(
+        id: Long,
+        original: String,
+        translation: String,
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+    ) = OverlayTranslationBlock(
+        ids = listOf(id),
+        originalTexts = listOf(original),
+        translatedTexts = listOf(translation),
+        bounds = bounds(left, top, right, bottom),
+    )
+
     private fun block(
         text: String,
         left: Float,

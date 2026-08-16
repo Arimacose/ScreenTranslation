@@ -12,6 +12,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -165,6 +166,11 @@ class ModelManagementActivity : AppCompatActivity() {
         pauseButton = findViewById(R.id.button_pause_models)
         cancelTaskButton = findViewById(R.id.button_cancel_model_task)
         taskStatusView = findViewById(R.id.text_model_task_status)
+        summaryView.isAccessibilityHeading = true
+        ViewCompat.setAccessibilityPaneTitle(
+            findViewById(android.R.id.content),
+            getString(R.string.model_management_title),
+        )
         applySystemBarInsets()
         prepareButton.setOnClickListener {
             enqueuePreparation(replace = preparationSnapshot?.phase == ModelPreparationPhase.PAUSED)
@@ -322,7 +328,7 @@ class ModelManagementActivity : AppCompatActivity() {
             preparationCoordinator.enqueue(
                 sourceLanguage = preferences.sourceLanguage,
                 targetLanguage = preferences.targetLanguage,
-                requireUnmeteredNetwork = preferences.modelWifiOnly,
+                requireUnmeteredNetwork = false,
                 replace = replace,
             )
         }.onFailure { error ->
@@ -364,6 +370,7 @@ class ModelManagementActivity : AppCompatActivity() {
                 snapshot?.message ?: getString(R.string.unknown_error),
             )
         }
+        ViewCompat.setStateDescription(taskStatusView, taskStatusView.text)
         val active = snapshot?.isActive == true
         pauseButton.visibility = if (active || phase == ModelPreparationPhase.PAUSED) {
             View.VISIBLE
@@ -459,6 +466,7 @@ class ModelManagementActivity : AppCompatActivity() {
                 refreshButton.isEnabled = false
                 deleteButton.isEnabled = false
                 summaryView.setText(R.string.model_deleting)
+                ViewCompat.setStateDescription(summaryView, summaryView.text)
             }
             ModelDeletionPhase.SUCCEEDED -> {
                 deletionInProgress = false

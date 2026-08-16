@@ -13,6 +13,7 @@ import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.core.widget.doAfterTextChanged
 import com.screentranslation.app.R
 import com.screentranslation.app.ml.OnlineLlmTranslationEngine
@@ -68,6 +69,10 @@ class OnlineSettingsActivity : AppCompatActivity() {
         preferences = AppPreferences(this)
         modelHttpClient = OnlineHttpClientFactory.create()
         bindViews()
+        ViewCompat.setAccessibilityPaneTitle(
+            findViewById(android.R.id.content),
+            getString(R.string.online_settings_title),
+        )
         applySystemBarInsets()
         loadConfiguration()
         configureActions()
@@ -95,6 +100,11 @@ class OnlineSettingsActivity : AppCompatActivity() {
         saveAndTestButton = findViewById(R.id.button_online_save_test)
         deleteKeyButton = findViewById(R.id.button_online_delete_key)
         resultView = findViewById(R.id.text_online_result)
+        listOf(modelStatusView, keyStatusView, resultView).forEach { statusView ->
+            statusView.doAfterTextChanged { text ->
+                ViewCompat.setStateDescription(statusView, text)
+            }
+        }
         modelAdapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_item,

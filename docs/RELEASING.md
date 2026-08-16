@@ -108,7 +108,7 @@ accepted run 的 source commit、当前 `origin/main` 与准备标记的 commit 
 ```bash
 git switch main
 git pull --ff-only
-VERSION=2.2.0
+VERSION=2.3.0
 git tag -a "v$VERSION" -m "ScreenTranslation v$VERSION"
 git push origin "v$VERSION"
 ```
@@ -125,7 +125,7 @@ git push origin "v$VERSION"
 再次在 Actions 手动运行 `Signed release and acceptance`，选择 `operation=publish` 并填写：
 
 - `acceptance_run_id`：完成真机验收的 `operation=build` run ID；
-- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.2.0`；
+- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.3.0`；
 - `device_evidence_comment`：本版本任一 accepted issue 中 `DEVICE_ACCEPTANCE_PASS`
   评论的完整 URL。
 
