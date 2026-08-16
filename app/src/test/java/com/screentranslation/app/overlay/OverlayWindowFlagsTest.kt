@@ -8,6 +8,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OverlayWindowFlagsTest {
+    @Test
+    fun `region actions use a visible three plus two grid`() {
+        val actions = listOf("expand", "freeze", "preset", "reselect", "stop")
+
+        assertEquals(
+            listOf(
+                listOf("expand", "freeze", "preset"),
+                listOf("reselect", "stop"),
+            ),
+            regionActionRows(actions),
+        )
+        assertTrue(regionActionRows(actions).all { it.size <= 3 })
+    }
+
 
     @Test
     fun `translation panel is available to system screenshots`() {
