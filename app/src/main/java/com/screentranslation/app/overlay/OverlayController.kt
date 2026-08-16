@@ -24,7 +24,6 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -56,6 +55,16 @@ internal data class RegionOverlayContent(
     val original: String,
     val translation: String,
 )
+
+private const val REGION_ACTION_MAX_COLUMNS = 3
+
+/**
+ * Keeps the region controls visible without relying on a horizontally scrolled
+ * row. Five actions become a 3 + 2 grid so the longer "reselect region" label
+ * and the destructive stop action always have half of the panel width.
+ */
+internal fun <T> regionActionRows(actions: List<T>): List<List<T>> =
+    actions.chunked(REGION_ACTION_MAX_COLUMNS)
 
 /**
  * Region-mode requests are latest-wins, but a transient Online failure must
@@ -416,7 +425,9 @@ class OverlayController(
         val estimatedPanelHeight = if (textExpanded) {
             (bounds.height() * EXPANDED_HEIGHT_FRACTION).toInt() + dp(160)
         } else {
-            dp(240)
+            // Includes both rows of region actions. Keeping the estimate in
+            // sync prevents the lower row from being placed below a safe inset.
+            dp(304)
         }
         val region = if (textExpanded) null else selectedRegion
         val maxY = (bounds.height() - estimatedPanelHeight - margin).coerceAtLeast(margin)
@@ -590,9 +601,8 @@ class OverlayController(
             },
         )
 
-        val actionRow = LinearLayout(appContext).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        val actionGroup = LinearLayout(appContext).apply {
+            orientation = LinearLayout.VERTICAL
         }
         expandButton = createOverlayButton().apply {
             isAllCaps = false
@@ -637,52 +647,47 @@ class OverlayController(
                 close()
             }
         }
-        actionRow.addView(
-            expandButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+        regionActionRows(
+            listOfNotNull(
+                expandButton,
+                freezeButton,
+                presetButton,
+                reselectButton,
+                stopButton,
             ),
-        )
-        actionRow.addView(
-            freezeButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { marginStart = dp(8) },
-        )
-        actionRow.addView(
-            presetButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { marginStart = dp(8) },
-        )
-        actionRow.addView(
-            reselectButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { marginStart = dp(8) },
-        )
-        actionRow.addView(
-            stopButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { marginStart = dp(8) },
-        )
+        ).forEachIndexed { rowIndex, actions ->
+            val actionRow = LinearLayout(appContext).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            actions.forEachIndexed { columnIndex, button ->
+                actionRow.addView(
+                    button,
+                    LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f,
+                    ).apply {
+                        if (columnIndex > 0) marginStart = dp(8)
+                    },
+                )
+            }
+            actionGroup.addView(
+                actionRow,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    if (rowIndex > 0) topMargin = dp(8)
+                },
+            )
+        }
 
         panel.addView(statusView)
         panel.addView(textScrollView)
         panel.addView(attributionView)
         panel.addView(copyRow)
-        panel.addView(
-            HorizontalScrollView(appContext).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(actionRow)
-            },
-        )
+        panel.addView(actionGroup)
         applyTextExpansion()
         renderFreezeState()
         return panel
