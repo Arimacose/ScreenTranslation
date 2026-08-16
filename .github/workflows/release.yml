@@ -170,6 +170,7 @@ jobs:
             lintLiteRelease \
             lintFullRelease \
             lintOnlineRelease \
+            generateReleaseSboms \
             assembleLiteRelease \
             assembleFullRelease \
             assembleOnlineRelease \
@@ -401,6 +402,15 @@ jobs:
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
           cp "$online_apk" "dist/ScreenTranslation-$version-online-llm.apk"
           cp "$online_aab" "dist/ScreenTranslation-$version-online-llm.aab"
+          python tools/release/verify_sbom.py \
+            app/build/reports/sbom \
+            --version "$version"
+          cp "app/build/reports/sbom/ScreenTranslation-$version-lite.cdx.json" \
+            "dist/ScreenTranslation-$version-lite.cdx.json"
+          cp "app/build/reports/sbom/ScreenTranslation-$version-full.cdx.json" \
+            "dist/ScreenTranslation-$version-full.cdx.json"
+          cp "app/build/reports/sbom/ScreenTranslation-$version-online.cdx.json" \
+            "dist/ScreenTranslation-$version-online.cdx.json"
           cp LICENSE "dist/ScreenTranslation-$version-LICENSE.txt"
           third_party_stage="$RUNNER_TEMP/screen-translation-third-party"
           mkdir -p "$third_party_stage"
@@ -423,11 +433,14 @@ jobs:
               "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
               "ScreenTranslation-$version-online-llm.apk" \
               "ScreenTranslation-$version-online-llm.aab" \
+              "ScreenTranslation-$version-lite.cdx.json" \
+              "ScreenTranslation-$version-full.cdx.json" \
+              "ScreenTranslation-$version-online.cdx.json" \
               "ScreenTranslation-$version-LICENSE.txt" \
               "ScreenTranslation-$version-THIRD-PARTY.zip" \
               > SHA256SUMS
             sha256sum -c SHA256SUMS
-            [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 9 ]]
+            [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 12 ]]
           )
 
       - name: Preserve signed acceptance bundle
@@ -933,6 +946,9 @@ jobs:
               "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
               "ScreenTranslation-$version-online-llm.apk" \
               "ScreenTranslation-$version-online-llm.aab" \
+              "ScreenTranslation-$version-lite.cdx.json" \
+              "ScreenTranslation-$version-full.cdx.json" \
+              "ScreenTranslation-$version-online.cdx.json" \
               "ScreenTranslation-$version-LICENSE.txt" \
               "ScreenTranslation-$version-THIRD-PARTY.zip" \
               'SHA256SUMS' |
@@ -940,12 +956,12 @@ jobs:
           )"
           archive_names="$(unzip -Z1 "$archive" | LC_ALL=C sort)"
           if [[ "$archive_names" != "$expected_names" ]]; then
-            echo "::error::Artifact ZIP entries do not match the nine-file manifest"
+            echo "::error::Artifact ZIP entries do not match the twelve-file manifest"
             exit 1
           fi
           mkdir dist
           unzip -q "$archive" -d dist
-          [[ "$(find dist -maxdepth 1 -type f | wc -l)" -eq 9 ]]
+          [[ "$(find dist -maxdepth 1 -type f | wc -l)" -eq 12 ]]
           [[ "$(find dist -type l | wc -l)" -eq 0 ]]
           expected_checksum_names="$(
             grep -Fxv 'SHA256SUMS' <<<"$expected_names"
@@ -962,10 +978,10 @@ jobs:
           checksum_name_count="$(
             awk 'END { print NR + 0 }' <<<"$checksum_names"
           )"
-          if [[ "$checksum_line_count" != "8" ||
-                "$checksum_name_count" != "8" ||
+          if [[ "$checksum_line_count" != "11" ||
+                "$checksum_name_count" != "11" ||
                 "$checksum_names" != "$expected_checksum_names" ]]; then
-            echo "::error::SHA256SUMS does not bind the exact eight payload files"
+            echo "::error::SHA256SUMS does not bind the exact eleven payload files"
             exit 1
           fi
           (
@@ -1183,7 +1199,7 @@ jobs:
           - OCR fixture score SHA-256: \`${{ steps.promotion.outputs.ocr_fixture_score_sha }}\`
           - Sustained benchmark document SHA-256: \`${{ steps.promotion.outputs.sustained_benchmark_doc_sha }}\`
 
-          The nine files attached to this release are the same files extracted from the accepted Actions Artifact; the publish job verifies the Artifact ZIP digest, \`SHA256SUMS\`, package IDs, versions, APK v2 signer, 16 KiB alignment, edition isolation, AAB signatures, and third-party license hashes before upload.
+          The twelve files attached to this release are the same files extracted from the accepted Actions Artifact; the publish job verifies the Artifact ZIP digest, \`SHA256SUMS\`, package IDs, versions, APK v2 signer, 16 KiB alignment, edition isolation, AAB signatures, per-edition CycloneDX SBOMs, and third-party license hashes before upload.
 
           ## Editions
 
@@ -1221,6 +1237,9 @@ jobs:
             "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
             "dist/ScreenTranslation-$version-online-llm.apk" \
             "dist/ScreenTranslation-$version-online-llm.aab" \
+            "dist/ScreenTranslation-$version-lite.cdx.json" \
+            "dist/ScreenTranslation-$version-full.cdx.json" \
+            "dist/ScreenTranslation-$version-online.cdx.json" \
             "dist/ScreenTranslation-$version-LICENSE.txt" \
             "dist/ScreenTranslation-$version-THIRD-PARTY.zip" \
             "dist/SHA256SUMS" \
@@ -1270,7 +1289,7 @@ jobs:
             jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort
           )"
           [[ "$expected_names" == "$actual_names" ]]
-          [[ "$(jq '.assets | length' <<<"$release_json")" == "9" ]]
+          [[ "$(jq '.assets | length' <<<"$release_json")" == "12" ]]
           verify_uploaded_assets "$release_json"
 
           git fetch --force origin \
@@ -1313,7 +1332,7 @@ jobs:
           )"
           jq -e '.draft == false and .prerelease == false' \
             <<<"$release_json" >/dev/null
-          [[ "$(jq '.assets | length' <<<"$release_json")" == "9" ]]
+          [[ "$(jq '.assets | length' <<<"$release_json")" == "12" ]]
           verify_uploaded_assets "$release_json"
 
       - name: Remove promotion staging

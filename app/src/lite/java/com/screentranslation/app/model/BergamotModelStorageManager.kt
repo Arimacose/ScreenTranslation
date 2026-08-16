@@ -2,6 +2,7 @@ package com.screentranslation.app.model
 
 import android.content.Context
 import com.screentranslation.app.ml.BergamotModelSpec
+import com.screentranslation.app.ml.BergamotLiteProviderContract
 import com.screentranslation.app.ml.bergamotModelSpecs
 import com.screentranslation.app.ml.isBergamotModelPreparedAndStable
 import com.screentranslation.app.service.ScreenTranslationService
@@ -33,6 +34,33 @@ class BergamotModelStorageManager(context: Context) : ModelStorageManager {
     }
 
     override fun deleteDownloadedModels(): Long = deleteModelDirectory(modelsRoot, root)
+
+    override fun preparationDescriptor(
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): ModelPreparationDescriptor {
+        val source = sourceLanguage.trim().lowercase()
+        val target = targetLanguage.trim().lowercase()
+        val route = BergamotLiteProviderContract.modelIdsByRoute.entries.firstOrNull { entry ->
+            entry.key.sourceLanguageTag == source && entry.key.targetLanguageTag == target
+        } ?: throw IllegalArgumentException("Unsupported Bergamot route: $source→$target")
+        val catalog = bergamotModelSpecs().associateBy(BergamotModelSpec::id)
+        val specs = route.value.map(catalog::getValue)
+        return ModelPreparationDescriptor(
+            edition = "lite",
+            modelIds = specs.map(BergamotModelSpec::id),
+            revisions = specs.map { spec ->
+                spec.baseUrl.removeSuffix("/").removeSuffix("/exported").substringAfterLast('/')
+            },
+            expectedSha256 = specs.flatMap { spec ->
+                spec.files.flatMap { file ->
+                    listOf(file.compressedSha256, file.outputSha256)
+                }
+            },
+            downloadBytes = specs.sumOf { spec -> spec.files.sumOf { it.compressedSize } },
+            installedBytes = specs.sumOf { spec -> spec.files.sumOf { it.outputSize } },
+        )
+    }
 
     private fun checkScanActive() {
         check(!ScreenTranslationService.isRunning) {

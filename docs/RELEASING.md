@@ -61,6 +61,7 @@ Base64 只用于让 GitHub secret 保存二进制 keystore，不是安全边界�
 ./gradlew --no-daemon clean \
   testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest \
   lintLiteRelease lintFullRelease lintOnlineRelease \
+  generateReleaseSboms assembleOnlineContributor \
   assembleLiteRelease assembleFullRelease assembleOnlineRelease \
   bundleLiteRelease bundleFullRelease bundleOnlineRelease
 ```
@@ -107,7 +108,7 @@ accepted run 的 source commit、当前 `origin/main` 与准备标记的 commit 
 ```bash
 git switch main
 git pull --ff-only
-VERSION=2.1.0
+VERSION=2.2.0
 git tag -a "v$VERSION" -m "ScreenTranslation v$VERSION"
 git push origin "v$VERSION"
 ```
@@ -124,7 +125,7 @@ git push origin "v$VERSION"
 再次在 Actions 手动运行 `Signed release and acceptance`，选择 `operation=publish` 并填写：
 
 - `acceptance_run_id`：完成真机验收的 `operation=build` run ID；
-- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.1.0`；
+- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.2.0`；
 - `device_evidence_comment`：本版本任一 accepted issue 中 `DEVICE_ACCEPTANCE_PASS`
   评论的完整 URL。
 
@@ -139,13 +140,13 @@ promotion job 采用 fail-closed 顺序：
    评论来自仓库所有者或协作者，时间晚于 accepted run 且早于每项关闭；评论须一次写定，
    最低 15 分钟区域/全屏时长、Thermal status、失败计数、报告哈希与仓库内持续基准文档
    哈希全部通过后，promotion 冻结正文 SHA-256 并在公开前再次核对；
-5. 下载 Artifact ZIP 并核对 GitHub digest，要求 ZIP entry 精确等于预期九个平面文件，
+5. 下载 Artifact ZIP 并核对 GitHub digest，要求 ZIP entry 精确等于预期十二个平面文件，
    拒绝额外/缺失/嵌套路径和符号链接，随后执行 `sha256sum -c SHA256SUMS`；
 6. 重新核验三 APK 的包名、版本、targetSdk 36、应用标签、非 debuggable、仅 ARM64、
    v2 signer、16 KiB 对齐、PP-OCRv6/ONNX Runtime、后端隔离与零内置翻译权重；核验
    三 AAB 的 JAR 签名证书同样匹配固定 release 证书和 edition 许可；
 7. 核对第三方许可 42 项 SHA-256、根 LICENSE，以及证据评论里的三 APK SHA-256；
-8. 先创建仅维护者可见的 Draft Release，从该目录原样上传以下九项并逐项核对 GitHub
+8. 先创建仅维护者可见的 Draft Release，从该目录原样上传以下十二项并逐项核对 GitHub
    记录的名称、字节数与 SHA-256 digest；再次核验 `main`、tag、Issue 状态与评论正文后
    才公开，并把 run、Artifact digest、评论正文 SHA-256 和真机证据 URL 写入 Release notes：
    - `ScreenTranslation-$VERSION-lite-bergamot.apk`
@@ -154,6 +155,9 @@ promotion job 采用 fail-closed 顺序：
    - `ScreenTranslation-$VERSION-full-hymt2-q4-experimental.aab`
    - `ScreenTranslation-$VERSION-online-llm.apk`
    - `ScreenTranslation-$VERSION-online-llm.aab`
+   - `ScreenTranslation-$VERSION-lite.cdx.json`
+   - `ScreenTranslation-$VERSION-full.cdx.json`
+   - `ScreenTranslation-$VERSION-online.cdx.json`
    - `ScreenTranslation-$VERSION-LICENSE.txt`
    - `ScreenTranslation-$VERSION-THIRD-PARTY.zip`
    - `SHA256SUMS`
@@ -166,7 +170,7 @@ promotion job 采用 fail-closed 顺序：
 维护者从 GitHub release 重新下载产物：
 
 ```bash
-VERSION=2.1.0
+VERSION=2.2.0
 sha256sum -c SHA256SUMS
 apksigner verify --verbose --print-certs "ScreenTranslation-$VERSION-lite-bergamot.apk"
 apksigner verify --verbose --print-certs \
@@ -175,7 +179,7 @@ apksigner verify --verbose --print-certs \
   "ScreenTranslation-$VERSION-online-llm.apk"
 ```
 
-核对公开 Release 九个资产的名称、字节数与 SHA-256 均匹配 accepted Artifact；检查
+核对公开 Release 十二个资产的名称、字节数与 SHA-256 均匹配 accepted Artifact；检查
 Release notes 中的 source commit、build run、Artifact digest、accepted issues 证据 URL、许可、
 隐私链接和已知问题。由于 promotion 上传的是已验收的同一组文件，无需用重构建产物重复
 替代原验收结论。

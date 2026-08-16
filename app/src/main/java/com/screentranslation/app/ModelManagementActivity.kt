@@ -20,6 +20,10 @@ import com.screentranslation.app.model.ModelDownloadState
 import com.screentranslation.app.model.ModelStorageManager
 import com.screentranslation.app.model.ModelStorageManagerFactory
 import com.screentranslation.app.model.UiStyle
+import com.screentranslation.app.model.preparation.ModelPreparationCoordinator
+import com.screentranslation.app.model.preparation.ModelPreparationPhase
+import com.screentranslation.app.model.preparation.ModelPreparationSnapshot
+import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
 import java.util.concurrent.Executors
@@ -119,6 +123,12 @@ class ModelManagementActivity : AppCompatActivity() {
     private lateinit var prepareButton: Button
     private lateinit var refreshButton: Button
     private lateinit var deleteButton: Button
+    private lateinit var pauseButton: Button
+    private lateinit var cancelTaskButton: Button
+    private lateinit var taskStatusView: TextView
+    private lateinit var preferences: AppPreferences
+    private lateinit var preparationCoordinator: ModelPreparationCoordinator
+    private var preparationSnapshot: ModelPreparationSnapshot? = null
     private val modelManagementViewModel: ModelManagementViewModel by viewModels()
     private val inventoryExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "model-inventory-verifier").apply { isDaemon = true }
@@ -127,6 +137,7 @@ class ModelManagementActivity : AppCompatActivity() {
     private var inventoryGeneration = 0
     private var activityStarted = false
     private var deletionInProgress = false
+    private var hasDownloadedFiles = false
     private var pendingInventoryMessage: String? = null
     private var lastRenderedTerminalGeneration = 0
     private lateinit var deletionBackCallback: OnBackPressedCallback
@@ -145,14 +156,29 @@ class ModelManagementActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         manager = ModelStorageManagerFactory.create(this)
+        preferences = AppPreferences(this)
+        preparationCoordinator = ModelPreparationCoordinator(this)
         summaryView = findViewById(R.id.text_model_inventory)
         prepareButton = findViewById(R.id.button_prepare_models)
         refreshButton = findViewById(R.id.button_refresh_models)
         deleteButton = findViewById(R.id.button_delete_models)
+        pauseButton = findViewById(R.id.button_pause_models)
+        cancelTaskButton = findViewById(R.id.button_cancel_model_task)
+        taskStatusView = findViewById(R.id.text_model_task_status)
         applySystemBarInsets()
         prepareButton.setOnClickListener {
-            setResult(Activity.RESULT_OK)
-            finish()
+            enqueuePreparation(replace = preparationSnapshot?.phase == ModelPreparationPhase.PAUSED)
+        }
+        pauseButton.setOnClickListener {
+            val snapshot = preparationSnapshot ?: return@setOnClickListener
+            if (snapshot.phase == ModelPreparationPhase.PAUSED) {
+                enqueuePreparation(replace = true)
+            } else {
+                preparationCoordinator.pause(snapshot.taskId)
+            }
+        }
+        cancelTaskButton.setOnClickListener {
+            preparationSnapshot?.let { preparationCoordinator.cancel(it.taskId) }
         }
         refreshButton.setOnClickListener { refresh() }
         deleteButton.setOnClickListener { confirmDeletion() }
@@ -164,6 +190,11 @@ class ModelManagementActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, deletionBackCallback)
         modelManagementViewModel.deletionState.observe(this) { state ->
             renderDeletionState(state)
+        }
+        preparationCoordinator.observeAll().observe(this) { workInfos ->
+            val taskId = selectedTaskId()
+            preparationSnapshot = taskId?.let { preparationCoordinator.snapshotFor(workInfos, it) }
+            renderPreparationState()
         }
     }
 
@@ -205,6 +236,15 @@ class ModelManagementActivity : AppCompatActivity() {
     private fun refresh(completionMessage: String? = null) {
         if (completionMessage != null) pendingInventoryMessage = completionMessage
         val serviceRunning = ScreenTranslationService.isRunning
+        if (preparationSnapshot?.isActive == true) {
+            cancelInventoryScan()
+            summaryView.setText(R.string.model_inventory_preparation_running)
+            prepareButton.isEnabled = false
+            refreshButton.isEnabled = false
+            deleteButton.isEnabled = false
+            renderPreparationState()
+            return
+        }
         if (
             !shouldStartModelInventoryScan(
                 activityStarted = activityStarted,
@@ -263,11 +303,85 @@ class ModelManagementActivity : AppCompatActivity() {
 
     private fun applyInventory(snapshots: List<ManagedModel>) {
         summaryView.text = buildSummary(snapshots)
-        val hasDownloadedFiles = snapshots.any { it.downloadedBytes > 0L }
+        hasDownloadedFiles = snapshots.any { it.downloadedBytes > 0L }
         prepareButton.isEnabled = !ScreenTranslationService.isRunning
         refreshButton.isEnabled = !ScreenTranslationService.isRunning
         deleteButton.visibility = if (snapshots.isEmpty()) View.GONE else View.VISIBLE
         deleteButton.isEnabled = hasDownloadedFiles && !ScreenTranslationService.isRunning
+    }
+
+    private fun selectedTaskId(): String? = runCatching {
+        preparationCoordinator.descriptor(
+            preferences.sourceLanguage,
+            preferences.targetLanguage,
+        ).taskId
+    }.getOrNull()
+
+    private fun enqueuePreparation(replace: Boolean) {
+        runCatching {
+            preparationCoordinator.enqueue(
+                sourceLanguage = preferences.sourceLanguage,
+                targetLanguage = preferences.targetLanguage,
+                requireUnmeteredNetwork = preferences.modelWifiOnly,
+                replace = replace,
+            )
+        }.onFailure { error ->
+            taskStatusView.text = getString(
+                R.string.model_failed,
+                error.localizedMessage ?: error.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun renderPreparationState() {
+        val snapshot = preparationSnapshot
+        val phase = snapshot?.phase ?: ModelPreparationPhase.IDLE
+        taskStatusView.text = when (phase) {
+            ModelPreparationPhase.IDLE -> getString(R.string.model_task_idle)
+            ModelPreparationPhase.QUEUED -> getString(R.string.model_progress_queued)
+            ModelPreparationPhase.WAITING_FOR_NETWORK -> getString(R.string.model_progress_waiting_network)
+            ModelPreparationPhase.STORAGE_PREFLIGHT -> getString(R.string.model_progress_storage_preflight)
+            ModelPreparationPhase.PREPARING -> getString(R.string.model_progress_preparing)
+            ModelPreparationPhase.DOWNLOADING -> getString(
+                R.string.model_progress_downloading_detailed,
+                Formatter.formatFileSize(this, snapshot?.completedBytes ?: 0L),
+                Formatter.formatFileSize(this, snapshot?.totalBytes ?: 0L),
+                if ((snapshot?.totalBytes ?: 0L) > 0L) {
+                    ((snapshot?.completedBytes ?: 0L) * 100L / (snapshot?.totalBytes ?: 1L))
+                } else {
+                    0L
+                },
+                Formatter.formatFileSize(this, snapshot?.bytesPerSecond ?: 0L),
+                snapshot?.etaSeconds ?: 0L,
+            )
+            ModelPreparationPhase.EXTRACTING -> getString(R.string.model_progress_extracting)
+            ModelPreparationPhase.VERIFYING -> getString(R.string.model_progress_verifying)
+            ModelPreparationPhase.READY -> getString(R.string.model_prepare_ready)
+            ModelPreparationPhase.PAUSED -> getString(R.string.model_progress_paused)
+            ModelPreparationPhase.CANCELLED -> getString(R.string.model_progress_cancelled)
+            ModelPreparationPhase.FAILED -> getString(
+                R.string.model_failed,
+                snapshot?.message ?: getString(R.string.unknown_error),
+            )
+        }
+        val active = snapshot?.isActive == true
+        pauseButton.visibility = if (active || phase == ModelPreparationPhase.PAUSED) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        pauseButton.setText(
+            if (phase == ModelPreparationPhase.PAUSED) R.string.model_resume else R.string.model_pause,
+        )
+        cancelTaskButton.visibility = if (active || phase == ModelPreparationPhase.PAUSED) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        prepareButton.isEnabled = !active && !ScreenTranslationService.isRunning
+        deleteButton.isEnabled =
+            hasDownloadedFiles && !active && !ScreenTranslationService.isRunning
+        if (phase == ModelPreparationPhase.READY) setResult(Activity.RESULT_OK)
     }
 
     private fun cancelInventoryScan() {

@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-> v2.1.0 includes three switchable visual languages: an Apple-inspired default,
+> The v2.2.0 development line includes three switchable visual languages: an Apple-inspired default,
 > MIUIX, and Material 3 with optional Monet dynamic colors. See
 > [UI styles and implementation boundaries](docs/UI_STYLES.md).
 
@@ -13,7 +13,7 @@ ScreenTranslation is a native screen OCR and translation app currently targeted 
 session and approves Android's `MediaProjection` prompt. Screenshots are processed in
 memory by PP-OCRv6-small; translation is provided by one of three isolated editions.
 
-> Project status: `v2.1.0` for one explicitly scoped device/ROM baseline.
+> Project status: advancing `v2.2.0` for one explicitly scoped device/ROM baseline.
 > `minSdk` and `targetSdk` are 36, `compileSdk` is
 > 37, and release APKs are currently ARM64-only. Source code is Apache-2.0; bundled and
 > downloaded third-party components retain their own licenses.
@@ -43,6 +43,12 @@ All three editions use the same PP-OCRv6-small ONNX OCR pipeline. OCR assets are
 in the APK; Lite and Full download pinned translation weights on demand. Online sends only
 stable region text or stable changed blocks—not screenshots or coordinates—to the HTTPS
 endpoint configured by the user.
+
+Model preparation runs as a WorkManager task outside the Activity, with network constraints,
+storage preflight, pause/resume/cancel, `.part` continuation, measured speed, and ETA. The home
+screen exposes one readiness-driven next action. An optional idle notification and Quick
+Settings tile provide user-initiated entry points, while the in-app trust center presents the
+edition identity, data flow, licenses, privacy policy, and security policy offline.
 
 Every backend now publishes a typed profile for language routes and pivots, input limits,
 model storage, per-request cancellation, close-time PREEMPT/DRAIN behavior, route-keyed
@@ -165,6 +171,7 @@ Release matrix:
 .\gradlew.bat --console=plain `
   testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest `
   lintLiteRelease lintFullRelease lintOnlineRelease `
+  generateReleaseSboms assembleOnlineContributor `
   assembleLiteRelease assembleFullRelease assembleOnlineRelease `
   bundleLiteRelease bundleFullRelease bundleOnlineRelease
 ```
@@ -172,7 +179,18 @@ Release matrix:
 Local Release outputs are unsigned unless `keystore.properties` is configured. The release
 workflow first builds, R8-shrinks, signs, hash-lists, and checks a 16 KiB-aligned acceptance
 Artifact. After target-device acceptance, a separate promotion operation re-verifies and
-publishes the exact same nine files without rebuilding them.
+publishes the exact same twelve files—including three per-edition CycloneDX SBOMs—without
+rebuilding them.
+
+Contributor/emulator build:
+
+```powershell
+.\gradlew.bat --console=plain :app:assembleOnlineContributor
+```
+
+This produces `app/build/outputs/apk/online/contributor/app-online-contributor.apk` with the
+x86_64 ONNX Runtime for PP-OCRv6 testing. Translation uses Online BYOK; Lite Bergamot and Full
+HY-MT2 do not expose x86_64 local runtimes. Production Release APKs remain ARM64-only.
 
 ## First use
 
@@ -229,4 +247,4 @@ feature from Experimental to supported. Release procedure: [`docs/RELEASING.md`]
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE)
-- [v2.1.0 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/2)
+- [v2.2.0 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/3)

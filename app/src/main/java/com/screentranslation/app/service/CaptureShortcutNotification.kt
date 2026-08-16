@@ -12,11 +12,13 @@ import android.graphics.drawable.Icon
 import androidx.core.content.ContextCompat
 import com.screentranslation.app.ProjectionPermissionActivity
 import com.screentranslation.app.R
+import com.screentranslation.app.prefs.AppPreferences
 
 internal fun shouldShowCaptureShortcut(
     notificationPermissionGranted: Boolean,
     serviceRunning: Boolean,
-): Boolean = notificationPermissionGranted && !serviceRunning
+    idleShortcutEnabled: Boolean = true,
+): Boolean = notificationPermissionGranted && !serviceRunning && idleShortcutEnabled
 
 /** Persistent, user-initiated entry point for starting capture over the current app. */
 object CaptureShortcutNotification {
@@ -47,7 +49,12 @@ object CaptureShortcutNotification {
             appContext,
             Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
-        if (!shouldShowCaptureShortcut(permissionGranted, ScreenTranslationService.isRunning)) {
+        if (!shouldShowCaptureShortcut(
+                permissionGranted,
+                ScreenTranslationService.isRunning,
+                AppPreferences(appContext).idleShortcutEnabled,
+            )
+        ) {
             cancel(appContext)
             return
         }

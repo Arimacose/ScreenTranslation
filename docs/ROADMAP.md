@@ -28,14 +28,14 @@
 - [x] 以类型化 `TranslationProviderProfile` 分离 Lite、Full、Online 能力与中间档门禁（[#41](https://github.com/Arimacose/ScreenTranslation/issues/41)）
 - [x] 为固定公开文本建立质量回归夹具与人工评分规范（[#46](https://github.com/Arimacose/ScreenTranslation/issues/46)）
 - [x] 增加模型管理页面：大小、状态、下载与删除
-- [ ] 增加“关于/开源许可/隐私”应用内页面（v2.2；[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
+- [x] 增加“关于/开源许可/隐私”应用内页面（v2.2；[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
 
 验收重点：长句不因面板省略而丢失可访问性；翻译后端的数据流和归属清晰可选。
 
 ## v0.3 — 兼容性与自动化
 
 - [ ] 扩大 Android 16 ROM 验证矩阵（当前里程碑明确延期）
-- [ ] 增加 x86_64 调试构建或独立模拟器 flavor（v2.2；[#43](https://github.com/Arimacose/ScreenTranslation/issues/43)）
+- [x] 增加隔离的 Online x86_64 contributor 构建（v2.2；[#43](https://github.com/Arimacose/ScreenTranslation/issues/43)）
 - [x] 增加 Android instrumentation 与 UI 自动化测试（[#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
 - [x] 覆盖旋转、锁屏、投影撤销和任务移除状态机（并入 [#42](https://github.com/Arimacose/ScreenTranslation/issues/42)）
 - [ ] 增加内存压力与系统回收进程后的专项状态恢复回归
@@ -46,7 +46,22 @@
 - 三套 UI 的签名 Release / HyperOS 真机视觉与交互结果由
   [#47](https://github.com/Arimacose/ScreenTranslation/issues/47) 与对应 Release notes
   保存，避免为回写验收状态移动已经固定的发布 commit。
-- [ ] 生成可发布的依赖清单或 SBOM（v2.2；[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
+- [x] 为三个 edition 生成并发布 CycloneDX SBOM（v2.2；[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
+
+## v2.2 — 任务优先与可验证发布
+
+- [x] 将模型准备迁移到 Activity 之外的可恢复 WorkManager 任务，并以模型坐标与文件
+  identity 阻止陈旧“已就绪”状态（[#70](https://github.com/Arimacose/ScreenTranslation/issues/70)）
+- [x] 首页按当前任务给出唯一下一步动作，并统一首次运行和启动前置检查
+  （[#71](https://github.com/Arimacose/ScreenTranslation/issues/71)）
+- [x] 增加可关闭的空闲快捷通知和四态 Quick Settings Tile
+  （[#72](https://github.com/Arimacose/ScreenTranslation/issues/72)）
+- [x] 应用内离线信任中心（[#45](https://github.com/Arimacose/ScreenTranslation/issues/45)）
+- [x] Online x86_64 contributor 构建（[#43](https://github.com/Arimacose/ScreenTranslation/issues/43)）
+- [x] Lite/Full/Online CycloneDX SBOM（[#44](https://github.com/Arimacose/ScreenTranslation/issues/44)）
+
+代码与自动化门禁完成后，上述项目仍需按各 issue 的验收条目通过签名 Release、目标真机
+和 GitHub Actions 证据，才进入发布关闭状态。
 
 ## v2.x 跨设备稳定性边界
 

@@ -25,5 +25,12 @@ class CaptureShortcutNotificationTest {
                 serviceRunning = true,
             ),
         )
+        assertFalse(
+            shouldShowCaptureShortcut(
+                notificationPermissionGranted = true,
+                serviceRunning = false,
+                idleShortcutEnabled = false,
+            ),
+        )
     }
 }

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clipToPadding="false"
     android:fillViewport="true">
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -14,18 +14,15 @@
         android:paddingTop="12dp"
         android:paddingEnd="16dp"
         android:paddingBottom="36dp">
-
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.ScreenTranslation.Apple.Hero"
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="20dp">
-
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -36,7 +33,6 @@
                     android:maxLines="1"
                     android:text="@string/screen_title"
                     android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.LargeTitle" />
-
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -44,9 +40,53 @@
                     android:text="@string/screen_subtitle"
                     android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Body"
                     android:textColor="?attr/colorOnSurfaceVariant" />
+                <TextView
+                    android:id="@+id/text_task_summary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="@string/home_task_summary_placeholder"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Body"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/text_readiness_summary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:text="@string/home_reason_prepare_model"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/button_start"
+                        style="@style/Widget.ScreenTranslation.Apple.Button.Primary"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/start_translation" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/button_stop"
+                        style="@style/Widget.ScreenTranslation.Apple.Button.Danger"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:enabled="false"
+                        android:text="@string/stop_translation" />
+                </LinearLayout>
+                <TextView
+                    android:id="@+id/text_service_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:text="@string/service_idle"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
-
         <TextView
             android:id="@+id/text_experimental_banner"
             style="@style/Widget.ScreenTranslation.ExperimentalBanner"
@@ -56,7 +96,309 @@
             android:padding="12dp"
             android:text="@string/experimental_banner"
             android:visibility="gone" />
-
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="4dp"
+            android:text="@string/section_translation"
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.ScreenTranslation.Apple.Group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@id/spinner_source_language"
+                    android:text="@string/source_language"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <Spinner
+                    android:id="@+id/spinner_source_language"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:spinnerMode="dropdown" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="12dp"
+                    android:background="?attr/colorOutlineVariant" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@id/spinner_target_language"
+                    android:text="@string/target_language"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <Spinner
+                    android:id="@+id/spinner_target_language"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:spinnerMode="dropdown" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="12dp"
+                    android:background="?attr/colorOutlineVariant" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@id/spinner_capture_mode"
+                    android:text="@string/capture_mode"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <Spinner
+                    android:id="@+id/spinner_capture_mode"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:spinnerMode="dropdown" />
+                <TextView
+                    android:id="@+id/text_capture_mode_hint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/capture_mode_region_hint"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="14dp"
+                    android:layout_marginBottom="12dp"
+                    android:background="?attr/colorOutlineVariant" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:labelFor="@id/seek_frame_interval"
+                        android:text="@string/frame_interval"
+                        android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/text_frame_interval"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorPrimary"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <SeekBar
+                    android:id="@+id/seek_frame_interval"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:max="6" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/frame_interval_hint"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="4dp"
+            android:text="@string/section_model"
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.ScreenTranslation.Apple.Group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/model_explanation"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Body"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_prepare_models"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Primary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/prepare_models" />
+                <TextView
+                    android:id="@+id/text_model_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:background="@drawable/bg_apple_status"
+                    android:padding="10dp"
+                    android:text="@string/model_not_prepared"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
+                    android:textColor="@color/apple_on_surface" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_manage_models"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/model_manage_downloads" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_online_settings"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/online_settings"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/text_online_config_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:text="@string/online_config_status_unavailable"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
+                    android:visibility="gone" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_experimental_smoke_test"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/experimental_smoke_test"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/text_experimental_smoke_test_result"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:accessibilityLiveRegion="polite"
+                    android:text="@string/experimental_smoke_test_not_run"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="4dp"
+            android:text="@string/section_permissions"
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.ScreenTranslation.Apple.Group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/notification_permission"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/notification_permission_explanation"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_notification_permission"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/grant_notification_permission" />
+                <TextView
+                    android:id="@+id/text_notification_permission_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="?attr/colorOutlineVariant" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/overlay_permission"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/overlay_permission_explanation"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_overlay_permission"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/grant_overlay_permission" />
+                <TextView
+                    android:id="@+id/text_overlay_permission_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="?attr/colorOutlineVariant" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/battery_policy"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/battery_policy_explanation"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_battery_policy"
+                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_battery_policy" />
+                <TextView
+                    android:id="@+id/text_battery_policy_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -65,33 +407,28 @@
             android:layout_marginEnd="4dp"
             android:text="@string/section_appearance"
             android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
-
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.ScreenTranslation.Apple.Group"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp">
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp">
-
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/ui_style_label"
                     android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
                     android:textStyle="bold" />
-
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
                     android:text="@string/ui_style_hint"
                     android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
                 <com.google.android.material.button.MaterialButtonToggleGroup
                     android:id="@+id/group_ui_style"
                     android:layout_width="match_parent"
@@ -102,7 +439,6 @@
                     app:checkedButton="@id/button_style_apple"
                     app:selectionRequired="true"
                     app:singleSelection="true">
-
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/button_style_apple"
                         style="@style/Widget.ScreenTranslation.Apple.SegmentedButton"
@@ -114,7 +450,6 @@
                         android:paddingEnd="4dp"
                         android:text="@string/ui_style_apple"
                         android:textSize="13sp" />
-
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/button_style_miuix"
                         style="@style/Widget.ScreenTranslation.Apple.SegmentedButton"
@@ -126,7 +461,6 @@
                         android:paddingEnd="4dp"
                         android:text="@string/ui_style_miuix"
                         android:textSize="13sp" />
-
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/button_style_material3"
                         style="@style/Widget.ScreenTranslation.Apple.SegmentedButton"
@@ -139,7 +473,6 @@
                         android:text="@string/ui_style_material3"
                         android:textSize="13sp" />
                 </com.google.android.material.button.MaterialButtonToggleGroup>
-
                 <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/switch_material_monet"
                     android:layout_width="match_parent"
@@ -149,7 +482,6 @@
                     android:minHeight="48dp"
                     android:text="@string/material_monet_label"
                     android:visibility="gone" />
-
                 <TextView
                     android:id="@+id/text_material_monet_hint"
                     android:layout_width="match_parent"
@@ -158,418 +490,27 @@
                     android:text="@string/material_monet_hint"
                     android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
                     android:visibility="gone" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginEnd="4dp"
-            android:text="@string/section_translation"
-            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
-
-        <com.google.android.material.card.MaterialCardView
-            style="@style/Widget.ScreenTranslation.Apple.Group"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switch_idle_shortcut"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:labelFor="@id/spinner_source_language"
-                    android:text="@string/source_language"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                    android:textStyle="bold" />
-
-                <Spinner
-                    android:id="@+id/spinner_source_language"
-                    android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:spinnerMode="dropdown" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="?attr/colorOutlineVariant" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:labelFor="@id/spinner_target_language"
-                    android:text="@string/target_language"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                    android:textStyle="bold" />
-
-                <Spinner
-                    android:id="@+id/spinner_target_language"
-                    android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:spinnerMode="dropdown" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="?attr/colorOutlineVariant" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:labelFor="@id/spinner_capture_mode"
-                    android:text="@string/capture_mode"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                    android:textStyle="bold" />
-
-                <Spinner
-                    android:id="@+id/spinner_capture_mode"
-                    android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:spinnerMode="dropdown" />
-
-                <TextView
-                    android:id="@+id/text_capture_mode_hint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/capture_mode_region_hint"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
                     android:layout_marginTop="14dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="?attr/colorOutlineVariant" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:labelFor="@id/seek_frame_interval"
-                        android:text="@string/frame_interval"
-                        android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/text_frame_interval"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="?attr/colorPrimary"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <SeekBar
-                    android:id="@+id/seek_frame_interval"
+                    android:minHeight="48dp"
+                    android:text="@string/idle_shortcut_label" />
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switch_model_wifi_only"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:max="6" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/frame_interval_hint"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginEnd="4dp"
-            android:text="@string/section_model"
-            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
-
-        <com.google.android.material.card.MaterialCardView
-            style="@style/Widget.ScreenTranslation.Apple.Group"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/model_explanation"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Body"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-
+                    android:minHeight="48dp"
+                    android:text="@string/model_wifi_only_label" />
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_prepare_models"
-                    style="@style/Widget.ScreenTranslation.Apple.Button.Primary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/prepare_models" />
-
-                <TextView
-                    android:id="@+id/text_model_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:accessibilityLiveRegion="polite"
-                    android:background="@drawable/bg_apple_status"
-                    android:padding="10dp"
-                    android:text="@string/model_not_prepared"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
-                    android:textColor="@color/apple_on_surface" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_manage_models"
+                    android:id="@+id/button_about"
                     style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="@string/model_manage_downloads" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_online_settings"
-                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/online_settings"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/text_online_config_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:accessibilityLiveRegion="polite"
-                    android:text="@string/online_config_status_unavailable"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
-                    android:visibility="gone" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_experimental_smoke_test"
-                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/experimental_smoke_test"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/text_experimental_smoke_test_result"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:accessibilityLiveRegion="polite"
-                    android:text="@string/experimental_smoke_test_not_run"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote"
-                    android:visibility="gone" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginEnd="4dp"
-            android:text="@string/section_permissions"
-            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
-
-        <com.google.android.material.card.MaterialCardView
-            style="@style/Widget.ScreenTranslation.Apple.Group"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/notification_permission"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="@string/notification_permission_explanation"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_notification_permission"
-                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/grant_notification_permission" />
-
-                <TextView
-                    android:id="@+id/text_notification_permission_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="16dp"
-                    android:background="?attr/colorOutlineVariant" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/overlay_permission"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="@string/overlay_permission_explanation"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_overlay_permission"
-                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/grant_overlay_permission" />
-
-                <TextView
-                    android:id="@+id/text_overlay_permission_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="16dp"
-                    android:background="?attr/colorOutlineVariant" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/battery_policy"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:text="@string/battery_policy_explanation"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_battery_policy"
-                    style="@style/Widget.ScreenTranslation.Apple.Button.Secondary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/open_battery_policy" />
-
-                <TextView
-                    android:id="@+id/text_battery_policy_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginEnd="4dp"
-            android:text="@string/section_capture"
-            android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Section" />
-
-        <com.google.android.material.card.MaterialCardView
-            style="@style/Widget.ScreenTranslation.Apple.Hero"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/capture_explanation"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Body"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/button_start"
-                        style="@style/Widget.ScreenTranslation.Apple.Button.Primary"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/start_translation" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/button_stop"
-                        style="@style/Widget.ScreenTranslation.Apple.Button.Danger"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:enabled="false"
-                        android:text="@string/stop_translation" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/text_service_status"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:accessibilityLiveRegion="polite"
-                    android:text="@string/service_idle"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                    android:text="@string/about_title" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

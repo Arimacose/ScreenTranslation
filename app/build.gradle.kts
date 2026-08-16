@@ -3,6 +3,8 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.Properties
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.tasks.OutputDirectory
@@ -206,11 +208,14 @@ android {
         applicationId = "com.screentranslation.app"
         minSdk = 36
         targetSdk = 36
-        versionCode = 7
-        versionName = "2.1.0"
+        versionCode = 8
+        versionName = "2.2.0"
         buildConfigField("boolean", "BERGAMOT_LITE", "false")
         buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
         buildConfigField("boolean", "ONLINE_LLM", "false")
+        buildConfigField("String", "EDITION_ID", "\"unknown\"")
+        buildConfigField("String", "OCR_BACKEND_ID", "\"ppocrv6-small-onnx\"")
+        buildConfigField("String", "TRANSLATION_BACKEND_ID", "\"unknown\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -234,18 +239,24 @@ android {
             dimension = "edition"
             versionNameSuffix = "-lite"
             buildConfigField("boolean", "BERGAMOT_LITE", "true")
+            buildConfigField("String", "EDITION_ID", "\"lite\"")
+            buildConfigField("String", "TRANSLATION_BACKEND_ID", "\"bergamot-lite\"")
         }
         create("full") {
             dimension = "edition"
             applicationIdSuffix = ".full"
             versionNameSuffix = "-full"
             buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "true")
+            buildConfigField("String", "EDITION_ID", "\"full\"")
+            buildConfigField("String", "TRANSLATION_BACKEND_ID", "\"hymt2-q4\"")
         }
         create("online") {
             dimension = "edition"
             applicationIdSuffix = ".online"
             versionNameSuffix = "-online"
             buildConfigField("boolean", "ONLINE_LLM", "true")
+            buildConfigField("String", "EDITION_ID", "\"online\"")
+            buildConfigField("String", "TRANSLATION_BACKEND_ID", "\"online-byok\"")
         }
     }
 
@@ -287,6 +298,19 @@ android {
             versionNameSuffix = "-instrumentation"
             matchingFallbacks += listOf("debug")
             // CI runs only Online instrumentation on an Android 16 x86_64 emulator.
+            ndk {
+                abiFilters.clear()
+                abiFilters += "x86_64"
+            }
+        }
+        create("contributor") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".contributor"
+            versionNameSuffix = "-contributor"
+            matchingFallbacks += listOf("debug")
+            // The contributor/emulator path is intentionally Online-only: it
+            // exercises PP-OCRv6 through ONNX Runtime x86_64 without allowing
+            // x86_64 libraries to enter any Release edition.
             ndk {
                 abiFilters.clear()
                 abiFilters += "x86_64"
@@ -361,6 +385,12 @@ androidComponents {
             com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE
         ]?.enable = true
     }
+    beforeVariants(selector().withBuildType("contributor")) { variant ->
+        val edition = variant.productFlavors
+            .firstOrNull { (dimension, _) -> dimension == "edition" }
+            ?.second
+        variant.enable = edition == "online"
+    }
     onVariants(selector().all()) { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(
             preparePpOcrv6Assets,
@@ -380,6 +410,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.14.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     // Production OCR: pinned PP-OCRv6 ONNX assets with an on-device ARM64 runtime.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
@@ -418,6 +449,196 @@ tasks.register("printVersionInfo") {
         println("versionName=${android.defaultConfig.versionName}")
         println("versionCode=${android.defaultConfig.versionCode}")
     }
+}
+
+fun sbomComponent(
+    type: String,
+    name: String,
+    version: String,
+    purl: String,
+    licenseId: String,
+    sha256: String? = null,
+): Map<String, Any> = linkedMapOf<String, Any>(
+    "type" to type,
+    "name" to name,
+    "version" to version,
+    "bom-ref" to purl,
+    "purl" to purl,
+    "licenses" to if (licenseId == "NOASSERTION") {
+        listOf(mapOf("expression" to "NOASSERTION"))
+    } else {
+        listOf(mapOf("license" to mapOf("id" to licenseId)))
+    },
+).apply {
+    if (sha256 != null) {
+        this["hashes"] = listOf(mapOf("alg" to "SHA-256", "content" to sha256.uppercase()))
+    }
+}
+
+fun resolvedDependencyLicense(group: String): String = when {
+    group.startsWith("androidx.") -> "Apache-2.0"
+    group.startsWith("com.google.android.material") -> "Apache-2.0"
+    group.startsWith("com.google.errorprone") -> "Apache-2.0"
+    group.startsWith("com.google.guava") -> "Apache-2.0"
+    group.startsWith("com.microsoft.onnxruntime") -> "MIT"
+    group.startsWith("com.squareup.okhttp3") -> "Apache-2.0"
+    group.startsWith("com.squareup.okio") -> "Apache-2.0"
+    group.startsWith("org.jetbrains") -> "Apache-2.0"
+    group.startsWith("org.jspecify") -> "Apache-2.0"
+    else -> error("Add an explicit SBOM license mapping for Gradle group: $group")
+}
+
+val commonSbomComponents = listOf(
+    sbomComponent(
+        type = "machine-learning-model",
+        name = "PP-OCRv6-small detection",
+        version = "28fe5895c24fd108c19eb3e8479f4ab385fbfc62",
+        purl = "pkg:huggingface/PaddlePaddle/PP-OCRv6_small_det_onnx@28fe5895c24fd108c19eb3e8479f4ab385fbfc62",
+        licenseId = "Apache-2.0",
+        sha256 = "D73E0058B7A8086BBD57F3D10B8BCD4FF95363F67E06E2762B5E814FE9C9410E",
+    ),
+    sbomComponent(
+        type = "machine-learning-model",
+        name = "PP-OCRv6-small recognition",
+        version = "b8f84f0b80c529de40b4fbb3544b84fa7233a513",
+        purl = "pkg:huggingface/PaddlePaddle/PP-OCRv6_small_rec_onnx@b8f84f0b80c529de40b4fbb3544b84fa7233a513",
+        licenseId = "Apache-2.0",
+        sha256 = "5435FD747C9E0EFE15A96D0B378D5BD157E9492ED8FD80EDF08F30D02FA24634",
+    ),
+)
+
+val editionSbomComponents = mapOf(
+    "lite" to listOf(
+        sbomComponent(
+            type = "library",
+            name = "Bergamot Translator Android runner",
+            version = "9271618ebbdc5d21ac4dc4df9e72beb7ce644774",
+            purl = "pkg:github/browsermt/bergamot-translator@9271618ebbdc5d21ac4dc4df9e72beb7ce644774",
+            licenseId = "MPL-2.0",
+            sha256 = "40A764D5FBCD8B18C6C0BEF6BCC6EF38F25BEB6F2E6DEFCFA5C00D7E54407F75",
+        ),
+        sbomComponent(
+            type = "machine-learning-model",
+            name = "Firefox Translations en-zh and ja-en routes",
+            version = "e7957fc407441a5e3e35bbcbf9d60d9b35764618",
+            purl = "pkg:github/mozilla/firefox-translations-models@e7957fc407441a5e3e35bbcbf9d60d9b35764618",
+            licenseId = "MPL-2.0",
+        ),
+    ),
+    "full" to listOf(
+        sbomComponent(
+            type = "library",
+            name = "llama.cpp Android runtime",
+            version = "caa596ab3f0f8768ee326d6e3d5d39782194676c",
+            purl = "pkg:github/ggml-org/llama.cpp@caa596ab3f0f8768ee326d6e3d5d39782194676c",
+            licenseId = "MIT",
+        ),
+        sbomComponent(
+            type = "machine-learning-model",
+            name = "HY-MT2 1.8B Q4_K_M",
+            version = "1cd5208700acedef4ef93019b6cfc148b8522d45",
+            purl = "pkg:huggingface/tencent/Hy-MT2-1.8B-GGUF@1cd5208700acedef4ef93019b6cfc148b8522d45",
+            licenseId = "Apache-2.0",
+            sha256 = "DC5F44FCF1FA496EE7AD725982C0C8C553A4DE00259B53AF84C4B89FB0C06699",
+        ),
+    ),
+    "online" to listOf(
+        sbomComponent(
+            type = "machine-learning-model",
+            name = "User-configured OpenAI-compatible model",
+            version = "runtime-selected",
+            purl = "pkg:generic/screentranslation/online-model@runtime-selected",
+            licenseId = "NOASSERTION",
+        ),
+    ),
+)
+
+fun registerEditionSbom(edition: String) = tasks.register("generate${edition.replaceFirstChar(Char::uppercase)}ReleaseSbom") {
+    group = "reporting"
+    description = "Generates a CycloneDX 1.5 SBOM for the $edition Release edition."
+    val output = layout.buildDirectory.file(
+        "reports/sbom/ScreenTranslation-${android.defaultConfig.versionName}-$edition.cdx.json",
+    )
+    outputs.file(output)
+    doLast {
+        val configurationName = "${edition}ReleaseRuntimeClasspath"
+        val gradleComponents = configurations.getByName(configurationName)
+            .incoming.resolutionResult.allComponents
+            .mapNotNull { component ->
+                val id = component.id as? ModuleComponentIdentifier ?: return@mapNotNull null
+                val purl = "pkg:maven/${id.group}/${id.module}@${id.version}"
+                linkedMapOf<String, Any>(
+                    "type" to "library",
+                    "group" to id.group,
+                    "name" to id.module,
+                    "version" to id.version,
+                    "bom-ref" to purl,
+                    "purl" to purl,
+                    "licenses" to listOf(
+                        mapOf(
+                            "license" to mapOf(
+                                "id" to resolvedDependencyLicense(id.group),
+                            ),
+                        ),
+                    ),
+                )
+            }
+            .distinctBy { component -> component.getValue("bom-ref") }
+            .sortedBy { component -> component.getValue("bom-ref").toString() }
+        val applicationIdSuffix = if (edition == "lite") "" else ".$edition"
+        val applicationPurl =
+            "pkg:apk/com.screentranslation.app$applicationIdSuffix" +
+                "@${android.defaultConfig.versionName}?edition=$edition"
+        val components = (gradleComponents + commonSbomComponents + editionSbomComponents.getValue(edition))
+            .distinctBy { component -> component.getValue("bom-ref") }
+            .sortedBy { component -> component.getValue("bom-ref").toString() }
+        val bom = linkedMapOf<String, Any>(
+            "bomFormat" to "CycloneDX",
+            "specVersion" to "1.5",
+            "version" to 1,
+            "metadata" to mapOf(
+                "component" to mapOf(
+                    "type" to "application",
+                    "name" to "ScreenTranslation-$edition",
+                    "version" to android.defaultConfig.versionName.toString(),
+                    "bom-ref" to applicationPurl,
+                    "purl" to applicationPurl,
+                    "licenses" to listOf(mapOf("license" to mapOf("id" to "Apache-2.0"))),
+                ),
+                "properties" to listOf(
+                    mapOf("name" to "screentranslation:edition", "value" to edition),
+                    mapOf("name" to "screentranslation:targetSdk", "value" to "36"),
+                    mapOf("name" to "screentranslation:releaseAbi", "value" to "arm64-v8a"),
+                ),
+            ),
+            "components" to components,
+            "dependencies" to listOf(
+                mapOf(
+                    "ref" to applicationPurl,
+                    "dependsOn" to components.map { component ->
+                        component.getValue("bom-ref")
+                    },
+                ),
+            ),
+        )
+        val destination = output.get().asFile
+        destination.parentFile.mkdirs()
+        val rendered = JsonOutput.prettyPrint(JsonOutput.toJson(bom)) + "\n"
+        check(!Regex("(?i)([a-z]:\\\\|/home/|/users/|\\\\\\\\)").containsMatchIn(rendered)) {
+            "SBOM contains a local filesystem path"
+        }
+        destination.writeText(rendered, Charsets.UTF_8)
+    }
+}
+
+val generateLiteReleaseSbom = registerEditionSbom("lite")
+val generateFullReleaseSbom = registerEditionSbom("full")
+val generateOnlineReleaseSbom = registerEditionSbom("online")
+
+tasks.register("generateReleaseSboms") {
+    group = "reporting"
+    description = "Generates CycloneDX SBOMs for Lite, Full, and Online Release editions."
+    dependsOn(generateLiteReleaseSbom, generateFullReleaseSbom, generateOnlineReleaseSbom)
 }
 
 // Formal Online failure evidence is challenge-driven. A random challenge makes

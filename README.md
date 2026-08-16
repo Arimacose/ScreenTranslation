@@ -2,14 +2,14 @@
 
 **简体中文** | [English](README.en.md)
 
-> v2.1.0 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
+> v2.2.0 开发版提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
 > Monet 动态取色的 Material 3。参见 [UI 风格设计与边界](docs/UI_STYLES.md)。
 
 ![Apple、MIUIX 与 Material 3 静态设计预览](docs/assets/ui-style-comparison.png)
 
 面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面；默认只裁剪用户框选区域，Experimental 模式则对全屏变化分块增量识别。在本机完成 OCR 后，应用按所选 edition 进行端侧或在线翻译并用悬浮层显示结果。
 
-> 项目状态：面向单一设备/ROM 基线的 `v2.1.0`。运行基线为 Android 16 / API 36，`minSdk` 与
+> 项目状态：正在推进面向单一设备/ROM 基线的 `v2.2.0`。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
@@ -35,6 +35,12 @@ GitHub Release。
 - 静态画面自动降低采样频率，检测到变化后恢复用户设置的活跃频率。
 - 翻译前以确定性规则恢复高置信独立块句尾、段落句界和缺失右侧成对标点；单换行视觉折行保持原样，URL、邮箱、日期、金额、小数和版本号先保护后逐字节恢复。
 - 结果面板可分别复制原文和译文；模型管理页可查看状态、大小、固定版本，直接发起当前语言模型准备，并删除下载权重。准备成功后主页面按钮变为灰色不可点击的“已就绪”；界面重建时会先复核当前应用私有模型/配置 identity，冷进程与服务启动仍执行完整固定 SHA-256 校验，切换语言对或配置后恢复准备动作。
+- 模型准备由 WorkManager 在 Activity 之外执行，支持网络约束、空间预检、暂停/继续/取消、
+  `.part` 续传、速度与 ETA；首页按当前任务给出唯一下一步动作。
+- 可关闭空闲快捷通知，也可添加 Quick Settings Tile；两者只提供用户主动入口，不复用或
+  绕过系统 MediaProjection 确认。
+- 应用内“关于与信任中心”离线展示当前 edition、OCR/翻译后端、模型 revision、数据流、
+  Apache-2.0、第三方 notices、隐私和安全说明。
 - 内置 PP-OCRv6 small 多语言检测/识别模型，通过 ONNX Runtime 在设备端运行。
 - **Lite · Bergamot**：英语直译中文、日语经英语级联译中文；保留 v0.1.0
   包名并支持签名升级。
@@ -63,7 +69,7 @@ GitHub Release。
 | JDK | 17 |
 | Kotlin | AGP 9.3 内置 Kotlin（不应用 `org.jetbrains.kotlin.android`） |
 | compile / min / target SDK | 37 / 36 / 36 |
-| APK ABI | `arm64-v8a`（小米 15 Pro 目标构建） |
+| ABI | Release 为 `arm64-v8a`；Online Contributor Debug 为 `x86_64` |
 | Production OCR | PP-OCRv6 small ONNX，固定检测/识别模型提交 |
 | OCR runtime | ONNX Runtime Android `1.28.0` |
 | Lite translation | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
@@ -238,6 +244,7 @@ Windows：
 .\gradlew.bat --no-daemon clean `
   testLiteDebugUnitTest testFullDebugUnitTest testOnlineDebugUnitTest `
   lintLiteRelease lintFullRelease lintOnlineRelease `
+  generateReleaseSboms assembleOnlineContributor `
   assembleLiteRelease assembleFullRelease assembleOnlineRelease
 ```
 
@@ -266,6 +273,19 @@ x86_64 Debug 签名包并在 API 36 模拟器运行：
 磁盘隐私。它是持续集成回归，不替代 ARM64 签名 Release/R8 真机验收。环境准备、
 产物路径和 Windows 多设备运行方式见
 [`docs/INSTRUMENTATION_TESTING.md`](docs/INSTRUMENTATION_TESTING.md)。
+
+### Online x86_64 contributor 构建
+
+不改动 Release ABI 即可生成供 Android 16 x86_64 模拟器使用的 Online 调试包：
+
+```powershell
+.\gradlew.bat --console=plain :app:assembleOnlineContributor
+```
+
+产物为 `app/build/outputs/apk/online/contributor/app-online-contributor.apk`。它包含
+x86_64 ONNX Runtime，可验证 PP-OCRv6；翻译使用 Online BYOK 配置，不提供 Lite
+Bergamot 或 Full HY-MT2 的 x86_64 本地运行时。CI 会反向断言三份 Release APK 均不含
+x86_64 库。
 
 ### Lite · Bergamot
 
@@ -370,7 +390,7 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 - 应用仅保存源/目标语言和采样间隔，不保存选择区域、截图或识别历史。
 - 停止服务时释放 `VirtualDisplay`、`MediaProjection`、`ImageReader`、OCR/翻译客户端和悬浮窗。
 - 项目代码不上传屏幕图像；Online 之外的生产 edition 不上传 OCR 原文或译文。
-- v2.1.0 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
+- v2.2.0 Lite / Full / Online APK 不携带 ML Kit Translate；该组件只保留在
   `benchmark` build type。完整数据流见 [`PRIVACY.md`](PRIVACY.md)。
 - Online edition 的数据发送确认、密钥存储和请求边界见
   [`docs/ONLINE_TRANSLATION_DESIGN.md`](docs/ONLINE_TRANSLATION_DESIGN.md)。
@@ -378,7 +398,8 @@ Windows 将 `./gradlew` 替换为 `.\gradlew.bat`。
 ## 已知边界
 
 - 当前只适配 Android 16，不保证低版本 Android 或其他厂商 ROM。
-- 当前 APK 只打包 `arm64-v8a`，用于小米 15 Pro 真机；如需 x86_64 模拟器，应调整 `abiFilters` 后重新构建。
+- Release APK 只打包 `arm64-v8a`，用于小米 15 Pro 真机；x86_64 模拟器使用隔离的
+  `onlineContributor`，该变体不改变任何 Release edition。
 - PP-OCRv6 使用一套多语言识别模型；当前 UI 仅开放已列出的源语言，混合文字、
   小字号和艺术字体仍需按真机夹具验收。
 - 动画、游戏或快速滚动画面会受采样间隔、设备温度和文字清晰度影响。

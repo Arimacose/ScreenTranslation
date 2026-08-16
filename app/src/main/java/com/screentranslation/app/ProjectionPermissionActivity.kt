@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.screentranslation.app.prefs.AppPreferences
+import com.screentranslation.app.model.preparation.ModelPreparationCoordinator
 import com.screentranslation.app.service.CaptureShortcutNotification
 import com.screentranslation.app.service.ScreenTranslationService
 
@@ -51,6 +52,15 @@ class ProjectionPermissionActivity : ComponentActivity() {
         }
         if (!isOnlineConfigurationReady()) {
             openMainApp(R.string.quick_start_online_setup_required)
+            return
+        }
+        val preferences = AppPreferences(this)
+        if (!ModelPreparationCoordinator(this).isReady(
+                preferences.sourceLanguage,
+                preferences.targetLanguage,
+            )
+        ) {
+            openMainApp(R.string.quick_start_model_required)
             return
         }
 

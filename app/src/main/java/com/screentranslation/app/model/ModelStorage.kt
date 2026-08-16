@@ -4,6 +4,7 @@ import android.content.Context
 import com.screentranslation.app.BuildConfig
 import java.io.File
 import java.lang.reflect.InvocationTargetException
+import java.security.MessageDigest
 
 enum class ModelDownloadState {
     NOT_DOWNLOADED,
@@ -20,8 +21,50 @@ data class ManagedModel(
     val expectedBytes: Long? = null,
 )
 
+/** Immutable coordinates that make one preparation job safe to deduplicate. */
+data class ModelPreparationDescriptor(
+    val edition: String,
+    val modelIds: List<String>,
+    val revisions: List<String>,
+    val expectedSha256: List<String>,
+    val downloadBytes: Long,
+    val installedBytes: Long,
+) {
+    init {
+        require(edition.isNotBlank())
+        require(modelIds.isNotEmpty() && modelIds.none(String::isBlank))
+        require(revisions.isNotEmpty() && revisions.none(String::isBlank))
+        require(downloadBytes >= 0L && installedBytes >= 0L)
+        require(expectedSha256.all { hash ->
+            hash.length == 64 && hash.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+        })
+    }
+
+    val taskId: String
+        get() {
+            val digest = MessageDigest.getInstance("SHA-256")
+            listOf(
+                edition,
+                modelIds.sorted().joinToString(","),
+                revisions.sorted().joinToString(","),
+                expectedSha256.map(String::lowercase).sorted().joinToString(","),
+                downloadBytes.toString(),
+                installedBytes.toString(),
+            ).forEach { value ->
+                digest.update(value.toByteArray(Charsets.UTF_8))
+                digest.update(0.toByte())
+            }
+            return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+        }
+}
+
 interface ModelStorageManager {
     fun scan(): List<ManagedModel>
+
+    fun preparationDescriptor(
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): ModelPreparationDescriptor
 
     /** Returns the number of bytes present immediately before deletion. */
     fun deleteDownloadedModels(): Long

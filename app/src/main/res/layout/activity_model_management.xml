@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clipToPadding="false"
     android:fillViewport="true">
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -13,26 +14,22 @@
         android:paddingTop="24dp"
         android:paddingEnd="20dp"
         android:paddingBottom="40dp">
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/model_management_title"
             android:textAppearance="@style/TextAppearance.ScreenTranslation.PageTitle" />
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="@string/model_management_subtitle"
             android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
-
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.ScreenTranslation.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp">
-
             <TextView
                 android:id="@+id/text_model_inventory"
                 android:layout_width="match_parent"
@@ -43,7 +40,37 @@
                 android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                 android:textIsSelectable="true" />
         </com.google.android.material.card.MaterialCardView>
-
+        <TextView
+            android:id="@+id/text_model_task_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:accessibilityLiveRegion="polite"
+            android:text="@string/model_task_idle"
+            android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_pause_models"
+                style="@style/Widget.ScreenTranslation.Button.Outlined"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:visibility="gone"
+                android:text="@string/model_pause" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_cancel_model_task"
+                style="@style/Widget.ScreenTranslation.Button.Danger"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:visibility="gone"
+                android:text="@string/model_cancel"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
         <com.google.android.material.button.MaterialButton
             android:id="@+id/button_prepare_models"
             style="@style/Widget.ScreenTranslation.Button"
@@ -51,7 +78,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/model_prepare_current_download" />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/button_refresh_models"
             style="@style/Widget.ScreenTranslation.Button.Outlined"
@@ -59,7 +85,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="@string/model_refresh" />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/button_delete_models"
             style="@style/Widget.ScreenTranslation.Button.Danger"
