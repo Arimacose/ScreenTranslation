@@ -87,6 +87,7 @@ class RegionSelectionView @JvmOverloads constructor(
     private var currentY = 0f
     private var isSelecting = false
     private var selectedRegion: Rect? = null
+    private var gestureExclusionEnabled = false
 
     init {
         isClickable = true
@@ -101,16 +102,14 @@ class RegionSelectionView @JvmOverloads constructor(
     }
 
     fun setGestureExclusionEnabled(enabled: Boolean) {
-        systemGestureExclusionRects = if (enabled && width > 0 && height > 0) {
-            listOf(Rect(0, 0, width, height))
-        } else {
-            emptyList()
-        }
+        gestureExclusionEnabled = enabled
+        updateGestureExclusionRects()
     }
 
     fun setRegion(region: Rect?) {
         selectedRegion = region?.let(::Rect)
         clampSelectionToBounds()
+        updateGestureExclusionRects()
         invalidate()
     }
 
@@ -171,6 +170,7 @@ class RegionSelectionView @JvmOverloads constructor(
                 currentY = y
                 selectedRegion = null
                 isSelecting = true
+                updateGestureExclusionRects()
                 invalidate()
                 return true
             }
@@ -179,6 +179,7 @@ class RegionSelectionView @JvmOverloads constructor(
                 if (!isSelecting) return false
                 currentX = x
                 currentY = y
+                updateGestureExclusionRects()
                 invalidate()
                 return true
             }
@@ -198,6 +199,7 @@ class RegionSelectionView @JvmOverloads constructor(
                 } else {
                     null
                 }
+                updateGestureExclusionRects()
                 invalidate()
                 performClick()
                 val selection = selectedRegion
@@ -213,6 +215,7 @@ class RegionSelectionView @JvmOverloads constructor(
                 isSelecting = false
                 parent?.requestDisallowInterceptTouchEvent(false)
                 selectedRegion = null
+                updateGestureExclusionRects()
                 invalidate()
                 return true
             }
@@ -230,6 +233,39 @@ class RegionSelectionView @JvmOverloads constructor(
             isSelecting -> normalizedRect(startX, startY, currentX, currentY)
             else -> selectedRegion
         }
+    }
+
+    private fun updateGestureExclusionRects() {
+        if (!gestureExclusionEnabled || width <= 0 || height <= 0) {
+            systemGestureExclusionRects = emptyList()
+            return
+        }
+        val padding = dp(12f).toInt()
+        val instruction = instructionBounds().apply { inset(-padding, -padding) }
+        val active = currentSelectionRect()?.let { selection ->
+            Rect(
+                (selection.left - padding).coerceIn(0, width),
+                (selection.top - padding).coerceIn(0, height),
+                (selection.right + padding).coerceIn(0, width),
+                (selection.bottom + padding).coerceIn(0, height),
+            )
+        }
+        systemGestureExclusionRects = listOfNotNull(instruction, active)
+            .filter { !it.isEmpty }
+    }
+
+    private fun instructionBounds(): Rect {
+        val instruction = context.getString(R.string.overlay_drag_instruction)
+        val horizontalPadding = dp(14f)
+        val pillCenterY = dp(50f)
+        val pillHalfHeight = dp(18f)
+        val pillHalfWidth = instructionPaint.measureText(instruction) / 2f + horizontalPadding
+        return Rect(
+            (width / 2f - pillHalfWidth).toInt().coerceIn(0, width),
+            (pillCenterY - pillHalfHeight).toInt().coerceIn(0, height),
+            (width / 2f + pillHalfWidth).toInt().coerceIn(0, width),
+            (pillCenterY + pillHalfHeight).toInt().coerceIn(0, height),
+        )
     }
 
     private fun normalizedRect(x1: Float, y1: Float, x2: Float, y2: Float): Rect {

@@ -63,6 +63,18 @@
 代码与自动化门禁完成后，上述项目仍需按各 issue 的验收条目通过签名 Release、目标真机
 和 GitHub Actions 证据，才进入发布关闭状态。
 
+## v2.3 — 连续阅读、区域预设与可访问性验收
+
+- [x] 全屏控制条支持暂停/继续、显示/隐藏、阅读模式、字号、透明度与停止，并让密集页面中
+  所有 block 的完整原文/译文保持可发现（[#73](https://github.com/Arimacose/ScreenTranslation/issues/73)）
+- [x] 框选结果面板可独立拖动和原子冻结；横竖屏分别保存仅含归一化坐标的区域预设
+  （[#74](https://github.com/Arimacose/ScreenTranslation/issues/74)）
+- [x] 三套视觉样式补齐语义、遍历顺序、状态 announcement、48 dp 目标、触觉反馈与
+  日/夜/横竖屏/font scale 渲染矩阵（[#75](https://github.com/Arimacose/ScreenTranslation/issues/75)）
+
+代码完成后仍以最终 `main` 的签名 acceptance Artifact、同一小米 15 Pro / HyperOS 真机
+区域与全屏各 15 分钟报告、TalkBack 操作和三 edition smoke 作为关闭 milestone 与公开发布门禁。
+
 ## v2.x 跨设备稳定性边界
 
 - 冻结全局唯一 `applicationId`、应用名称和长期发布签名；

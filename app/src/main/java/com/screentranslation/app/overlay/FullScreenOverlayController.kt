@@ -1,5 +1,7 @@
 package com.screentranslation.app.overlay
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -12,18 +14,25 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.view.ContextThemeWrapper
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
+import androidx.core.view.ViewCompat
 import com.google.android.material.button.MaterialButton
 import com.screentranslation.app.R
 import com.screentranslation.app.capture.FullScreenFrameProcessor
+import com.screentranslation.app.capture.OverlayTranslationBlock
 import com.screentranslation.app.capture.TranslationObstacle
+import com.screentranslation.app.capture.mergeAdjacentOverlayBlocks
 import com.screentranslation.app.capture.resolveNonOverlappingTranslationPlacement
 
 internal fun fullScreenTranslationWindowFlags(): Int =
@@ -43,6 +52,7 @@ class FullScreenOverlayController(
     context: Context,
     private val onStop: () -> Unit,
     private val onOverlayBoundsChanged: (List<Rect>) -> Unit,
+    private val onPausedChanged: (Boolean) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val widgetContext = ContextThemeWrapper(
@@ -58,6 +68,23 @@ class FullScreenOverlayController(
     private var blockRoot: FrameLayout? = null
     private var controlRoot: LinearLayout? = null
     private var statusView: TextView? = null
+    private var pauseButton: MaterialButton? = null
+    private var visibilityButton: MaterialButton? = null
+    private var readingButton: MaterialButton? = null
+    private var fontButton: MaterialButton? = null
+    private var opacityButton: MaterialButton? = null
+    private var readingScrollView: ScrollView? = null
+    private var readingList: LinearLayout? = null
+    private var highlightView: View? = null
+    private var highlightBounds: Rect? = null
+    private var currentBlocks = emptyList<FullScreenFrameProcessor.TranslatedScreenBlock>()
+    private var unplacedBlockIds = emptySet<Long>()
+    private var currentStatus = ""
+    private var paused = false
+    private var labelsVisible = true
+    private var readingMode = false
+    private var fontSizeIndex = DEFAULT_FONT_SIZE_INDEX
+    private var opacityIndex = DEFAULT_OPACITY_INDEX
     private var lastReportedBounds = emptyList<Rect>()
     private var maskTransitionPending = false
     private val measurementView: TextView by lazy(LazyThreadSafetyMode.NONE) {
@@ -72,6 +99,12 @@ class FullScreenOverlayController(
     }
     private val finishMaskTransition = Runnable {
         maskTransitionPending = false
+        reportOverlayBounds()
+    }
+    private val clearHighlight = Runnable {
+        highlightView?.let { view -> blockRoot?.removeView(view) }
+        highlightView = null
+        highlightBounds = null
         reportOverlayBounds()
     }
     private val layoutListener = ViewTreeObserver.OnGlobalLayoutListener {
@@ -115,15 +148,29 @@ class FullScreenOverlayController(
     }
 
     fun updateStatus(status: String) = runOnMain {
-        statusView?.text = status
+        currentStatus = status
+        renderStatus()
         controlRoot?.post {
             if (!maskTransitionPending) reportOverlayBounds()
         }
     }
 
     fun updateBlocks(blocks: List<FullScreenFrameProcessor.TranslatedScreenBlock>) = runOnMain {
-        val root = blockRoot ?: return@runOnMain
-        val nextBounds = planTranslationBounds(blocks)
+        currentBlocks = blocks.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }, { it.id }))
+        renderReadingSurface()
+        renderTranslationBlocks()
+    }
+
+    private fun renderTranslationBlocks() {
+        val root = blockRoot ?: return
+        val plan = if (labelsVisible) {
+            planTranslationBounds(currentBlocks)
+        } else {
+            TranslationRenderPlan(linkedMapOf(), emptySet(), currentBlocks.mapTo(linkedSetOf()) { it.id })
+        }
+        val nextBounds = plan.labels.mapValues { it.value.bounds }
+        unplacedBlockIds = plan.hiddenIds
+        renderStatus()
 
         // HyperOS includes application overlays in MediaProjection frames. Tell
         // the capture thread about both the currently drawn rectangles and the
@@ -134,17 +181,18 @@ class FullScreenOverlayController(
         mainHandler.removeCallbacks(finishMaskTransition)
         reportOverlayBounds(plannedBlockBounds.values + nextBounds.values)
 
-        val activeIds = nextBounds.keys
+        val activeIds = plan.labels.keys
         blockViews.keys.filter { it !in activeIds }.forEach { id ->
             blockViews.remove(id)?.let(root::removeView)
         }
-        blocks.forEach { block ->
-            val bounds = nextBounds[block.id] ?: return@forEach
-            val view = blockViews.getOrPut(block.id) {
+        plan.labels.forEach { (key, label) ->
+            val view = blockViews.getOrPut(key) {
                 createTranslationView().also(root::addView)
             }
-            view.text = block.translatedText
-            positionTranslation(view, bounds)
+            view.text = label.block.displayTranslation
+            view.contentDescription = null
+            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            positionTranslation(view, label.bounds)
         }
         plannedBlockBounds.clear()
         plannedBlockBounds.putAll(nextBounds)
@@ -153,6 +201,8 @@ class FullScreenOverlayController(
 
     fun close() = runOnMain {
         mainHandler.removeCallbacks(finishMaskTransition)
+        mainHandler.removeCallbacks(clearHighlight)
+        if (paused) onPausedChanged(false)
         blockRoot?.viewTreeObserver?.takeIf { it.isAlive }
             ?.removeOnGlobalLayoutListener(layoutListener)
         controlRoot?.viewTreeObserver?.takeIf { it.isAlive }
@@ -168,6 +218,20 @@ class FullScreenOverlayController(
         blockRoot = null
         controlRoot = null
         statusView = null
+        pauseButton = null
+        visibilityButton = null
+        readingButton = null
+        fontButton = null
+        opacityButton = null
+        readingScrollView = null
+        readingList = null
+        highlightView = null
+        highlightBounds = null
+        currentBlocks = emptyList()
+        unplacedBlockIds = emptySet()
+        paused = false
+        labelsVisible = true
+        readingMode = false
         maskTransitionPending = false
         lastReportedBounds = emptyList()
         onOverlayBoundsChanged(emptyList())
@@ -182,7 +246,7 @@ class FullScreenOverlayController(
     private fun reportOverlayBounds(
         blockBounds: Collection<Rect> = plannedBlockBounds.values,
     ) {
-        val blockSnapshot = blockBounds.map(::Rect)
+        val blockSnapshot = (blockBounds + listOfNotNull(highlightBounds)).map(::Rect)
         if (Looper.myLooper() != Looper.getMainLooper()) {
             mainHandler.post { reportOverlayBounds(blockSnapshot) }
             return
@@ -252,60 +316,412 @@ class FullScreenOverlayController(
     }
 
     private fun createControls(): LinearLayout {
-        val background = GradientDrawable().apply {
-            cornerRadius = dp(visualStyle.panelCornerDp).toFloat()
-            setColor(visualStyle.panelColor)
-            setStroke(dp(1), visualStyle.panelStrokeColor)
+        val root = LinearLayout(appContext).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = createPanelBackground()
+            elevation = dp(12).toFloat()
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
-        return LinearLayout(appContext).apply {
+        val statusRow = LinearLayout(appContext).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            this.background = background
-            elevation = dp(12).toFloat()
-            setPadding(dp(12), dp(6), dp(8), dp(6))
-            statusView = TextView(appContext).apply {
-                text = appContext.getString(R.string.full_screen_overlay_starting)
-                setTextColor(visualStyle.statusTextColor)
-                textSize = 12f
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
+        }
+        statusView = TextView(appContext).apply {
+            text = appContext.getString(R.string.full_screen_overlay_starting)
+            setTextColor(visualStyle.statusTextColor)
+            textSize = 12f
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        statusRow.addView(
+            statusView,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        val stop = createControlButton(destructive = true).apply {
+            text = appContext.getString(R.string.overlay_stop)
+            contentDescription = appContext.getString(R.string.full_screen_accessibility_stop)
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.REJECT)
+                onStop()
             }
-            addView(
-                statusView,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        }
+        statusRow.addView(
+            stop,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(8) },
+        )
+        root.addView(statusRow)
+
+        val actionRow = LinearLayout(appContext).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        pauseButton = createControlButton().apply {
+            setOnClickListener {
+                paused = !paused
+                onPausedChanged(paused)
+                performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                renderControlState()
+            }
+        }
+        visibilityButton = createControlButton().apply {
+            setOnClickListener {
+                labelsVisible = !labelsVisible
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                renderControlState()
+                renderTranslationBlocks()
+            }
+        }
+        readingButton = createControlButton().apply {
+            setOnClickListener {
+                readingMode = !readingMode
+                performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                renderControlState()
+                renderReadingSurface()
+                root.post { reportOverlayBounds() }
+            }
+        }
+        fontButton = createControlButton().apply {
+            setOnClickListener {
+                fontSizeIndex = (fontSizeIndex + 1) % LABEL_TEXT_SIZES_SP.size
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                measurementView.textSize = LABEL_TEXT_SIZES_SP[fontSizeIndex]
+                blockViews.values.forEach { it.textSize = LABEL_TEXT_SIZES_SP[fontSizeIndex] }
+                renderControlState()
+                renderTranslationBlocks()
+            }
+        }
+        opacityButton = createControlButton().apply {
+            setOnClickListener {
+                opacityIndex = (opacityIndex + 1) % BACKGROUND_OPACITIES.size
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                root.background = createPanelBackground()
+                blockViews.values.forEach { it.background = createLabelBackground() }
+                renderControlState()
+                renderTranslationBlocks()
+            }
+        }
+        listOf(
+            pauseButton,
+            visibilityButton,
+            readingButton,
+            fontButton,
+            opacityButton,
+        ).forEachIndexed { index, button ->
+            actionRow.addView(
+                button,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { if (index > 0) marginStart = dp(6) },
             )
+        }
+        root.addView(
+            HorizontalScrollView(appContext).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(actionRow)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(4) },
+        )
+
+        readingList = LinearLayout(appContext).apply {
+            orientation = LinearLayout.VERTICAL
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        readingScrollView = ScrollView(appContext).apply {
+            visibility = View.GONE
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            contentDescription = appContext.getString(R.string.full_screen_reading_panel_description)
             addView(
-                MaterialButton(widgetContext).apply {
-                    text = appContext.getString(R.string.overlay_stop)
-                    isAllCaps = false
-                    minHeight = dp(40)
-                    cornerRadius = dp(visualStyle.controlCornerDp)
-                    insetTop = 0
-                    insetBottom = 0
-                    backgroundTintList = ColorStateList.valueOf(Color.argb(52, 255, 69, 58))
-                    setTextColor(Color.rgb(255, 105, 97))
-                    strokeWidth = dp(1)
-                    strokeColor = ColorStateList.valueOf(Color.argb(190, 255, 69, 58))
-                    setOnClickListener { onStop() }
+                readingList,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+        root.addView(
+            readingScrollView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (windowManager.maximumWindowMetrics.bounds.height() * READING_HEIGHT_FRACTION)
+                    .toInt()
+                    .coerceAtMost(dp(MAX_READING_HEIGHT_DP)),
+            ).apply { topMargin = dp(6) },
+        )
+        renderControlState()
+        return root
+    }
+
+    private fun createControlButton(destructive: Boolean = false): MaterialButton {
+        val activeColor = if (destructive) Color.rgb(255, 69, 58) else visualStyle.accentColor
+        return MaterialButton(widgetContext).apply {
+            isAllCaps = false
+            minHeight = dp(48)
+            minWidth = dp(48)
+            cornerRadius = dp(visualStyle.controlCornerDp)
+            insetTop = 0
+            insetBottom = 0
+            setPadding(dp(10), 0, dp(10), 0)
+            backgroundTintList = ColorStateList.valueOf(withAlpha(activeColor, 52))
+            setTextColor(activeColor)
+            strokeWidth = dp(1)
+            strokeColor = ColorStateList.valueOf(withAlpha(activeColor, 190))
+        }
+    }
+
+    private fun renderControlState() {
+        pauseButton?.apply {
+            text = appContext.getString(
+                if (paused) R.string.full_screen_resume else R.string.full_screen_pause,
+            )
+            contentDescription = text
+            ViewCompat.setStateDescription(
+                this,
+                appContext.getString(
+                    if (paused) {
+                        R.string.full_screen_state_paused
+                    } else {
+                        R.string.full_screen_state_running
+                    },
+                ),
+            )
+        }
+        visibilityButton?.apply {
+            text = appContext.getString(
+                if (labelsVisible) R.string.full_screen_hide else R.string.full_screen_show,
+            )
+            contentDescription = text
+            ViewCompat.setStateDescription(
+                this,
+                appContext.getString(
+                    if (labelsVisible) {
+                        R.string.full_screen_state_labels_visible
+                    } else {
+                        R.string.full_screen_state_labels_hidden
+                    },
+                ),
+            )
+        }
+        readingButton?.apply {
+            text = appContext.getString(
+                if (readingMode) R.string.full_screen_reading_close else R.string.full_screen_reading,
+                currentBlocks.size,
+            )
+            contentDescription = text
+            ViewCompat.setStateDescription(
+                this,
+                appContext.getString(
+                    if (readingMode) {
+                        R.string.full_screen_state_reading_open
+                    } else {
+                        R.string.full_screen_state_reading_closed
+                    },
+                ),
+            )
+        }
+        fontButton?.apply {
+            text = appContext.getString(
+                R.string.full_screen_font_size,
+                LABEL_TEXT_SIZES_SP[fontSizeIndex].toInt(),
+            )
+            contentDescription = appContext.getString(R.string.full_screen_font_size_description)
+            ViewCompat.setStateDescription(this, text)
+        }
+        opacityButton?.apply {
+            text = appContext.getString(
+                R.string.full_screen_background_opacity,
+                (BACKGROUND_OPACITIES[opacityIndex] * 100).toInt(),
+            )
+            contentDescription = appContext.getString(
+                R.string.full_screen_background_opacity_description,
+            )
+            ViewCompat.setStateDescription(this, text)
+        }
+        readingScrollView?.visibility = if (readingMode) View.VISIBLE else View.GONE
+        renderStatus()
+    }
+
+    private fun renderStatus() {
+        val base = currentStatus.ifBlank {
+            appContext.getString(R.string.full_screen_overlay_starting)
+        }
+        val detail = when {
+            paused -> appContext.getString(R.string.full_screen_state_paused)
+            !labelsVisible -> appContext.getString(
+                R.string.full_screen_status_labels_hidden,
+                currentBlocks.size,
+            )
+            unplacedBlockIds.isNotEmpty() -> appContext.getString(
+                R.string.full_screen_status_hidden_count,
+                unplacedBlockIds.size,
+            )
+            else -> appContext.getString(
+                R.string.full_screen_status_visible_count,
+                currentBlocks.size,
+            )
+        }
+        val rendered = "$base · $detail"
+        statusView?.let { view ->
+            if (view.text.toString() != rendered) view.text = rendered
+            ViewCompat.setStateDescription(view, rendered)
+        }
+        readingButton?.text = appContext.getString(
+            if (readingMode) R.string.full_screen_reading_close else R.string.full_screen_reading,
+            currentBlocks.size,
+        )
+    }
+
+    private fun renderReadingSurface() {
+        val list = readingList ?: return
+        list.removeAllViews()
+        if (currentBlocks.isEmpty()) {
+            list.addView(readingTextView(appContext.getString(R.string.full_screen_reading_empty)))
+            return
+        }
+        currentBlocks.forEachIndexed { index, block ->
+            val item = LinearLayout(appContext).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(visualStyle.controlCornerDp).toFloat()
+                    setColor(withAlpha(visualStyle.labelColor, 224))
+                    setStroke(dp(1), visualStyle.labelStrokeColor)
+                }
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                isClickable = true
+                isFocusable = true
+                contentDescription = appContext.getString(
+                    R.string.full_screen_reading_item_description,
+                    index + 1,
+                    block.originalText,
+                    block.translatedText,
+                )
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    highlightSource(block)
+                }
+            }
+            item.addView(readingTextView(appContext.getString(R.string.full_screen_block_id, block.id)))
+            item.addView(readingTextView(block.originalText, original = true))
+            item.addView(readingTextView(block.translatedText))
+            item.addView(
+                createControlButton().apply {
+                    text = appContext.getString(R.string.full_screen_copy_pair)
+                    contentDescription = appContext.getString(
+                        R.string.full_screen_copy_pair_description,
+                        index + 1,
+                    )
+                    setOnClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        copyPair(block)
+                    }
                 },
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { marginStart = dp(8) },
+                ).apply { gravity = Gravity.END },
+            )
+            list.addView(
+                item,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { if (index > 0) topMargin = dp(6) },
             )
         }
     }
 
-    private fun createTranslationView(): TextView {
-        val background = GradientDrawable().apply {
-            cornerRadius = dp(visualStyle.labelCornerDp).toFloat()
-            setColor(visualStyle.labelColor)
-            setStroke(dp(1), visualStyle.labelStrokeColor)
+    private fun readingTextView(
+        value: String,
+        original: Boolean = false,
+    ): TextView = TextView(appContext).apply {
+        text = value
+        setTextColor(
+            if (original) visualStyle.originalTextColor else visualStyle.translationTextColor,
+        )
+        textSize = if (original) 13f else 15f
+        maxLines = Int.MAX_VALUE
+        ellipsize = null
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    private fun highlightSource(block: FullScreenFrameProcessor.TranslatedScreenBlock) {
+        val root = blockRoot ?: return
+        mainHandler.removeCallbacks(clearHighlight)
+        highlightView?.let(root::removeView)
+        val screen = windowManager.maximumWindowMetrics.bounds
+        val left = (block.bounds.left * screen.width()).toInt()
+        val top = (block.bounds.top * screen.height()).toInt()
+        val right = (block.bounds.right * screen.width()).toInt()
+        val bottom = (block.bounds.bottom * screen.height()).toInt()
+        val bounds = Rect(
+            screen.left + left,
+            screen.top + top,
+            screen.left + right,
+            screen.top + bottom,
+        )
+        val highlight = View(appContext).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(3), visualStyle.accentColor)
+                cornerRadius = dp(4).toFloat()
+            }
         }
+        highlight.layoutParams = FrameLayout.LayoutParams(
+            bounds.width().coerceAtLeast(dp(4)),
+            bounds.height().coerceAtLeast(dp(4)),
+        ).apply {
+            leftMargin = bounds.left - screen.left
+            topMargin = bounds.top - screen.top
+        }
+        root.addView(highlight)
+        highlightView = highlight
+        highlightBounds = bounds
+        reportOverlayBounds()
+        mainHandler.postDelayed(clearHighlight, HIGHLIGHT_DURATION_MS)
+    }
+
+    private fun copyPair(block: FullScreenFrameProcessor.TranslatedScreenBlock) {
+        val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(
+                appContext.getString(R.string.full_screen_clipboard_label),
+                "${block.originalText}\n${block.translatedText}",
+            ),
+        )
+        Toast.makeText(appContext, R.string.overlay_copy_success, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun createPanelBackground(): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = dp(visualStyle.panelCornerDp).toFloat()
+        setColor(withAlpha(visualStyle.panelColor, 245))
+        setStroke(dp(1), visualStyle.panelStrokeColor)
+    }
+
+    private fun createLabelBackground(): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = dp(visualStyle.labelCornerDp).toFloat()
+        setColor(withAlpha(visualStyle.labelColor, (BACKGROUND_OPACITIES[opacityIndex] * 255).toInt()))
+        setStroke(dp(1), visualStyle.labelStrokeColor)
+    }
+
+    private fun withAlpha(color: Int, alpha: Int): Int =
+        Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+
+    private fun createTranslationView(): TextView {
         return TextView(appContext).apply {
-            this.background = background
+            background = createLabelBackground()
             setTextColor(visualStyle.labelTextColor)
-            textSize = 14f
+            textSize = LABEL_TEXT_SIZES_SP[fontSizeIndex]
             maxLines = 3
             ellipsize = TextUtils.TruncateAt.END
             includeFontPadding = false
@@ -316,7 +732,7 @@ class FullScreenOverlayController(
 
     private fun planTranslationBounds(
         blocks: List<FullScreenFrameProcessor.TranslatedScreenBlock>,
-    ): LinkedHashMap<Long, Rect> {
+    ): TranslationRenderPlan {
         val screen = windowManager.maximumWindowMetrics.bounds
         val insets = windowManager.maximumWindowMetrics.windowInsets
             .getInsetsIgnoringVisibility(
@@ -341,14 +757,25 @@ class FullScreenOverlayController(
             )
         }
 
-        val result = linkedMapOf<Long, Rect>()
-        blocks.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }, { it.id }))
-            .forEach { block ->
+        val groups = mergeAdjacentOverlayBlocks(
+            blocks.map { block ->
+                OverlayTranslationBlock(
+                    ids = listOf(block.id),
+                    originalTexts = listOf(block.originalText),
+                    translatedTexts = listOf(block.translatedText),
+                    bounds = block.bounds,
+                )
+            },
+        )
+        val result = linkedMapOf<Long, PlannedTranslationLabel>()
+        val visibleIds = linkedSetOf<Long>()
+        val hiddenIds = linkedSetOf<Long>()
+        groups.forEach { block ->
                 val sourceLeft = (block.bounds.left * screen.width()).toInt()
                 val sourceRight = (block.bounds.right * screen.width()).toInt()
                 val desiredWidth = maxOf(sourceRight - sourceLeft, dp(MIN_LABEL_WIDTH_DP))
                     .coerceAtMost((screen.width() * MAX_LABEL_WIDTH_FRACTION).toInt())
-                measurementView.text = block.translatedText
+                measurementView.text = block.displayTranslation
                 measurementView.measure(
                     View.MeasureSpec.makeMeasureSpec(desiredWidth, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
@@ -364,7 +791,11 @@ class FullScreenOverlayController(
                     minimumTop = minimumTop,
                     maximumBottom = maximumBottom,
                     occupied = occupied,
-                ) ?: return@forEach
+                )
+                if (placement == null) {
+                    hiddenIds += block.ids
+                    return@forEach
+                }
                 val relative = TranslationObstacle(
                     left = placement.left,
                     top = placement.top,
@@ -372,14 +803,16 @@ class FullScreenOverlayController(
                     bottom = placement.top + measurementView.measuredHeight,
                 )
                 occupied += relative
-                result[block.id] = Rect(
+                visibleIds += block.ids
+                val bounds = Rect(
                     screen.left + relative.left,
                     screen.top + relative.top,
                     screen.left + relative.right,
                     screen.top + relative.bottom,
                 )
+                result[block.ids.first()] = PlannedTranslationLabel(block, bounds)
             }
-        return result
+        return TranslationRenderPlan(result, visibleIds, hiddenIds)
     }
 
     private fun positionTranslation(view: TextView, bounds: Rect) {
@@ -440,5 +873,23 @@ class FullScreenOverlayController(
         const val CONTROL_TOP_GAP_DP = 4
         const val CAPTURE_MASK_PADDING_DP = 2
         const val MASK_TRANSITION_SETTLE_MS = 100L
+        const val HIGHLIGHT_DURATION_MS = 2_000L
+        const val READING_HEIGHT_FRACTION = 0.52f
+        const val MAX_READING_HEIGHT_DP = 520
+        val LABEL_TEXT_SIZES_SP = floatArrayOf(12f, 14f, 18f, 22f)
+        val BACKGROUND_OPACITIES = floatArrayOf(0.56f, 0.72f, 0.88f, 1f)
+        const val DEFAULT_FONT_SIZE_INDEX = 1
+        const val DEFAULT_OPACITY_INDEX = 2
     }
+
+    private data class PlannedTranslationLabel(
+        val block: OverlayTranslationBlock,
+        val bounds: Rect,
+    )
+
+    private data class TranslationRenderPlan(
+        val labels: LinkedHashMap<Long, PlannedTranslationLabel>,
+        val visibleIds: Set<Long>,
+        val hiddenIds: Set<Long>,
+    )
 }

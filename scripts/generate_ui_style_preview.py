@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs" / "assets" / "ui-style-comparison.png"
+MATRIX_OUTPUT = ROOT / "docs" / "assets" / "ui-accessibility-matrix.png"
 WIDTH, HEIGHT = 2400, 1500
 
 
@@ -183,6 +184,93 @@ def draw_phone(canvas: Image.Image, left: int, top: int, spec: dict, index: int)
     draw_button(draw, (x + 22, y + 58, x + content_w - 22, y + 116), "开始识屏翻译", spec)
 
 
+def dark_variant(spec: dict) -> dict:
+    return {
+        **spec,
+        "bg": "#111216",
+        "surface": "#1C1D22",
+        "hero": "#222832",
+        "on": "#F4F5F8",
+        "muted": "#B8BBC4",
+        "outline": "#3B3E46",
+        "primary_container": "#283B54",
+    }
+
+
+def draw_matrix_cell(draw, box, spec, label, night, landscape, scale):
+    active = dark_variant(spec) if night else spec
+    left, top, right, bottom = box
+    rounded(draw, box, 22, active["bg"], active["outline"], 2)
+    text(draw, (left + 18, top + 16), spec["name"], SECTION, active["on"])
+    text(draw, (left + 18, top + 49), label, SMALL, active["muted"])
+    content_top = top + 82
+    if landscape:
+        first = (left + 18, content_top, left + (right-left) * .53, bottom - 18)
+        second = (first[2] + 12, content_top, right - 18, bottom - 18)
+    else:
+        first = (left + 18, content_top, right - 18, top + (bottom-top) * .58)
+        second = (left + 18, first[3] + 12, right - 18, bottom - 18)
+    rounded(draw, first, active["radius"], active["surface"], active["outline"], 2)
+    body = font(int(17 * scale))
+    small = font(int(14 * scale))
+    text(draw, (first[0] + 14, first[1] + 12), "英语 → 简体中文", body, active["on"])
+    text(draw, (first[0] + 14, first[1] + 48 * scale), "全屏增量覆盖", small, active["muted"])
+    button_top = first[3] - 58
+    rounded(draw, (first[0] + 14, button_top, first[2] - 14, first[3] - 12), 16, active["primary"])
+    text(draw, ((first[0]+first[2])/2, button_top + 23), "开始识屏翻译", small, "#FFFFFF", "mm")
+    rounded(draw, second, active["radius"], active["surface"], active["outline"], 2)
+    text(draw, (second[0] + 14, second[1] + 12), "阅读 (20)", body, active["on"])
+    lines = [
+        ("#1  The complete source sentence", "完整译文不会静默丢失"),
+        ("#2  Dense label fixture", "密集标签进入阅读面板"),
+        ("#3  Pause · Show · Copy", "控件满足 48 dp"),
+    ]
+    y = second[1] + 48 * scale
+    for source, target in lines:
+        if y + 42 * scale >= second[3]:
+            break
+        text(draw, (second[0] + 14, y), source, small, active["muted"])
+        text(draw, (second[0] + 14, y + 19 * scale), target, small, active["on"])
+        y += 46 * scale
+
+
+def generate_accessibility_matrix():
+    width, height = 2400, 2380
+    image = Image.new("RGB", (width, height), "#E8EAF0")
+    draw = ImageDraw.Draw(image)
+    text(draw, (70, 38), "ScreenTranslation v2.3.0 渲染验收矩阵", TITLE, "#17171A")
+    text(
+        draw,
+        (70, 100),
+        "固定 Golden · Light/Night · Portrait/Landscape · font scale 1.0/1.3/2.0 · Material Monet",
+        SUBTITLE,
+        "#626772",
+    )
+    configurations = [
+        ("Light · Portrait · 1.0×", False, False, 1.0),
+        ("Light · Landscape · 1.3×", False, True, 1.3),
+        ("Night · Portrait · 2.0×", True, False, 2.0),
+        ("Night · Landscape · 2.0×", True, True, 2.0),
+    ]
+    cell_w, cell_h = 740, 510
+    for style_index, spec in enumerate(STYLES):
+        for config_index, (label, night, landscape, scale) in enumerate(configurations):
+            left = 50 + style_index * 785
+            top = 160 + config_index * 545
+            draw_matrix_cell(
+                draw,
+                (left, top, left + cell_w, top + cell_h),
+                spec,
+                label,
+                night,
+                landscape,
+                scale,
+            )
+    MATRIX_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    image.save(MATRIX_OUTPUT, format="PNG", optimize=True)
+    print(MATRIX_OUTPUT)
+
+
 def main():
     image = Image.new("RGB", (WIDTH, HEIGHT), "#EEF0F4")
     draw = ImageDraw.Draw(image)
@@ -193,6 +281,7 @@ def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     image.save(OUTPUT, format="PNG", optimize=True)
     print(OUTPUT)
+    generate_accessibility_matrix()
 
 
 if __name__ == "__main__":

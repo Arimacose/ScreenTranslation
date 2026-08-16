@@ -1,6 +1,7 @@
 package com.screentranslation.app.ui
 
 import java.io.File
+import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -108,6 +109,50 @@ class AppleLayoutContractTest {
         )
     }
 
+    @Test
+    fun `v2 3 accessibility contract keeps targets states and fast labels separated`() {
+        val standard = source("src/main/res/layout/activity_main.xml")
+        val apple = source("src/main/res/layout/activity_main_apple.xml")
+        val model = source("src/main/res/layout/activity_model_management.xml")
+        val online = source("src/online/res/layout/activity_online_settings.xml")
+        val styles = source("src/main/res/values/styles.xml")
+        val overlay = source(
+            "src/main/java/com/screentranslation/app/overlay/FullScreenOverlayController.kt",
+        )
+        val mainActivity = source("src/main/java/com/screentranslation/app/MainActivity.kt")
+
+        listOf(standard, apple, model, online).forEach { layout ->
+            assertTrue("44dp target remains in an interactive layout", "minHeight=\"44dp\"" !in layout)
+        }
+        assertTrue("screenControlMinHeight" in styles)
+        assertTrue("minHeight = dp(48)" in overlay)
+        assertTrue("IMPORTANT_FOR_ACCESSIBILITY_NO" in overlay)
+        assertTrue("renderReadingSurface" in overlay)
+        assertTrue("full_screen_reading_item_description" in overlay)
+        assertTrue("ViewCompat.setStateDescription" in mainActivity)
+    }
+
+    @Test
+    fun `rendered accessibility matrix is the reviewed deterministic golden`() {
+        val script = source("scripts/generate_ui_style_preview.py")
+        listOf(
+            "Light · Portrait · 1.0×",
+            "Light · Landscape · 1.3×",
+            "Night · Portrait · 2.0×",
+            "Night · Landscape · 2.0×",
+        ).forEach { assertTrue(it in script) }
+        assertTrue("Material 3 + Monet" in script)
+
+        val golden = sourceFile("docs/assets/ui-accessibility-matrix.png")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(golden.readBytes())
+            .joinToString("") { "%02X".format(it) }
+        assertEquals(
+            "5AF4A9958D2AD055CD8E59139E79E97A312F7B0683AB9B10B4431A68C7405074",
+            digest,
+        )
+    }
+
     private fun assertLayoutParity(standard: String, apple: String) {
         assertEquals(viewIds(source(standard)), viewIds(source(apple)))
     }
@@ -122,11 +167,16 @@ class AppleLayoutContractTest {
         ?: error("Could not locate string resource: $name")
 
     private fun source(relativePath: String): String {
+        return sourceFile(relativePath).readText()
+    }
+
+    private fun sourceFile(relativePath: String): File {
         val candidates = listOf(
             File(relativePath),
             File("app", relativePath),
+            File("..", relativePath),
         )
-        return candidates.firstOrNull(File::isFile)?.readText()
+        return candidates.firstOrNull(File::isFile)
             ?: error("Could not locate layout source: $relativePath")
     }
 

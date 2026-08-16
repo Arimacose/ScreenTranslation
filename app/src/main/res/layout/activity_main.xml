@@ -438,7 +438,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:minHeight="44dp"
+                        android:minHeight="48dp"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         android:text="@string/ui_style_apple"
@@ -449,7 +449,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:minHeight="44dp"
+                        android:minHeight="48dp"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         android:text="@string/ui_style_miuix"
@@ -460,7 +460,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:minHeight="44dp"
+                        android:minHeight="48dp"
                         android:paddingStart="4dp"
                         android:paddingEnd="4dp"
                         android:text="@string/ui_style_material3"
@@ -490,13 +490,6 @@
                     android:layout_marginTop="14dp"
                     android:minHeight="48dp"
                     android:text="@string/idle_shortcut_label" />
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switch_model_wifi_only"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:minHeight="48dp"
-                    android:text="@string/model_wifi_only_label" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/button_about"
                     style="@style/Widget.ScreenTranslation.Button.Outlined"

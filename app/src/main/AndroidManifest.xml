@@ -49,6 +49,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".RegionPresetActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".AboutActivity"
             android:exported="false" />
 

@@ -20,6 +20,85 @@
 换包。发布证据保存在版本对应的 issue 评论与 Release notes，源码文档保留可重复步骤和字段
 约束，避免为了回写测试结论再次移动已经验收的 commit。
 
+## v2.3.0 连续阅读、区域预设与可访问性最终签名验收矩阵（Issues #73/#74/#75）
+
+本节只接受由最终 `origin/main` 上 `operation=build` 生成的同一份签名 acceptance Artifact；
+本地 Debug/unsigned 包只用于预验收，不替代最终设备证据。
+
+### 候选基线
+
+- 基础版本：`versionCode=9`、`versionName=2.3.0`；三 edition 分别为
+  `2.3.0-lite`、`2.3.0-full`、`2.3.0-online`；
+- 目标真机：小米 15 Pro / `2410DPN6CC` / Android 16 / HyperOS，记录完整 ROM build；
+- `accepted_issues=73,74,75`，证据评论必须晚于签名候选构建，三项 issue 关闭时间必须
+  晚于证据评论；
+- acceptance Artifact 精确包含三 APK、三 AAB、三 edition SBOM、LICENSE、
+  THIRD-PARTY.zip 与 `SHA256SUMS`，共 12 个平面文件。
+
+### 全屏连续阅读与零静默丢失（#73）
+
+1. 在固定 20 block 密集页面上启动全屏增量覆盖，确认暂停/继续复用同一投影、虚拟显示、
+   OCR 和翻译后端，显示/隐藏只改变快速标签，不删除阅读内容；
+2. 逐一切换 12/14/18/22 sp 字号与多档透明度，打开阅读模式，核对可见/隐藏数量与全部
+   block ID；每项完整原文、完整译文、复制动作和原文位置高亮均可访问；
+3. 制造上方被占用、下方被占用和密集相邻块，确认依次使用上/下/水平/栈式回退；合并相邻
+   标签时仍保留底层 block identity 与完整文本对；快速标签保持触摸穿透；
+4. 运行全屏模式至少 900 秒；期间循环密集/稀疏/静态页面并执行暂停、隐藏、阅读和恢复，
+   记录发布、隐藏、处理/OCR 失败、crash/ANR/OOM、PSS、RSS、温控及服务/投影连续性。
+
+### 可移动/冻结面板与方向预设（#74）
+
+1. 拖动结果面板至四角，确认面板保持在系统安全区内且裁剪矩形逐像素不变；冻结后原文和
+   译文作为同一快照停止更新，继续后恢复同一任务而不重新请求投影；
+2. 保存、重命名、应用、删除自定义预设，并分别核对“底部字幕”“中心对话”；旋转设备后
+   同名预设使用另一方向槽，恢复矩形按当前画面宽高等比计算并保持在边界内；
+3. 清查 SharedPreferences：只允许名称、方向和归一化坐标，不保存截图、OCR 文本、译文、
+   前台应用 identity 或无障碍数据；应用不声明 AccessibilityService；
+4. 从屏幕边缘执行系统返回/导航手势，确认手势排除只覆盖说明区域和活动选框。
+
+### 三套样式的可访问性与渲染矩阵（#75）
+
+1. 在 Apple、MIUIX、Material 3 固定色与 Monet 下，分别覆盖日/夜、竖/横屏和 font scale
+   1.0/1.3/2.0；对照 `docs/assets/ui-accessibility-matrix.png` 记录截图索引；
+2. 开启 TalkBack，从首页、模型页、Online 设置、区域面板、全屏控制条进入阅读模式；核对
+   heading、pane title、遍历顺序、启用/暂停/冻结/隐藏状态描述及更新 announcement；
+3. 快速标签不得逐字污染 TalkBack 树，阅读模式中的 block 顺序稳定；所有主动作、悬浮按钮
+   和风格切换目标至少 48 dp，触发时有触觉反馈且横屏/2.0 字号下关键动作不被截断。
+
+### 最终设备报告与 promotion 字段
+
+区域模式与全屏模式各运行不少于 900 秒；两段均要求单一 PID、服务/投影/虚拟显示采样连续，
+`thermal_status_max <= 1`、PSS 首末增长不超过 64 MiB，capture/OCR/处理失败和
+crash/ANR/native fatal/OOM 全部为 0。通过后，在 #73/#74/#75 任一 issue 留下一条一次写定的：
+
+```text
+DEVICE_ACCEPTANCE_PASS
+acceptance_schema: screen-translation-device-v2
+accepted_issues: 73,74,75
+acceptance_run_id: RUN_ID
+source_sha: 40_HEX_COMMIT
+device: Xiaomi 15 Pro
+device_model: 2410DPN6CC
+android: 16
+rom: HyperOS
+rom_build: OS_VERSION_TOKEN
+lite_apk_sha256: 64_HEX_SHA256
+full_apk_sha256: 64_HEX_SHA256
+online_apk_sha256: 64_HEX_SHA256
+region_duration_seconds: 900_OR_MORE
+full_screen_duration_seconds: 900_OR_MORE
+thermal_status_max: 0_OR_1
+capture_failures: 0
+region_summary_sha256: 64_HEX_SHA256
+full_screen_summary_sha256: 64_HEX_SHA256
+lifecycle_report_sha256: 64_HEX_SHA256
+ocr_fixture_score_sha256: 64_HEX_SHA256
+sustained_benchmark_doc_sha256: 64_HEX_SHA256
+```
+
+证据评论创建后移除三项 `status:needs-verification` 并关闭 issues，确认 v2.3.0 milestone 的
+open issue 为 0；为同一 source commit 创建 annotated `v2.3.0` tag，再执行 publish promotion。
+
 ## v2.2.0 任务优先与供应链最终签名验收矩阵（Issues #70/#71/#72/#45/#43/#44）
 
 本节只接受由 `origin/main` 上 `operation=build` 生成的同一份签名 acceptance Artifact；

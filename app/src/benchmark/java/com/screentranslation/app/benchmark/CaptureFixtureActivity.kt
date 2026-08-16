@@ -11,7 +11,9 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.widget.FrameLayout
 import kotlin.math.max
 
 /** A deterministic target-app fixture for region and full-screen endurance runs. */
@@ -53,7 +55,39 @@ class CaptureFixtureActivity : Activity() {
         durationMs = intent.getLongExtra(EXTRA_DURATION_MS, DEFAULT_DURATION_MS)
             .coerceIn(MIN_DURATION_MS, MAX_DURATION_MS)
         fixtureView = FixtureView()
-        setContentView(fixtureView)
+        val fixtureRoot = FrameLayout(this).apply {
+            setBackgroundColor(FIXTURE_BACKGROUND_COLOR)
+            addView(
+                fixtureView,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            setOnApplyWindowInsetsListener { _, insets ->
+                val safeInsets = insets.getInsets(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
+                )
+                val layoutParams = fixtureView.layoutParams as FrameLayout.LayoutParams
+                if (
+                    layoutParams.leftMargin != safeInsets.left ||
+                    layoutParams.topMargin != safeInsets.top ||
+                    layoutParams.rightMargin != safeInsets.right ||
+                    layoutParams.bottomMargin != safeInsets.bottom
+                ) {
+                    layoutParams.setMargins(
+                        safeInsets.left,
+                        safeInsets.top,
+                        safeInsets.right,
+                        safeInsets.bottom,
+                    )
+                    fixtureView.layoutParams = layoutParams
+                }
+                insets
+            }
+        }
+        setContentView(fixtureRoot)
+        fixtureRoot.requestApplyInsets()
         startedAt = SystemClock.elapsedRealtime()
         Log.i(
             TAG,
@@ -71,7 +105,7 @@ class CaptureFixtureActivity : Activity() {
 
     private inner class FixtureView : View(this) {
         var cycle: Int = 0
-        private val background = Paint().apply { color = Color.rgb(245, 247, 250) }
+        private val background = Paint().apply { color = FIXTURE_BACKGROUND_COLOR }
         private val panel = Paint().apply { color = Color.WHITE }
         private val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(20, 35, 60)
@@ -215,5 +249,6 @@ class CaptureFixtureActivity : Activity() {
         private const val DEFAULT_DURATION_MS = 20L * 60L * 1_000L
         private const val MIN_DURATION_MS = 60_000L
         private const val MAX_DURATION_MS = 60L * 60L * 1_000L
+        private val FIXTURE_BACKGROUND_COLOR = Color.rgb(245, 247, 250)
     }
 }
