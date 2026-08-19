@@ -20,6 +20,60 @@
 换包。发布证据保存在版本对应的 issue 评论与 Release notes，源码文档保留可重复步骤和字段
 约束，避免为了回写测试结论再次移动已经验收的 commit。
 
+## v2.4.0 混合文字、OCR profiles、Online batch 与 E2E 最终签名验收矩阵（Issues #76/#77/#78/#79）
+
+本节在 `docs/V2_4_0_DESIGN.md` 的非真机合同全部通过后执行。设计文档、JVM、模拟器、
+MockWebServer 和 injected capture 均不替代本节结果。
+
+### 候选与证据绑定
+
+1. 候选必须来自最终 `origin/main` 的 `operation=build`，版本身份为 `versionCode=10`、
+   `versionName=2.4.0`，并保存 run/source/Artifact digest；
+2. 三 APK/AAB、三 SBOM、LICENSE、THIRD-PARTY.zip 与 `SHA256SUMS` 仍为 12 个平面文件；
+3. 安装 Lite/Full/Online 后从设备读取包名、版本、签名与 `base.apk` SHA-256，逐项等于 Artifact；
+4. 记录 Xiaomi 15 Pro / `2410DPN6CC` / Android 16 / 完整 HyperOS ROM build；
+5. `accepted_issues=76,77,78,79`；证据评论晚于 build，issue 关闭晚于评论。
+
+### #76 mixed-script 与纯汉字日文
+
+1. 在真实屏幕上覆盖 `设置 Settings (v2.1.0)`、中日混合菜单、纯汉字日文 UI、网址、金额、
+   日期、identifier 和 filename；记录 source plan case ID、原文、请求 span 数与最终重建结果；
+2. SMART_MIXED 保留中文/版本并翻译 eligible span；STRICT_TARGET_SKIP 提供可重复回滚；
+3. 日中路线分别覆盖 Kana context、相邻 block context、bounded UI lexicon 和未命中保守路径；
+4. Region/Full-screen 与三 edition 的 protected span 均无缺失、重复、意外 token 或错序发布。
+
+### #77 OCR profiles
+
+1. 使用固定小字幕和文档 fixture，依次运行 Balanced、Small subtitle、Document，绑定 fixture SHA；
+2. 记录 first/second pass latency、pixels、materialized bytes、blocks、dedupe、timeout 与 recall；
+3. 二次 pass 不超过设计的 tile/pixel/timeout 预算，静态屏幕仍逐级降低采样频率；
+4. 每 profile 运行区域和全屏各不少于 900 秒；记录单一 PID、PSS/RSS/VmHWM、CPU、电池、
+   thermal、OCR/处理错误、crash/ANR/OOM、服务/投影/虚拟显示连续性；
+5. profile 只按 capture mode 持久化，设备数据中不出现前台包名、截图、OCR 或译文历史。
+
+### #78 Online BYOK
+
+1. 在用户明确配置的服务上验证大模型目录搜索、精确 model ID、最终 `/models` 与
+   `/chat/completions` URL；切换 host/key/consent 时旧请求和 catalog 失效；
+2. 拉取和测试操作分别验证取消；配置保持一致，迟到回调不覆盖新状态；
+3. 记录 status、latency、input/output character、usage token、attempt/backoff/request count；
+   指标和日志不出现 API Key、Authorization、OCR/译文正文或 response body；
+4. Full-screen 覆盖 strict block-ID batch、401、429、5xx、timeout、cancel、malformed、duplicate、
+   unexpected ID 和 bounded split；每个 block 只发布一次且 source identity 匹配；
+5. Region whole-request latest-wins 与 Full-screen batch 同时保持正确。
+
+### #79 真实生命周期补充
+
+1. injected E2E 已在 CI 覆盖 start→OCR→translate→publish→copy→stop；真机另行覆盖真实
+   MediaProjection consent、VirtualDisplay、ImageReader、WindowManager、notification 与 Tile；
+2. 旋转、Home、锁屏/解锁、投影撤销、暂停/继续、隐藏/显示、reading 与 stop 均记录资源状态；
+3. stop 后服务、projection、virtual display、image reader、overlay、OCR/backend 与 pending HTTP
+   均释放；应用私有目录和备份检查无 screenshot/OCR/translation history；
+4. Macrobenchmark 报告绑定 source/APK/fixture/profile/device/ROM/threshold 与原始计数。
+
+任何真机条目未通过时，#76–#79 保持 `status:needs-verification`，不创建 `v2.4.0` tag，
+也不执行 publish。
+
 ## v2.3.0 连续阅读、区域预设与可访问性最终签名验收矩阵（Issues #73/#74/#75）
 
 本节只接受由最终 `origin/main` 上 `operation=build` 生成的同一份签名 acceptance Artifact；

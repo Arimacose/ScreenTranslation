@@ -2,6 +2,10 @@
 
 路线图表达方向而非发布日期承诺。具体实现以对应 issue、设计讨论和真机证据为准。
 
+当前 v2.4.0 的源码前置审计见
+[`CODE_AUDIT_V2_4_0_2026-08-20.md`](CODE_AUDIT_V2_4_0_2026-08-20.md)，冻结设计与
+自动化/真机分界见 [`V2_4_0_DESIGN.md`](V2_4_0_DESIGN.md)。
+
 ## v0.1 — Android 16 可验证基线
 
 - [x] MediaProjection 用户授权与前台服务生命周期
@@ -74,6 +78,21 @@
 
 代码完成后仍以最终 `main` 的签名 acceptance Artifact、同一小米 15 Pro / HyperOS 真机
 区域与全屏各 15 分钟报告、TalkBack 操作和三 edition smoke 作为关闭 milestone 与公开发布门禁。
+
+## v2.4 — 识别质量、Online 效率与可执行 E2E
+
+- [ ] 以 script-aware segmentation plan 替代 whole-line mixed text 跳过，保留 target/protected
+  spans、覆盖纯汉字日文并确定性重建（[#76](https://github.com/Arimacose/ScreenTranslation/issues/76)）；
+- [ ] 增加 Balanced、Small subtitle、Document OCR profiles，以及受 tile/pixel/timeout 预算约束的
+  小字二次识别与跨 pass 去重（[#77](https://github.com/Arimacose/ScreenTranslation/issues/77)）；
+- [ ] 为 Online BYOK 增加可搜索模型、取消、无内容指标和严格 block-ID batch/split/publication
+  合同（[#78](https://github.com/Arimacose/ScreenTranslation/issues/78)）；
+- [ ] 抽出 injectable capture/projection/overlay 边界，在 CI 执行三 edition 的完整 journey 和
+  machine-readable macrobenchmark（[#79](https://github.com/Arimacose/ScreenTranslation/issues/79)）。
+
+设计提交、JVM、模拟器和 injected fixtures 只证明合同与自动化路径；真实 MediaProjection、
+HyperOS 生命周期、ARM64 runtime、Online BYOK、15 分钟 memory/thermal 与 exact signed bytes
+继续由最终签名候选真机门禁证明。
 
 ## v2.x 跨设备稳定性边界
 
