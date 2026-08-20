@@ -30,18 +30,23 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private lateinit var modelHttpClient: OkHttpClient
     private lateinit var baseUrlView: EditText
     private lateinit var modelSpinner: Spinner
+    private lateinit var modelSearchView: EditText
     private lateinit var modelAdapter: ArrayAdapter<String>
     private lateinit var modelStatusView: TextView
     private lateinit var apiKeyView: EditText
     private lateinit var keyStatusView: TextView
     private lateinit var consentView: CheckBox
     private lateinit var fetchModelsButton: Button
+    private lateinit var cancelModelFetchButton: Button
     private lateinit var saveButton: Button
     private lateinit var testTextView: EditText
     private lateinit var saveAndTestButton: Button
+    private lateinit var cancelTestButton: Button
     private lateinit var deleteKeyButton: Button
     private lateinit var resultView: TextView
+    private lateinit var detailsView: TextView
 
+    private val allModels = mutableListOf<OnlineModelDescriptor>()
     private val modelIds = mutableListOf<String>()
     private val modelDisplayItems = mutableListOf<String>()
     private var modelCatalogBaseUrl = ""
@@ -51,7 +56,10 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private var testingTranslation = false
     private var suppressConfigWatchers = false
     private var testEngine: TranslationBackend? = null
+    private var testCall: TranslationCall = TranslationCall.NONE
     private var testGeneration = 0L
+    private var testStartedAt = 0L
+    private var latestMetric: OnlineRequestMetric? = null
     private var savedUserConsentHost = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,9 +88,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelModelFetch()
-        testGeneration += 1L
-        testEngine?.close()
-        testEngine = null
+        cancelTranslationTest(showOutcome = false)
         OnlineHttpClientFactory.closeAsync(modelHttpClient)
         super.onDestroy()
     }
@@ -90,16 +96,20 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private fun bindViews() {
         baseUrlView = findViewById(R.id.edit_online_base_url)
         modelSpinner = findViewById(R.id.spinner_online_model)
+        modelSearchView = findViewById(R.id.edit_online_model_search)
         modelStatusView = findViewById(R.id.text_online_model_status)
         apiKeyView = findViewById(R.id.edit_online_api_key)
         keyStatusView = findViewById(R.id.text_online_key_status)
         consentView = findViewById(R.id.check_online_consent)
         fetchModelsButton = findViewById(R.id.button_online_fetch_models)
+        cancelModelFetchButton = findViewById(R.id.button_online_cancel_fetch)
         saveButton = findViewById(R.id.button_online_save)
         testTextView = findViewById(R.id.edit_online_test_text)
         saveAndTestButton = findViewById(R.id.button_online_save_test)
+        cancelTestButton = findViewById(R.id.button_online_cancel_test)
         deleteKeyButton = findViewById(R.id.button_online_delete_key)
         resultView = findViewById(R.id.text_online_result)
+        detailsView = findViewById(R.id.text_online_details)
         listOf(modelStatusView, keyStatusView, resultView).forEach { statusView ->
             statusView.doAfterTextChanged { text ->
                 ViewCompat.setStateDescription(statusView, text)
@@ -123,7 +133,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
         suppressConfigWatchers = false
         savedUserConsentHost = config.consentHost
         if (config.modelId.isNotBlank()) {
-            setModelOptions(listOf(config.modelId), config.modelId)
+            setModelOptions(listOf(OnlineModelDescriptor(config.modelId)), config.modelId)
             modelCatalogBaseUrl = runCatching {
                 OpenAiEndpoint.parse(config.baseUrl).baseUrl
             }.getOrDefault("")
@@ -157,6 +167,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
         apiKeyView.doAfterTextChanged {
             if (!suppressConfigWatchers) invalidateModelCatalog()
         }
+        modelSearchView.doAfterTextChanged { applyModelFilter(it?.toString().orEmpty()) }
         modelSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
                 parent: AdapterView<*>?,
@@ -172,6 +183,9 @@ class OnlineSettingsActivity : AppCompatActivity() {
             }
         }
         fetchModelsButton.setOnClickListener { fetchModels() }
+        cancelModelFetchButton.setOnClickListener {
+            cancelModelFetch(showOutcome = true)
+        }
         saveButton.setOnClickListener {
             saveConfiguration().fold(
                 onSuccess = { config ->
@@ -188,6 +202,16 @@ class OnlineSettingsActivity : AppCompatActivity() {
                 onSuccess = { runTranslationTest() },
                 onFailure = ::showFailure,
             )
+        }
+        cancelTestButton.setOnClickListener { cancelTranslationTest(showOutcome = true) }
+        resultView.setOnClickListener {
+            if (detailsView.text.isNotBlank()) {
+                detailsView.visibility = if (detailsView.visibility == View.VISIBLE) {
+                    View.GONE
+                } else {
+                    View.VISIBLE
+                }
+            }
         }
         deleteKeyButton.setOnClickListener {
             cancelModelFetch()
@@ -241,7 +265,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
     private fun finishModelFetch(
         generation: Long,
         endpoint: OpenAiEndpoint,
-        result: Result<List<String>>,
+        result: Result<List<OnlineModelDescriptor>>,
     ) {
         if (generation != modelFetchGeneration || isDestroyed) return
         modelFetchCall = TranslationCall.NONE
@@ -250,21 +274,22 @@ class OnlineSettingsActivity : AppCompatActivity() {
             onSuccess = { availableModels ->
                 val savedConfig = repository.load()
                 val preferredModel = savedConfig.modelId.takeIf {
-                    savedConfig.baseUrl == endpoint.baseUrl && it in availableModels
+                    savedConfig.baseUrl == endpoint.baseUrl &&
+                        availableModels.any { model -> model.id == it }
                 }
                 setModelOptions(availableModels, preferredModel)
                 modelCatalogBaseUrl = endpoint.baseUrl
                 modelStatusView.text = getString(
                     R.string.online_models_loaded,
                     availableModels.size,
-                )
+                ) + "\n/models: ${endpoint.modelsUrl}\n/chat/completions: ${endpoint.requestUrl}"
             },
             onFailure = { error ->
                 setModelOptions(emptyList(), null)
                 modelCatalogBaseUrl = ""
                 modelStatusView.text = getString(
                     R.string.online_models_failed,
-                    error.localizedMessage ?: error.javaClass.simpleName,
+                    OnlineFailureMapper.map(error).summary,
                 )
             },
         )
@@ -308,8 +333,10 @@ class OnlineSettingsActivity : AppCompatActivity() {
             showFailure(IllegalArgumentException("Test text is blank"))
             return
         }
+        cancelTranslationTest(showOutcome = false)
         val generation = ++testGeneration
-        testEngine?.close()
+        latestMetric = null
+        testStartedAt = android.os.SystemClock.elapsedRealtime()
         val engine = runCatching {
             OnlineLlmTranslationEngine(
                 context = this,
@@ -320,6 +347,9 @@ class OnlineSettingsActivity : AppCompatActivity() {
             showFailure(error)
             return
         }
+        (engine as? OnlineLlmTranslationEngine)?.observeMetrics { metric ->
+            latestMetric = metric
+        }
         testEngine = engine
         testingTranslation = true
         updateActionState()
@@ -327,7 +357,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
         engine.prepare(warmRuntime = false) { preparation ->
             preparation.fold(
                 onSuccess = {
-                    engine.translate(sourceText) { translation ->
+                    testCall = engine.translate(sourceText) { translation ->
                         runOnUiThread {
                             finishTranslationTest(generation, engine, translation)
                         }
@@ -352,12 +382,23 @@ class OnlineSettingsActivity : AppCompatActivity() {
             return
         }
         if (testEngine === engine) testEngine = null
+        testCall = TranslationCall.NONE
         engine.close()
         testingTranslation = false
         updateActionState()
         result.fold(
             onSuccess = { translated ->
-                resultView.text = getString(R.string.online_test_success, translated)
+                val metric = latestMetric
+                val elapsed = metric?.latencyMillis
+                    ?: (android.os.SystemClock.elapsedRealtime() - testStartedAt).coerceAtLeast(0L)
+                resultView.text = getString(R.string.online_test_success, translated) +
+                    "\n\n模型：${selectedModelId().orEmpty()} · ${elapsed} ms · HTTP ${metric?.httpStatus ?: "—"}" +
+                    "\n输入/输出：${metric?.inputCharacters ?: testTextView.text.length}/" +
+                    "${metric?.outputCharacters ?: translated.length} 字符 · token " +
+                    "${metric?.promptTokens ?: "—"}/${metric?.completionTokens ?: "—"}"
+                detailsView.text = "请求状态：${metric?.outcome ?: OnlineRequestOutcome.SUCCEEDED}；" +
+                    "尝试次数：${metric?.attempts ?: 1}。点击上方结果可收起详情。"
+                detailsView.visibility = View.VISIBLE
             },
             onFailure = ::showFailure,
         )
@@ -371,19 +412,36 @@ class OnlineSettingsActivity : AppCompatActivity() {
         updateActionState()
     }
 
-    private fun cancelModelFetch() {
+    private fun cancelModelFetch(showOutcome: Boolean = false) {
+        val wasFetching = fetchingModels
         modelFetchGeneration += 1L
         modelFetchCall.cancel()
         modelFetchCall = TranslationCall.NONE
         fetchingModels = false
+        if (showOutcome && wasFetching) {
+            modelStatusView.text = OnlineFailureMapper.map(
+                java.util.concurrent.CancellationException("Model fetch cancelled"),
+            ).summary
+        }
+        updateActionState()
     }
 
-    private fun setModelOptions(options: List<String>, preferredModel: String?) {
+    private fun setModelOptions(
+        options: List<OnlineModelDescriptor>,
+        preferredModel: String?,
+    ) {
+        allModels.clear()
+        allModels.addAll(options)
+        applyModelFilter(modelSearchView.text?.toString().orEmpty(), preferredModel)
+    }
+
+    private fun applyModelFilter(query: String, preferredModel: String? = selectedModelId()) {
+        val options = OnlineModelSearchIndex.filter(allModels, query)
         modelIds.clear()
-        modelIds.addAll(options)
+        modelIds.addAll(options.map { it.id })
         modelDisplayItems.clear()
         modelDisplayItems += getString(R.string.online_model_selection_placeholder)
-        modelDisplayItems.addAll(modelIds)
+        modelDisplayItems.addAll(options.map { it.label })
         modelAdapter.notifyDataSetChanged()
         val selectedIndex = preferredModel
             ?.let(modelIds::indexOf)
@@ -391,6 +449,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
             ?.plus(1)
             ?: 0
         modelSpinner.setSelection(selectedIndex)
+        updateActionState()
     }
 
     private fun selectedModelId(): String? =
@@ -403,10 +462,15 @@ class OnlineSettingsActivity : AppCompatActivity() {
         apiKeyView.isEnabled = !busy
         consentView.isEnabled = !busy
         fetchModelsButton.isEnabled = !busy
+        cancelModelFetchButton.isEnabled = fetchingModels
+        cancelModelFetchButton.visibility = if (fetchingModels) View.VISIBLE else View.GONE
+        modelSearchView.isEnabled = !busy && allModels.isNotEmpty()
         modelSpinner.isEnabled = !busy && modelIds.isNotEmpty()
         saveButton.isEnabled = !busy && hasModel
         saveAndTestButton.isEnabled = !busy && hasModel
-        deleteKeyButton.isEnabled = !busy
+        cancelTestButton.isEnabled = testingTranslation
+        cancelTestButton.visibility = if (testingTranslation) View.VISIBLE else View.GONE
+        deleteKeyButton.isEnabled = !busy && repository.hasApiKey()
         testTextView.isEnabled = !busy
     }
 
@@ -438,7 +502,7 @@ class OnlineSettingsActivity : AppCompatActivity() {
         refreshKeyStatus()
         modelStatusView.text = getString(
             R.string.online_models_failed,
-            error.localizedMessage ?: error.javaClass.simpleName,
+            OnlineFailureMapper.map(error).summary,
         )
     }
 
@@ -446,10 +510,28 @@ class OnlineSettingsActivity : AppCompatActivity() {
         testingTranslation = false
         updateActionState()
         refreshKeyStatus()
+        val failure = OnlineFailureMapper.map(error)
         resultView.text = getString(
             R.string.online_test_failed,
-            error.localizedMessage ?: error.javaClass.simpleName,
-        )
+            failure.summary,
+        ) + "\n" + getString(R.string.online_details_affordance)
+        detailsView.text = "${failure.technicalCode}\n${failure.redactedDetail}"
+        detailsView.visibility = View.GONE
+    }
+
+    private fun cancelTranslationTest(showOutcome: Boolean) {
+        val wasTesting = testingTranslation
+        testGeneration += 1L
+        testCall.cancel()
+        testCall = TranslationCall.NONE
+        testEngine?.close()
+        testEngine = null
+        testingTranslation = false
+        if (showOutcome && wasTesting) {
+            showFailure(java.util.concurrent.CancellationException("Translation test cancelled"))
+        } else {
+            updateActionState()
+        }
     }
 
     private fun applySystemBarInsets() {

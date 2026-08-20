@@ -128,7 +128,7 @@ class ModelPreparationWorker(
                     phase = ModelPreparationPhase.WAITING_FOR_NETWORK,
                     completedBytes = lastBytes,
                     totalBytes = descriptor.downloadBytes,
-                    message = error.message,
+                    message = com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
                 )
                 publish(waiting)
                 return Result.retry()
@@ -175,7 +175,7 @@ class ModelPreparationWorker(
         val snapshot = ModelPreparationSnapshot(
             taskId = taskId,
             phase = ModelPreparationPhase.FAILED,
-            message = error.message ?: error.javaClass.simpleName,
+            message = com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
         )
         store.clearVerified(taskId)
         store.saveSnapshot(snapshot)

@@ -5,14 +5,22 @@ import android.graphics.RectF
 import android.media.ImageReader
 import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
+import com.screentranslation.app.ml.OcrProfile
+import com.screentranslation.app.ml.OcrProfiles
+import com.screentranslation.app.ml.OcrRequest
+import com.screentranslation.app.ml.OcrSecondPassPolicy
 import com.screentranslation.app.ml.TranslationBackend
+import com.screentranslation.app.ml.BatchTranslationBackend
+import com.screentranslation.app.ml.TranslationBatchItem
 import com.screentranslation.app.ml.TranslationCall
 import com.screentranslation.app.util.OcrPunctuationRestorer
-import com.screentranslation.app.util.ProtectedTextCodec
+import com.screentranslation.app.util.SegmentedTextPlan
+import com.screentranslation.app.util.SegmentedTextPlanner
 import com.screentranslation.app.util.SourceTextFilter
 import java.util.concurrent.CancellationException
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Experimental full-screen pipeline.
@@ -27,6 +35,7 @@ class FullScreenFrameProcessor(
     private val translationEngine: TranslationBackend,
     private val sourceLanguageTag: String,
     private val targetLanguageTag: String,
+    private val ocrProfile: OcrProfile = OcrProfiles.BALANCED,
     frameIntervalMs: Long,
     private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
     private val onError: (Throwable) -> Unit = {},
@@ -61,6 +70,8 @@ class FullScreenFrameProcessor(
     private var currentBlocks = emptyList<TrackedScreenTextBlock>()
     private val translationQueue = BlockTranslationQueue(
         backend = translationEngine,
+        sourceLanguageTag = sourceLanguageTag,
+        targetLanguageTag = targetLanguageTag,
         onTranslation = { id, source, translation ->
             synchronized(translations) {
                 translations[id] = TranslationValue(source, translation)
@@ -216,7 +227,10 @@ class FullScreenFrameProcessor(
             CapturePerformanceTelemetry.OcrPath.FULL_FRAME,
             bitmap.width.toLong() * bitmap.height,
         )
-        ocrEngine.recognize(bitmap) { result ->
+        ocrEngine.recognize(
+            bitmap,
+            OcrRequest(ocrProfile, passIndex = 1, roiIdentity = "full_frame"),
+        ) { result ->
             timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             if (!gate.isCurrent(generation)) {
                 bitmap.recycleSafely()
@@ -297,58 +311,167 @@ class FullScreenFrameProcessor(
             CapturePerformanceTelemetry.OcrPath.TILE,
             crop.width.toLong() * crop.height,
         )
-        ocrEngine.recognize(crop) { result ->
+        val request = OcrRequest(
+            ocrProfile,
+            passIndex = 1,
+            roiIdentity = "tile-${baseTile.index}",
+        )
+        ocrEngine.recognize(crop, request) { result ->
             timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
-            crop.recycleSafely()
             if (!gate.isCurrent(generation)) {
+                crop.recycleSafely()
                 bitmap.recycleSafely()
                 gate.release()
                 return@recognize
             }
             result.fold(
                 onSuccess = { recognition ->
-                    tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
-                        val sourceText = SourceTextFilter.filter(
-                            text = OcrPunctuationRestorer.restore(
-                                region.text,
-                                sourceLanguageTag,
-                            ),
-                            sourceLanguageTag = sourceLanguageTag,
-                            targetLanguageTag = targetLanguageTag,
-                        ) ?: return@mapNotNull null
-                        val bounds = mapTileRegionToScreen(
-                            tileCrop = cropTile,
-                            frameWidth = bitmap.width,
-                            frameHeight = bitmap.height,
-                            left = region.left,
-                            top = region.top,
-                            right = region.right,
-                            bottom = region.bottom,
+                    if (OcrSecondPassPolicy.shouldRun(
+                            request,
+                            recognition,
+                            crop.width,
+                            crop.height,
                         )
-                        val centerX = bounds.centerX * bitmap.width
-                        val centerY = bounds.centerY * bitmap.height
-                        if (!baseTile.contains(centerX, centerY)) {
-                            null
-                        } else {
-                            ScreenTextBlock(sourceText, bounds, region.confidence)
-                        }
+                    ) {
+                        recognizeTileSecondPass(
+                            bitmap = bitmap,
+                            crop = crop,
+                            cropTile = cropTile,
+                            baseTile = baseTile,
+                            tiles = tiles,
+                            tileIndices = tileIndices,
+                            naturallyChanged = naturallyChanged,
+                            generation = generation,
+                            position = position,
+                            first = recognition,
+                        )
+                    } else {
+                        crop.recycleSafely()
+                        finishTileRecognition(
+                            bitmap,
+                            cropTile,
+                            baseTile,
+                            tiles,
+                            tileIndices,
+                            naturallyChanged,
+                            generation,
+                            position,
+                            recognition,
+                        )
                     }
-                    recognizeTiles(
-                        bitmap,
-                        tiles,
-                        tileIndices,
-                        naturallyChanged,
-                        generation,
-                        position + 1,
-                    )
                 },
                 onFailure = { error ->
+                    crop.recycleSafely()
                     bitmap.recycleSafely()
                     gate.release()
                     onError(error)
                 },
             )
         }
+    }
+
+    private fun recognizeTileSecondPass(
+        bitmap: Bitmap,
+        crop: Bitmap,
+        cropTile: PixelTile,
+        baseTile: PixelTile,
+        tiles: List<PixelTile>,
+        tileIndices: List<Int>,
+        naturallyChanged: Set<Int>,
+        generation: Long,
+        position: Int,
+        first: OcrEngine.Recognition,
+    ) {
+        val budget = checkNotNull(ocrProfile.secondPass)
+        val secondBitmap = Bitmap.createScaledBitmap(
+            crop,
+            (crop.width * budget.upscaleFactor).roundToInt().coerceAtLeast(1),
+            (crop.height * budget.upscaleFactor).roundToInt().coerceAtLeast(1),
+            true,
+        )
+        crop.recycleSafely()
+        val startedAt = SystemClock.elapsedRealtime()
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.TILE_SECOND_PASS,
+            secondBitmap.width.toLong() * secondBitmap.height,
+        )
+        ocrEngine.recognize(
+            secondBitmap,
+            OcrRequest(ocrProfile, passIndex = 2, roiIdentity = "tile-${baseTile.index}"),
+        ) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
+            secondBitmap.recycleSafely()
+            if (!gate.isCurrent(generation)) {
+                bitmap.recycleSafely()
+                gate.release()
+                return@recognize
+            }
+            val withinDeadline = SystemClock.elapsedRealtime() - startedAt <= budget.timeoutMillis
+            if (!withinDeadline) performanceTelemetry?.recordSecondPassTimeout()
+            val merged = result.getOrNull()
+                ?.takeIf { withinDeadline }
+                ?.let { second ->
+                    OcrSecondPassPolicy.merge(first, second).also { combined ->
+                        performanceTelemetry?.recordDeduplicatedOcrBlocks(
+                            first.regions.size + second.regions.size - combined.regions.size,
+                        )
+                    }
+                }
+                ?: first
+            finishTileRecognition(
+                bitmap,
+                cropTile,
+                baseTile,
+                tiles,
+                tileIndices,
+                naturallyChanged,
+                generation,
+                position,
+                merged,
+            )
+        }
+    }
+
+    private fun finishTileRecognition(
+        bitmap: Bitmap,
+        cropTile: PixelTile,
+        baseTile: PixelTile,
+        tiles: List<PixelTile>,
+        tileIndices: List<Int>,
+        naturallyChanged: Set<Int>,
+        generation: Long,
+        position: Int,
+        recognition: OcrEngine.Recognition,
+    ) {
+        tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
+            val sourceText = SourceTextFilter.filter(
+                text = OcrPunctuationRestorer.restore(region.text, sourceLanguageTag),
+                sourceLanguageTag = sourceLanguageTag,
+                targetLanguageTag = targetLanguageTag,
+            ) ?: return@mapNotNull null
+            val bounds = mapTileRegionToScreen(
+                tileCrop = cropTile,
+                frameWidth = bitmap.width,
+                frameHeight = bitmap.height,
+                left = region.left,
+                top = region.top,
+                right = region.right,
+                bottom = region.bottom,
+            )
+            val centerX = bounds.centerX * bitmap.width
+            val centerY = bounds.centerY * bitmap.height
+            if (!baseTile.contains(centerX, centerY)) null else {
+                ScreenTextBlock(sourceText, bounds, region.confidence)
+            }
+        }
+        recognizeTiles(
+            bitmap,
+            tiles,
+            tileIndices,
+            naturallyChanged,
+            generation,
+            position + 1,
+        )
     }
 
     private fun finishRecognition(naturallyChanged: Set<Int>, generation: Long) {
@@ -366,13 +489,16 @@ class FullScreenFrameProcessor(
         translationQueue.synchronize(activeIds)
         publishBlocks()
 
-        currentBlocks.asSequence()
-            .filter { it.isStable && it.text.isNotBlank() }
-            .filter { block ->
-                synchronized(translations) { translations[block.id]?.sourceText != block.text }
-            }
-            .take(MAX_CHANGED_BLOCKS_PER_SCAN)
-            .forEach { block -> translationQueue.submit(block.id, block.text) }
+        translationQueue.submitAll(
+            currentBlocks.asSequence()
+                .filter { it.isStable && it.text.isNotBlank() }
+                .filter { block ->
+                    synchronized(translations) { translations[block.id]?.sourceText != block.text }
+                }
+                .take(MAX_CHANGED_BLOCKS_PER_SCAN)
+                .map { block -> block.id to block.text }
+                .toList(),
+        )
         gate.release()
     }
 
@@ -468,11 +594,14 @@ internal class BlockTranslationQueue(
     private val onTranslation: (Long, String, String) -> Unit,
     private val onError: (Throwable) -> Unit,
     private val performanceTelemetry: CapturePerformanceTelemetry? = null,
+    private val sourceLanguageTag: String = "en",
+    private val targetLanguageTag: String = "zh",
 ) : AutoCloseable {
     private data class Work(val id: Long, val text: String)
+    private data class PlannedWork(val work: Work, val plan: SegmentedTextPlan)
     private data class Active(
         val token: Long,
-        val work: Work,
+        val works: List<PlannedWork>,
         var call: TranslationCall,
         var performanceToken: CapturePerformanceTelemetry.TimingToken? = null,
     )
@@ -487,17 +616,31 @@ internal class BlockTranslationQueue(
     private var paused = false
     private var closed = false
 
-    fun submit(id: Long, text: String) {
+    fun submit(id: Long, text: String) = submitAll(listOf(id to text))
+
+    fun submitAll(items: List<Pair<Long, String>>) {
+        if (items.isEmpty()) return
         var callToCancel: TranslationCall? = null
         synchronized(this) {
             if (closed) return
             val current = active
-            if (current?.work?.id == id) {
-                if (current.work.text == text) return
+            val incoming = items.associate { (id, text) -> id to Work(id, text) }
+            val changedActive = current?.works?.any { planned ->
+                incoming[planned.work.id]?.text?.let { it != planned.work.text } == true
+            } == true
+            if (current != null && changedActive) {
                 active = null
                 callToCancel = current.call
+                current.works.filter { it.work.id !in incoming }.forEach { retained ->
+                    pending.putIfAbsent(retained.work.id, retained.work)
+                }
             }
-            pending[id] = Work(id, text)
+            incoming.forEach { (id, work) ->
+                val alreadyActive = !changedActive && current?.works?.any {
+                    it.work.id == id && it.work.text == work.text
+                } == true
+                if (!alreadyActive) pending[id] = work
+            }
         }
         callToCancel?.cancel()
         pump()
@@ -508,9 +651,12 @@ internal class BlockTranslationQueue(
         synchronized(this) {
             pending.keys.retainAll(activeIds)
             val current = active
-            if (current != null && current.work.id !in activeIds) {
+            if (current != null && current.works.any { it.work.id !in activeIds }) {
                 active = null
                 callToCancel = current.call
+                current.works.filter { it.work.id in activeIds }.forEach { retained ->
+                    pending.putIfAbsent(retained.work.id, retained.work)
+                }
             }
         }
         callToCancel?.cancel()
@@ -540,20 +686,80 @@ internal class BlockTranslationQueue(
     private fun pump() {
         val activeWork = synchronized(this) {
             if (closed || paused || active != null || pending.isEmpty()) return
-            val work = pending.entries.first().also { pending.remove(it.key) }.value
-            Active(nextToken++, work, TranslationCall.NONE).also { active = it }
+            val batchBackend = backend as? BatchTranslationBackend
+            val maximumItems = batchBackend?.maximumBatchItems ?: 1
+            val maximumCharacters = batchBackend?.maximumBatchCharacters ?: Int.MAX_VALUE
+            val planned = mutableListOf<PlannedWork>()
+            var characters = 0
+            val iterator = pending.entries.iterator()
+            while (iterator.hasNext() && planned.size < maximumItems) {
+                val entry = iterator.next()
+                val work = entry.value
+                val plan = SegmentedTextPlanner.plan(
+                    text = work.text,
+                    sourceLanguageTag = sourceLanguageTag,
+                    targetLanguageTag = targetLanguageTag,
+                )
+                if (plan.translatedSpanCount == 0) {
+                    iterator.remove()
+                    onTranslation(work.id, work.text, work.text)
+                    continue
+                }
+                val cached = synchronized(cache) { cache[plan.requestText] }
+                if (cached != null) {
+                    iterator.remove()
+                    performanceTelemetry?.recordTranslationCacheHit()
+                    onTranslation(work.id, work.text, cached)
+                    continue
+                }
+                if (
+                    planned.isNotEmpty() &&
+                    characters + plan.requestText.length > maximumCharacters
+                ) break
+                iterator.remove()
+                planned += PlannedWork(work, plan)
+                characters += plan.requestText.length
+                // An oversized single item falls back to the ordinary backend call below.
+                if (characters > maximumCharacters) break
+            }
+            if (planned.isEmpty()) return@synchronized null
+            Active(nextToken++, planned, TranslationCall.NONE).also { active = it }
         }
-        val cached = synchronized(cache) { cache[activeWork.work.text] }
-        if (cached != null) {
-            performanceTelemetry?.recordTranslationCacheHit()
-            complete(activeWork.token, Result.success(cached))
+        if (activeWork == null) {
+            pump()
             return
         }
-
-        val protected = ProtectedTextCodec.protect(activeWork.work.text)
         activeWork.performanceToken = performanceTelemetry?.startTranslation()
-        val call = backend.translate(protected.encoded) { result ->
-            complete(activeWork.token, result.map(protected::restore))
+        val batchBackend = backend as? BatchTranslationBackend
+        val useBatch = batchBackend != null &&
+            activeWork.works.sumOf { it.plan.requestText.length } <=
+            batchBackend.maximumBatchCharacters
+        val call = if (useBatch) {
+            val requestItems = activeWork.works.mapIndexed { index, planned ->
+                TranslationBatchItem("w${activeWork.token}_$index", planned.plan.requestText)
+            }
+            batchBackend.translateBatch(requestItems) { result ->
+                complete(
+                    activeWork.token,
+                    result.mapCatching { translations ->
+                        activeWork.works.mapIndexed { index, planned ->
+                            val key = "w${activeWork.token}_$index"
+                            key to planned.plan.restore(
+                                translations[key]
+                                    ?: throw IllegalArgumentException("Batch result is missing $key"),
+                            )
+                        }.toMap()
+                    },
+                )
+            }
+        } else {
+            val planned = activeWork.works.single()
+            backend.translate(planned.plan.requestText) { result ->
+                complete(
+                    activeWork.token,
+                    result.mapCatching { mapOf("single" to planned.plan.restore(it)) },
+                )
+            }
         }
         synchronized(this) {
             if (active?.token == activeWork.token) {
@@ -564,19 +770,28 @@ internal class BlockTranslationQueue(
         }
     }
 
-    private fun complete(token: Long, result: Result<String>) {
-        val work = synchronized(this) {
+    private fun complete(token: Long, result: Result<Map<String, String>>) {
+        val completed = synchronized(this) {
             val current = active?.takeIf { it.token == token } ?: return
             active = null
             current.performanceToken?.let {
                 performanceTelemetry?.finishTranslation(it, result.isSuccess)
             }
-            current.work
+            current
         }
         result.fold(
-            onSuccess = { translated ->
-                synchronized(cache) { cache[work.text] = translated }
-                onTranslation(work.id, work.text, translated)
+            onSuccess = { translations ->
+                completed.works.forEachIndexed { index, planned ->
+                    val key = if (completed.works.size == 1 && "single" in translations) {
+                        "single"
+                    } else {
+                        "w${completed.token}_$index"
+                    }
+                    val translated = translations[key]
+                        ?: throw IllegalArgumentException("Completed batch is missing $key")
+                    synchronized(cache) { cache[planned.plan.requestText] = translated }
+                    onTranslation(planned.work.id, planned.work.text, translated)
+                }
             },
             onFailure = { error ->
                 if (error !is CancellationException) onError(error)

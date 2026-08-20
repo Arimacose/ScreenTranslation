@@ -13,13 +13,16 @@ import kotlin.math.ceil
 class CapturePerformanceTelemetry(
     val captureMode: String,
     val baseIntervalMs: Long,
+    val ocrProfile: String = "balanced",
     private val elapsedRealtimeNanos: () -> Long = System::nanoTime,
     wallClockMillis: () -> Long = System::currentTimeMillis,
 ) {
     enum class OcrPath {
         REGION,
+        REGION_SECOND_PASS,
         FULL_FRAME,
         TILE,
+        TILE_SECOND_PASS,
     }
 
     class TimingToken internal constructor(val startedAtNanos: Long)
@@ -37,6 +40,7 @@ class CapturePerformanceTelemetry(
         val sessionId: String,
         val reason: String,
         val captureMode: String,
+        val ocrProfile: String,
         val baseIntervalMs: Long,
         val elapsedMs: Long,
         val framesAvailable: Long,
@@ -56,6 +60,9 @@ class CapturePerformanceTelemetry(
         val regionOcrCalls: Long,
         val fullFrameOcrCalls: Long,
         val tileOcrCalls: Long,
+        val secondPassOcrCalls: Long,
+        val secondPassTimeouts: Long,
+        val deduplicatedOcrBlocks: Long,
         val ocrInputPixels: Long,
         val translationCalls: Long,
         val translationSuccesses: Long,
@@ -81,6 +88,7 @@ class CapturePerformanceTelemetry(
             field("session_id", sessionId)
             field("reason", reason)
             field("capture_mode", captureMode)
+            field("ocr_profile", ocrProfile)
             field("base_interval_ms", baseIntervalMs)
             field("elapsed_ms", elapsedMs)
             field("frames_available", framesAvailable)
@@ -100,6 +108,9 @@ class CapturePerformanceTelemetry(
             field("region_ocr_calls", regionOcrCalls)
             field("full_frame_ocr_calls", fullFrameOcrCalls)
             field("tile_ocr_calls", tileOcrCalls)
+            field("second_pass_ocr_calls", secondPassOcrCalls)
+            field("second_pass_timeouts", secondPassTimeouts)
+            field("deduplicated_ocr_blocks", deduplicatedOcrBlocks)
             field("ocr_input_pixels", ocrInputPixels)
             field("translation_calls", translationCalls)
             field("translation_successes", translationSuccesses)
@@ -209,6 +220,9 @@ class CapturePerformanceTelemetry(
     private var regionOcrCalls = 0L
     private var fullFrameOcrCalls = 0L
     private var tileOcrCalls = 0L
+    private var secondPassOcrCalls = 0L
+    private var secondPassTimeouts = 0L
+    private var deduplicatedOcrBlocks = 0L
     private var ocrInputPixels = 0L
     private var translationCalls = 0L
     private var translationSuccesses = 0L
@@ -284,8 +298,16 @@ class CapturePerformanceTelemetry(
         ocrInputPixels += inputPixels.coerceAtLeast(0L)
         when (path) {
             OcrPath.REGION -> regionOcrCalls += 1L
+            OcrPath.REGION_SECOND_PASS -> {
+                regionOcrCalls += 1L
+                secondPassOcrCalls += 1L
+            }
             OcrPath.FULL_FRAME -> fullFrameOcrCalls += 1L
             OcrPath.TILE -> tileOcrCalls += 1L
+            OcrPath.TILE_SECOND_PASS -> {
+                tileOcrCalls += 1L
+                secondPassOcrCalls += 1L
+            }
         }
         return TimingToken(elapsedRealtimeNanos())
     }
@@ -319,6 +341,16 @@ class CapturePerformanceTelemetry(
     }
 
     @Synchronized
+    fun recordSecondPassTimeout() {
+        secondPassTimeouts += 1L
+    }
+
+    @Synchronized
+    fun recordDeduplicatedOcrBlocks(count: Int) {
+        deduplicatedOcrBlocks += count.coerceAtLeast(0)
+    }
+
+    @Synchronized
     fun recordLifecycleReset() {
         lifecycleResets += 1L
     }
@@ -345,6 +377,7 @@ class CapturePerformanceTelemetry(
             sessionId = sessionId,
             reason = reason,
             captureMode = captureMode,
+            ocrProfile = ocrProfile,
             baseIntervalMs = baseIntervalMs,
             elapsedMs = ((elapsedRealtimeNanos() - startedAtNanos) / 1_000_000L)
                 .coerceAtLeast(0L),
@@ -365,6 +398,9 @@ class CapturePerformanceTelemetry(
             regionOcrCalls = regionOcrCalls,
             fullFrameOcrCalls = fullFrameOcrCalls,
             tileOcrCalls = tileOcrCalls,
+            secondPassOcrCalls = secondPassOcrCalls,
+            secondPassTimeouts = secondPassTimeouts,
+            deduplicatedOcrBlocks = deduplicatedOcrBlocks,
             ocrInputPixels = ocrInputPixels,
             translationCalls = translationCalls,
             translationSuccesses = translationSuccesses,

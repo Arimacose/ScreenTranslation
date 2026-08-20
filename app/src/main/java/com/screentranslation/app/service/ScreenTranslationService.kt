@@ -1,4 +1,4 @@
-﻿package com.screentranslation.app.service
+package com.screentranslation.app.service
 
 import android.app.Activity
 import android.app.Notification
@@ -37,6 +37,7 @@ import com.screentranslation.app.capture.FrameProcessor
 import com.screentranslation.app.capture.FramePipeline
 import com.screentranslation.app.capture.FullScreenFrameProcessor
 import com.screentranslation.app.ml.OcrEngine
+import com.screentranslation.app.ml.OcrProfiles
 import com.screentranslation.app.ml.PpOcrv6Engine
 import com.screentranslation.app.ml.ModelPreparationProgress
 import com.screentranslation.app.ml.ModelPreparationStage
@@ -45,6 +46,7 @@ import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.overlay.OverlayController
 import com.screentranslation.app.overlay.FullScreenOverlayController
 import com.screentranslation.app.prefs.NormalizedRegionBounds
+import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.prefs.RegionPresetOrientation
 import com.screentranslation.app.prefs.RegionPresetStore
 import com.screentranslation.app.util.StableTextGate
@@ -278,9 +280,11 @@ class ScreenTranslationService : Service() {
         captureMode: CaptureMode,
     ) {
         this.captureMode = captureMode
+        val ocrProfile = OcrProfiles.forId(AppPreferences(this).ocrProfile(captureMode))
         performanceTelemetry = CapturePerformanceTelemetry(
             captureMode = captureMode.persistedValue,
             baseIntervalMs = frameIntervalMs,
+            ocrProfile = ocrProfile.id.persistedValue,
         )
         lifecycle.dispatch(
             CaptureLifecycleEvent.StartRequested(
@@ -338,6 +342,7 @@ class ScreenTranslationService : Service() {
                 translationEngine = translator,
                 sourceLanguageTag = sourceLanguage,
                 targetLanguageTag = targetLanguage,
+                ocrProfile = ocrProfile,
                 frameIntervalMs = frameIntervalMs,
                 onBlocks = { blocks ->
                     mainHandler.post {
@@ -360,7 +365,10 @@ class ScreenTranslationService : Service() {
                 translationEngine = translator,
                 sourceLanguageTag = sourceLanguage,
                 targetLanguageTag = targetLanguage,
-                stableTextGate = StableTextGate(),
+                ocrProfile = ocrProfile,
+                stableTextGate = StableTextGate(
+                    requiredConsecutiveMatches = ocrProfile.stabilityObservations,
+                ),
                 frameIntervalMs = frameIntervalMs,
                 onOriginalRecognized = { text ->
                     mainHandler.post {
@@ -502,7 +510,7 @@ class ScreenTranslationService : Service() {
                         lifecycle.dispatch(CaptureLifecycleEvent.ModelUnavailable)
                         processor.setEnabled(false)
                         updateOverlayStatus(
-                            "模型准备失败：${error.message ?: error.javaClass.simpleName}",
+                            "模型准备失败：${com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary}",
                         )
                     },
                 )
@@ -516,7 +524,7 @@ class ScreenTranslationService : Service() {
             if (!closing) {
                 overlayController?.preserveContentAfterFailure()
                 updateOverlayStatus(
-                    "处理失败：${error.message ?: error.javaClass.simpleName}",
+                    "处理失败：${com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary}",
                 )
             }
         }
@@ -785,17 +793,9 @@ class ScreenTranslationService : Service() {
     }
 
     private fun startupFailureDetail(error: Throwable): String {
-        val message = error.message
-            ?.lineSequence()
-            ?.firstOrNull()
-            ?.trim()
-            ?.take(MAX_STARTUP_ERROR_MESSAGE_CHARS)
-            ?.takeIf { it.isNotEmpty() }
-        return if (message == null) {
-            error.javaClass.simpleName
-        } else {
-            "${error.javaClass.simpleName}: $message"
-        }
+        val failure = com.screentranslation.app.util.UserFacingErrorMapper.map(error)
+        return "${failure.summary} (${failure.technicalCode})"
+            .take(MAX_STARTUP_ERROR_MESSAGE_CHARS)
     }
 
     /**

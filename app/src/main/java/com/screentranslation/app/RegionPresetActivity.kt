@@ -23,6 +23,7 @@ import com.screentranslation.app.prefs.RegionPresetStore
 import com.screentranslation.app.prefs.clampNormalizedRegion
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
+import com.screentranslation.app.util.UserFacingErrorMapper
 import java.util.Locale
 
 /** Accessible editor for normalized, orientation-specific capture-region presets. */
@@ -290,7 +291,7 @@ class RegionPresetActivity : AppCompatActivity() {
     }
 
     private fun showInputError(error: Throwable) {
-        nameView.error = error.message ?: getString(R.string.region_presets_invalid_name)
+        nameView.error = UserFacingErrorMapper.map(error).summary
         nameView.requestFocus()
     }
 

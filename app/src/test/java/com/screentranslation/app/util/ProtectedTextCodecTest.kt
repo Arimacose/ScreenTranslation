@@ -7,6 +7,18 @@ import org.junit.Test
 
 class ProtectedTextCodecTest {
     @Test
+    fun `protects time filename path and stable identifier`() {
+        val source = "Open app-release.apk at 10:30 from C:\\Models\\ocr.onnx using stable_block_id"
+        val protected = ProtectedTextCodec.protect(source)
+
+        assertFalse(protected.encoded.contains("app-release.apk"))
+        assertFalse(protected.encoded.contains("10:30"))
+        assertFalse(protected.encoded.contains("C:\\Models\\ocr.onnx"))
+        assertFalse(protected.encoded.contains("stable_block_id"))
+        assertEquals(source, protected.restore(protected.encoded))
+    }
+
+    @Test
     fun `protects mixed values and restores them after translation`() {
         val original = "Version v0.3.1 costs ￥1,299.00 on 2026-08-03; see https://example.com/a?q=1."
 

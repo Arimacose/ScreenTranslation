@@ -30,9 +30,9 @@ PP-OCRv6-small 与两套捕获/悬浮层实现：
 
 | Edition | applicationId | versionName | 翻译后端 | 语言范围 |
 |---|---|---|---|---|
-| Lite | `com.screentranslation.app` | `2.0.0-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
-| Full | `com.screentranslation.app.full` | `2.0.0-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
-| Online | `com.screentranslation.app.online` | `2.0.0-online` | 用户配置的 OpenAI-compatible LLM | 能力由用户选择的模型决定 |
+| Lite | `com.screentranslation.app` | `2.4.0-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
+| Full | `com.screentranslation.app.full` | `2.4.0-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
+| Online | `com.screentranslation.app.online` | `2.4.0-online` | 用户配置的 OpenAI-compatible LLM | 能力由用户选择的模型决定 |
 
 Lite 保留基础包名以承接 v0.1.0 升级，Full/Online 使用 `.full`/`.online` 后缀，
 因此三者可在同一设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：

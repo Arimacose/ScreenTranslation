@@ -354,7 +354,7 @@ jobs:
           retention-days: 14
 
   instrumentation:
-    name: Android 16 capture lifecycle instrumentation
+    name: Injected capture E2E and host macrobenchmarks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -385,6 +385,35 @@ jobs:
             "platforms;android-37.0" \
             "build-tools;$ANDROID_BUILD_TOOLS"
 
+      - name: Validate pinned macrobenchmark thresholds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("app/src/test/resources/v2_4_macrobenchmark_thresholds.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          assert data["schema_version"] == 1
+          assert data["fixture_set"] == "v2.4.0-fixed-en-ja-mixed-v1"
+          assert data["minimum_iterations"] >= 5
+          for key in (
+              "startup_ms_p95_max",
+              "frame_processing_ms_p95_max",
+              "jank_percent_max",
+              "memory_pss_mb_max",
+          ):
+              assert data[key] > 0
+          PY
+
+      - name: Run edition-isolated injected capture journeys
+        run: >-
+          ./gradlew --no-daemon --stacktrace
+          testLiteDebugUnitTest
+          testFullDebugUnitTest
+          testOnlineDebugUnitTest
+          --tests '*InjectedCaptureJourneyTest'
+
       - name: Enable KVM group permissions
         shell: bash
         run: |
@@ -413,7 +442,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: instrumentation-reports-${{ github.sha }}
+          name: injected-e2e-and-instrumentation-reports-${{ github.sha }}
           path: |
             app/build/reports/androidTests/connected/instrumentation/
             app/build/outputs/androidTest-results/connected/instrumentation/

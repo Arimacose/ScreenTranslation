@@ -9,6 +9,13 @@ import android.graphics.Bitmap
 interface OcrEngine : AutoCloseable {
     fun recognize(bitmap: Bitmap, onResult: (Result<Recognition>) -> Unit)
 
+    /** Typed v2.4 request; legacy/fixture engines retain Balanced behavior. */
+    fun recognize(
+        bitmap: Bitmap,
+        request: OcrRequest,
+        onResult: (Result<Recognition>) -> Unit,
+    ) = recognize(bitmap, onResult)
+
     /**
      * @property text complete normalized reading-order text for change detection
      * @property blocks paragraph-sized units retained for translation

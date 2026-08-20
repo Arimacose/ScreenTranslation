@@ -124,4 +124,43 @@ class OpenAiChatProtocolTest {
             assertTrue(runCatching { OpenAiChatProtocol.parseModelIds(value) }.isFailure)
         }
     }
+
+    @Test
+    fun `batch protocol preserves IDs and rejects partial provider output`() {
+        val requested = listOf(
+            OnlineBatchBlock("block_1", "Hello"),
+            OnlineBatchBlock("block_2", "World"),
+        )
+        val request = JSONObject(
+            OpenAiChatProtocol.buildBatchRequestJson(
+                modelId = "model-a",
+                sourceLanguage = "en",
+                targetLanguage = "zh",
+                blocks = requested,
+            ),
+        )
+        val userContent = JSONObject(
+            request.getJSONArray("messages").getJSONObject(1).getString("content"),
+        )
+        assertEquals("block_1", userContent.getJSONArray("blocks").getJSONObject(0).getString("id"))
+
+        val complete = """{"choices":[{"message":{"content":"{\"blocks\":[{\"id\":\"block_1\",\"translation\":\"你好\"},{\"id\":\"block_2\",\"translation\":\"世界\"}]}"}}]}"""
+        assertEquals(
+            mapOf("block_1" to "你好", "block_2" to "世界"),
+            OpenAiChatProtocol.parseBatchTranslation(complete, requested),
+        )
+        val partial = """{"choices":[{"message":{"content":"{\"blocks\":[{\"id\":\"block_1\",\"translation\":\"你好\"}]}"}}]}"""
+        assertTrue(runCatching { OpenAiChatProtocol.parseBatchTranslation(partial, requested) }.isFailure)
+    }
+
+    @Test
+    fun `model descriptors keep friendly metadata without replacing ID`() {
+        val models = OpenAiChatProtocol.parseModels(
+            """{"data":[{"id":"stable-id","name":"Friendly","owned_by":"Provider","created":42}]}""",
+        )
+        assertEquals("stable-id", models.single().id)
+        assertEquals("Friendly", models.single().displayName)
+        assertEquals("Provider", models.single().owner)
+        assertEquals(42L, models.single().createdAtEpochSeconds)
+    }
 }

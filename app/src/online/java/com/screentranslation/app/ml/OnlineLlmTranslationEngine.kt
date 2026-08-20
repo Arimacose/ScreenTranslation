@@ -2,7 +2,12 @@ package com.screentranslation.app.ml
 
 import android.content.Context
 import com.screentranslation.app.online.OnlineChatClient
+import com.screentranslation.app.online.OnlineBatchBlock
+import com.screentranslation.app.online.OnlineBatchContract
+import com.screentranslation.app.online.OnlineBatchCoordinator
 import com.screentranslation.app.online.OnlineHttpClientFactory
+import com.screentranslation.app.online.OnlineMetricsObserver
+import com.screentranslation.app.online.OnlineRequestMetric
 import com.screentranslation.app.online.OnlineTranslationConfigRepository
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -14,7 +19,7 @@ class OnlineLlmTranslationEngine(
     context: Context,
     sourceLanguage: String,
     targetLanguage: String,
-) : TranslationBackend {
+) : TranslationBackend, BatchTranslationBackend {
     override val profile: TranslationProviderProfile = TranslationProviderProfiles.onlineByok
 
     private val sourceLanguageCode = sourceLanguage.trim().lowercase(Locale.ROOT)
@@ -29,6 +34,13 @@ class OnlineLlmTranslationEngine(
 
     @Volatile
     private var chatClient: OnlineChatClient? = null
+    @Volatile
+    private var metricsObserver: OnlineMetricsObserver = OnlineMetricsObserver.NONE
+
+    internal fun observeMetrics(observer: (OnlineRequestMetric) -> Unit) {
+        check(chatClient == null) { "Metrics observer must be set before preparation" }
+        metricsObserver = OnlineMetricsObserver(observer)
+    }
 
     override val cacheIdentity: String
         get() = repository.load().cacheIdentity(
@@ -116,6 +128,39 @@ class OnlineLlmTranslationEngine(
         return logicalCall
     }
 
+    override val maximumBatchItems: Int = OnlineBatchContract.MAX_BLOCKS
+    override val maximumBatchCharacters: Int = OnlineBatchContract.MAX_CHARACTERS
+
+    override fun translateBatch(
+        items: List<TranslationBatchItem>,
+        onResult: (Result<Map<String, String>>) -> Unit,
+    ): TranslationCall {
+        val blocks = items.map { OnlineBatchBlock(it.id, it.text) }
+        val client = try {
+            checkOpen()
+            ensureChatClient()
+        } catch (error: Throwable) {
+            onResult(Result.failure(error))
+            return TranslationCall.NONE
+        }
+        val coordinator = OnlineBatchCoordinator { part, callback ->
+            client.translateBatch(blocks = part, onResult = callback)
+        }
+        val finished = AtomicBoolean(false)
+        var logicalCallRef: TranslationCall? = null
+        val logicalCall = coordinator.translate(blocks) { result ->
+            finished.set(true)
+            logicalCallRef?.let(activeCalls::remove)
+            onResult(result)
+        }
+        logicalCallRef = logicalCall
+        if (!finished.get()) {
+            activeCalls += logicalCall
+            if (closed.get()) logicalCall.cancel()
+        }
+        return logicalCall
+    }
+
     @Synchronized
     private fun ensureChatClient(): OnlineChatClient {
         checkOpen()
@@ -129,6 +174,7 @@ class OnlineLlmTranslationEngine(
             apiKey = ready.apiKey,
             sourceLanguage = sourceLanguageCode,
             targetLanguage = targetLanguageCode,
+            metricsObserver = metricsObserver,
         ).also { chatClient = it }
     }
 

@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CancellationException
 
 class OnlineHttpIntegrationTest {
     private lateinit var server: MockWebServer
@@ -89,6 +90,80 @@ class OnlineHttpIntegrationTest {
         assertEquals(OnlineFailureCategory.TIMEOUT, failure.category)
         assertTrue(failure.message.orEmpty().contains("响应更快"))
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `success fixture returns translated text over real TLS client`() {
+        server.enqueue(
+            MockResponse(
+                code = 200,
+                body = """{"choices":[{"message":{"content":"译文"}}]}""",
+            ),
+        )
+        assertEquals("译文", translateAndAwait().getOrThrow())
+        assertEquals("/v1/chat/completions", server.takeRequest().url.encodedPath)
+    }
+
+    @Test
+    fun `model catalog fixture preserves descriptor identity`() {
+        server.enqueue(
+            MockResponse(
+                code = 200,
+                body = """{"data":[{"id":"model-stable","name":"Friendly"}]}""",
+            ),
+        )
+        val result = AtomicReference<Result<List<OnlineModelDescriptor>>>()
+        val latch = CountDownLatch(1)
+        OnlineModelCatalogClient(
+            callFactory = httpClient,
+            endpoint = OpenAiEndpoint.parse(server.url("/v1").toString()),
+            apiKey = "test-key",
+        ).fetchModels {
+            result.set(it)
+            latch.countDown()
+        }
+        assertTrue(latch.await(3, TimeUnit.SECONDS))
+        assertEquals("model-stable", result.get().getOrThrow().single().id)
+        assertEquals("/v1/models", server.takeRequest().url.encodedPath)
+    }
+
+    @Test
+    fun `second 429 settles after one bounded retry`() {
+        repeat(2) {
+            server.enqueue(
+                MockResponse.Builder()
+                    .code(429)
+                    .addHeader("Retry-After", "0")
+                    .body("{}")
+                    .build(),
+            )
+        }
+        val failure = translateAndAwait().exceptionOrNull() as OnlineTranslationException
+        assertEquals(OnlineFailureCategory.RATE_LIMIT, failure.category)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `explicit cancellation stops stalled network call`() {
+        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.Stall).build())
+        val result = AtomicReference<Result<String>>()
+        val latch = CountDownLatch(1)
+        val call = OnlineChatClient(
+            callFactory = httpClient,
+            retryScheduler = retryScheduler,
+            endpoint = OpenAiEndpoint.parse(server.url("/v1").toString()),
+            modelId = "translation-model",
+            apiKey = "test-key",
+            sourceLanguage = "en",
+            targetLanguage = "zh",
+        ).translate("Cancel fixture") {
+            result.set(it)
+            latch.countDown()
+        }
+        assertTrue(server.takeRequest(2, TimeUnit.SECONDS) != null)
+        call.cancel()
+        assertTrue(latch.await(2, TimeUnit.SECONDS))
+        assertTrue(result.get().exceptionOrNull() is CancellationException)
     }
 
     private fun translateAndAwait(): Result<String> {
