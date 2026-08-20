@@ -92,8 +92,7 @@ internal class ModelManagementViewModel(application: Application) : AndroidViewM
                             ModelDeletionSnapshot(
                                 generation = generation,
                                 phase = ModelDeletionPhase.FAILED,
-                                errorMessage = error.localizedMessage
-                                    ?: error.javaClass.simpleName,
+                                errorMessage = com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
                             )
                         },
                     ),
@@ -103,7 +102,7 @@ internal class ModelManagementViewModel(application: Application) : AndroidViewM
             mutableDeletionState.value = ModelDeletionSnapshot(
                 generation = generation,
                 phase = ModelDeletionPhase.FAILED,
-                errorMessage = error.localizedMessage ?: error.javaClass.simpleName,
+                errorMessage = com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
             )
         }
     }
@@ -289,7 +288,7 @@ class ModelManagementActivity : AppCompatActivity() {
                         onFailure = { error ->
                             summaryView.text = getString(
                                 R.string.model_inventory_failed,
-                                error.localizedMessage ?: error.javaClass.simpleName,
+                                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
                             )
                             prepareButton.isEnabled = true
                             refreshButton.isEnabled = true
@@ -334,7 +333,7 @@ class ModelManagementActivity : AppCompatActivity() {
         }.onFailure { error ->
             taskStatusView.text = getString(
                 R.string.model_failed,
-                error.localizedMessage ?: error.javaClass.simpleName,
+                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
             )
         }
     }

@@ -1,4 +1,4 @@
-﻿package com.screentranslation.app.service
+package com.screentranslation.app.service
 
 import android.app.Activity
 import android.app.Notification
@@ -510,7 +510,7 @@ class ScreenTranslationService : Service() {
                         lifecycle.dispatch(CaptureLifecycleEvent.ModelUnavailable)
                         processor.setEnabled(false)
                         updateOverlayStatus(
-                            "模型准备失败：${error.message ?: error.javaClass.simpleName}",
+                            "模型准备失败：${com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary}",
                         )
                     },
                 )
@@ -524,7 +524,7 @@ class ScreenTranslationService : Service() {
             if (!closing) {
                 overlayController?.preserveContentAfterFailure()
                 updateOverlayStatus(
-                    "处理失败：${error.message ?: error.javaClass.simpleName}",
+                    "处理失败：${com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary}",
                 )
             }
         }
@@ -793,17 +793,9 @@ class ScreenTranslationService : Service() {
     }
 
     private fun startupFailureDetail(error: Throwable): String {
-        val message = error.message
-            ?.lineSequence()
-            ?.firstOrNull()
-            ?.trim()
-            ?.take(MAX_STARTUP_ERROR_MESSAGE_CHARS)
-            ?.takeIf { it.isNotEmpty() }
-        return if (message == null) {
-            error.javaClass.simpleName
-        } else {
-            "${error.javaClass.simpleName}: $message"
-        }
+        val failure = com.screentranslation.app.util.UserFacingErrorMapper.map(error)
+        return "${failure.summary} (${failure.technicalCode})"
+            .take(MAX_STARTUP_ERROR_MESSAGE_CHARS)
     }
 
     /**

@@ -416,7 +416,7 @@ class MainActivity : AppCompatActivity() {
             ScreenTranslationService.discardPendingStartRequest()
             serviceStatusView.text = getString(
                 R.string.start_failed,
-                error.localizedMessage ?: error.javaClass.simpleName,
+                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
             )
             setServiceRunningUi(false)
         }
@@ -902,7 +902,7 @@ class MainActivity : AppCompatActivity() {
             pendingStartAfterModelPreparation = false
             modelStatusView.text = getString(
                 R.string.model_failed,
-                error.localizedMessage ?: getString(R.string.unknown_error),
+                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
             )
             setServiceRunningUi(ScreenTranslationService.isRunning)
             return
@@ -1055,7 +1055,7 @@ class MainActivity : AppCompatActivity() {
                     experimentalSmokeTestResultView.text = getString(
                         R.string.experimental_smoke_test_failed,
                         elapsedMs,
-                        error.localizedMessage ?: getString(R.string.unknown_error),
+                        com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
                     )
                 },
             )
@@ -1105,7 +1105,7 @@ class MainActivity : AppCompatActivity() {
             projectionRequestInFlight = false
             serviceStatusView.text = getString(
                 R.string.start_failed,
-                error.localizedMessage ?: error.javaClass.simpleName,
+                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
             )
             setServiceRunningUi(false)
         }
@@ -1194,7 +1194,7 @@ class MainActivity : AppCompatActivity() {
         } catch (error: Exception) {
             serviceStatusView.text = getString(
                 R.string.start_failed,
-                error.localizedMessage ?: error.javaClass.simpleName,
+                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
             )
         }
         setServiceRunningUi(false)
