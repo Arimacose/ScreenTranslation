@@ -8,7 +8,8 @@ import com.screentranslation.app.ml.OcrEngine
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
 import com.screentranslation.app.util.OcrPunctuationRestorer
-import com.screentranslation.app.util.ProtectedTextCodec
+import com.screentranslation.app.util.SegmentedTextPlan
+import com.screentranslation.app.util.SegmentedTextPlanner
 import com.screentranslation.app.util.SourceTextFilter
 import java.util.concurrent.CancellationException
 import kotlin.math.abs
@@ -61,6 +62,8 @@ class FullScreenFrameProcessor(
     private var currentBlocks = emptyList<TrackedScreenTextBlock>()
     private val translationQueue = BlockTranslationQueue(
         backend = translationEngine,
+        sourceLanguageTag = sourceLanguageTag,
+        targetLanguageTag = targetLanguageTag,
         onTranslation = { id, source, translation ->
             synchronized(translations) {
                 translations[id] = TranslationValue(source, translation)
@@ -468,11 +471,14 @@ internal class BlockTranslationQueue(
     private val onTranslation: (Long, String, String) -> Unit,
     private val onError: (Throwable) -> Unit,
     private val performanceTelemetry: CapturePerformanceTelemetry? = null,
+    private val sourceLanguageTag: String = "en",
+    private val targetLanguageTag: String = "zh",
 ) : AutoCloseable {
     private data class Work(val id: Long, val text: String)
     private data class Active(
         val token: Long,
         val work: Work,
+        val plan: SegmentedTextPlan,
         var call: TranslationCall,
         var performanceToken: CapturePerformanceTelemetry.TimingToken? = null,
     )
@@ -541,19 +547,31 @@ internal class BlockTranslationQueue(
         val activeWork = synchronized(this) {
             if (closed || paused || active != null || pending.isEmpty()) return
             val work = pending.entries.first().also { pending.remove(it.key) }.value
-            Active(nextToken++, work, TranslationCall.NONE).also { active = it }
+            val plan = SegmentedTextPlanner.plan(
+                text = work.text,
+                sourceLanguageTag = sourceLanguageTag,
+                targetLanguageTag = targetLanguageTag,
+            )
+            if (plan.translatedSpanCount == 0) {
+                onTranslation(work.id, work.text, work.text)
+                return@synchronized null
+            }
+            Active(nextToken++, work, plan, TranslationCall.NONE).also { active = it }
         }
-        val cached = synchronized(cache) { cache[activeWork.work.text] }
+        if (activeWork == null) {
+            pump()
+            return
+        }
+        val cached = synchronized(cache) { cache[activeWork.plan.requestText] }
         if (cached != null) {
             performanceTelemetry?.recordTranslationCacheHit()
             complete(activeWork.token, Result.success(cached))
             return
         }
 
-        val protected = ProtectedTextCodec.protect(activeWork.work.text)
         activeWork.performanceToken = performanceTelemetry?.startTranslation()
-        val call = backend.translate(protected.encoded) { result ->
-            complete(activeWork.token, result.map(protected::restore))
+        val call = backend.translate(activeWork.plan.requestText) { result ->
+            complete(activeWork.token, result.mapCatching(activeWork.plan::restore))
         }
         synchronized(this) {
             if (active?.token == activeWork.token) {
@@ -565,18 +583,18 @@ internal class BlockTranslationQueue(
     }
 
     private fun complete(token: Long, result: Result<String>) {
-        val work = synchronized(this) {
+        val completed = synchronized(this) {
             val current = active?.takeIf { it.token == token } ?: return
             active = null
             current.performanceToken?.let {
                 performanceTelemetry?.finishTranslation(it, result.isSuccess)
             }
-            current.work
+            current
         }
         result.fold(
             onSuccess = { translated ->
-                synchronized(cache) { cache[work.text] = translated }
-                onTranslation(work.id, work.text, translated)
+                synchronized(cache) { cache[completed.plan.requestText] = translated }
+                onTranslation(completed.work.id, completed.work.text, translated)
             },
             onFailure = { error ->
                 if (error !is CancellationException) onError(error)

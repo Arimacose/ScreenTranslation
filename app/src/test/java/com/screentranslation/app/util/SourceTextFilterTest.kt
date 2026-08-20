@@ -29,8 +29,9 @@ class SourceTextFilterTest {
     }
 
     @Test
-    fun `english to chinese skips a mixed line that already contains chinese`() {
-        assertNull(
+    fun `english to chinese admits a mixed line with an eligible latin span`() {
+        assertEquals(
+            "设置 Settings (v0.4.0)",
             SourceTextFilter.filter(
                 "设置 Settings (v0.4.0)",
                 sourceLanguageTag = "en-US",
@@ -40,8 +41,9 @@ class SourceTextFilterTest {
     }
 
     @Test
-    fun `chinese UI sentence with latin product names is skipped`() {
-        assertNull(
+    fun `chinese UI sentence with latin product names is admitted for span routing`() {
+        assertEquals(
+            "HyperOS / MIUI 会主动回收后台前台服务",
             SourceTextFilter.filter(
                 "HyperOS / MIUI 会主动回收后台前台服务",
                 sourceLanguageTag = "en",
@@ -76,12 +78,12 @@ class SourceTextFilterTest {
     }
 
     @Test
-    fun `japanese to chinese requires kana and retains kanji`() {
+    fun `japanese to chinese accepts kana context and bounded pure Kanji UI lexicon`() {
         assertEquals(
             "これは設定です",
             SourceTextFilter.filter("これは設定です", "ja", "zh"),
         )
-        assertNull(SourceTextFilter.filter("設定", "ja", "zh"))
+        assertEquals("設定", SourceTextFilter.filter("設定", "ja", "zh"))
     }
 
     @Test

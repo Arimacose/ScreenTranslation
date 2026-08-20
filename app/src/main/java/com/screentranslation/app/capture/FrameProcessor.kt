@@ -9,7 +9,8 @@ import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationInputMode
 import com.screentranslation.app.util.ClauseSplitter
 import com.screentranslation.app.util.OcrPunctuationRestorer
-import com.screentranslation.app.util.ProtectedTextCodec
+import com.screentranslation.app.util.SegmentedTextPlan
+import com.screentranslation.app.util.SegmentedTextPlanner
 import com.screentranslation.app.util.SourceTextFilter
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
@@ -47,16 +48,21 @@ class FrameProcessor(
             TranslationCoordinator(
                 backend = translationEngine,
                 onTranslation = { original, translated ->
-                    val protected = synchronized(wholeRegionProtectedText) {
-                        wholeRegionProtectedText.remove(original)
+                    val plan = synchronized(wholeRegionPlans) {
+                        wholeRegionPlans.remove(original)
                     }
-                    onTranslation(
-                        FrameTranslation(
-                            originalText = protected?.original ?: original,
-                            translatedText = protected?.restore(translated) ?: translated,
-                        ),
+                    runCatching { plan?.restore(translated) ?: translated }.fold(
+                        onSuccess = { restored ->
+                            onTranslation(
+                                FrameTranslation(
+                                    originalText = plan?.originalText ?: original,
+                                    translatedText = restored,
+                                ),
+                            )
+                            performanceTelemetry?.recordTranslationPublished()
+                        },
+                        onFailure = onError,
                     )
-                    performanceTelemetry?.recordTranslationPublished()
                 },
                 onError = onError,
                 performanceTelemetry = performanceTelemetry,
@@ -65,12 +71,12 @@ class FrameProcessor(
             null
         }
 
-    private val wholeRegionProtectedText = object : LinkedHashMap<
+    private val wholeRegionPlans = object : LinkedHashMap<
         String,
-        ProtectedTextCodec.ProtectedText,
+        SegmentedTextPlan,
     >(WHOLE_REGION_PROTECTION_ENTRIES, 0.75f, true) {
         override fun removeEldestEntry(
-            eldest: MutableMap.MutableEntry<String, ProtectedTextCodec.ProtectedText>,
+            eldest: MutableMap.MutableEntry<String, SegmentedTextPlan>,
         ): Boolean = size > WHOLE_REGION_PROTECTION_ENTRIES
     }
     private var enabled = true
@@ -97,7 +103,7 @@ class FrameProcessor(
         if (!value) {
             wholeRegionCoordinator?.reset()
             stableTextGate.reset()
-            synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+            synchronized(wholeRegionPlans) { wholeRegionPlans.clear() }
             hadAcceptedSource = false
         }
     }
@@ -107,7 +113,7 @@ class FrameProcessor(
         gate.invalidate()
         stableTextGate.reset()
         wholeRegionCoordinator?.reset()
-        synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+        synchronized(wholeRegionPlans) { wholeRegionPlans.clear() }
         hadAcceptedSource = false
     }
 
@@ -206,11 +212,15 @@ class FrameProcessor(
                         gate.release()
                         hadAcceptedSource = true
                         onOriginalRecognized(stableText)
-                        val protected = ProtectedTextCodec.protect(stableText)
-                        synchronized(wholeRegionProtectedText) {
-                            wholeRegionProtectedText[protected.encoded] = protected
+                        val plan = SegmentedTextPlanner.plan(
+                            text = stableText,
+                            sourceLanguageTag = sourceLanguageTag,
+                            targetLanguageTag = targetLanguageTag,
+                        )
+                        synchronized(wholeRegionPlans) {
+                            wholeRegionPlans[plan.requestText] = plan
                         }
-                        checkNotNull(wholeRegionCoordinator).submit(protected.encoded)
+                        checkNotNull(wholeRegionCoordinator).submit(plan.requestText)
                     } else {
                         hadAcceptedSource = true
                         translate(stableText, filteredBlocks, frameGeneration)
@@ -227,7 +237,7 @@ class FrameProcessor(
     private fun clearWhenNoSourceText() {
         stableTextGate.reset()
         wholeRegionCoordinator?.reset()
-        synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+        synchronized(wholeRegionPlans) { wholeRegionPlans.clear() }
         if (!hadAcceptedSource) return
 
         hadAcceptedSource = false
@@ -267,7 +277,19 @@ class FrameProcessor(
         }
 
         parts.forEachIndexed { index, part ->
-            cached(part)?.let { hit ->
+            val segmentedPlan = SegmentedTextPlanner.plan(
+                text = part,
+                sourceLanguageTag = sourceLanguageTag,
+                targetLanguageTag = targetLanguageTag,
+            )
+            if (segmentedPlan.translatedSpanCount == 0) {
+                translated[index] = part
+                if (remaining.decrementAndGet() == 0) {
+                    settle { publish(originalText, translationPlan, translated, frameGeneration) }
+                }
+                return@forEachIndexed
+            }
+            cached(segmentedPlan.requestText)?.let { hit ->
                 performanceTelemetry?.recordTranslationCacheHit()
                 translated[index] = hit
                 if (remaining.decrementAndGet() == 0) {
@@ -276,20 +298,34 @@ class FrameProcessor(
                 return@forEachIndexed
             }
 
-            val protected = ProtectedTextCodec.protect(part)
             val timing = performanceTelemetry?.startTranslation()
-            translationEngine.translate(protected.encoded) { translation ->
+            translationEngine.translate(segmentedPlan.requestText) { translation ->
                 timing?.let {
                     performanceTelemetry?.finishTranslation(it, translation.isSuccess)
                 }
                 translation.fold(
                     onSuccess = { text ->
-                        val restored = protected.restore(text)
-                        translated[index] = restored
-                        cache(part, restored)
-                        if (remaining.decrementAndGet() == 0) {
-                            settle { publish(originalText, translationPlan, translated, frameGeneration) }
-                        }
+                        runCatching { segmentedPlan.restore(text) }.fold(
+                            onSuccess = { restored ->
+                                translated[index] = restored
+                                cache(segmentedPlan.requestText, restored)
+                                if (remaining.decrementAndGet() == 0) {
+                                    settle {
+                                        publish(
+                                            originalText,
+                                            translationPlan,
+                                            translated,
+                                            frameGeneration,
+                                        )
+                                    }
+                                }
+                            },
+                            onFailure = { error ->
+                                settle {
+                                    if (gate.isCurrent(frameGeneration)) onError(error)
+                                }
+                            },
+                        )
                     },
                     onFailure = { error ->
                         settle {
@@ -332,7 +368,7 @@ class FrameProcessor(
         wholeRegionCoordinator?.close()
         stableTextGate.reset()
         synchronized(translationCache) { translationCache.clear() }
-        synchronized(wholeRegionProtectedText) { wholeRegionProtectedText.clear() }
+        synchronized(wholeRegionPlans) { wholeRegionPlans.clear() }
     }
 
     private fun Bitmap.recycleSafely() {
