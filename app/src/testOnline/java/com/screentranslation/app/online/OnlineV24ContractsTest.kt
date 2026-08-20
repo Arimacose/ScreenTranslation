@@ -99,6 +99,17 @@ class OnlineV24ContractsTest {
     }
 
     @Test
+    fun `synchronous transport completion settles once without retaining call`() {
+        val coordinator = OnlineBatchCoordinator { blocks, callback ->
+            callback(Result.success(blocks.associate { it.id to "ok:${it.id}" }))
+            TranslationCall.NONE
+        }
+        val results = mutableListOf<Result<Map<String, String>>>()
+        coordinator.translate(listOf(OnlineBatchBlock("one", "text"))) { results += it }
+        assertEquals(listOf("one"), results.single().getOrThrow().keys.toList())
+    }
+
+    @Test
     fun `content-free metric exposes counts but has no content field`() {
         val metric = OnlineRequestMetric(
             requestId = "req-1",

@@ -198,7 +198,7 @@ internal class OnlineChatClient(
         ) {
             if (!completed.compareAndSet(false, true)) return
             retryFuture?.cancel(false)
-            metricsObserver.onMetric(
+            runCatching { metricsObserver.onMetric(
                 OnlineRequestMetric(
                     requestId = requestId,
                     modelId = modelId,
@@ -216,7 +216,7 @@ internal class OnlineChatClient(
                         else -> OnlineRequestOutcome.FAILED
                     },
                 ),
-            )
+            ) }
             onFinished(this)
             onResult(result)
         }
@@ -330,7 +330,7 @@ internal class OnlineChatClient(
         ) {
             if (!completed.compareAndSet(false, true)) return
             retryFuture?.cancel(false)
-            metricsObserver.onMetric(
+            runCatching { metricsObserver.onMetric(
                 OnlineRequestMetric(
                     requestId, modelId, lastStatus,
                     (elapsedRealtimeMillis() - startedAt).coerceAtLeast(0L),
@@ -344,7 +344,7 @@ internal class OnlineChatClient(
                         else -> OnlineRequestOutcome.FAILED
                     },
                 ),
-            )
+            ) }
             onFinished(this)
             onResult(result)
         }

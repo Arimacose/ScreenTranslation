@@ -205,13 +205,14 @@ internal class OnlineBatchCoordinator(
 
         fun launch(part: List<OnlineBatchBlock>, depth: Int) {
             if (cancelled.get() || settled.get()) return
-            synchronized(calls) { outstanding += 1 }
-            lateinit var call: TranslationCall
-            call = executeAttempt(part) { attempt ->
-                synchronized(calls) {
-                    calls.remove(call)
-                    outstanding -= 1
-                }
+            var callRef: TranslationCall? = null
+            synchronized(calls) {
+                outstanding += 1
+                val returned = executeAttempt(part) { attempt ->
+                    synchronized(calls) {
+                        callRef?.let(calls::remove)
+                        outstanding -= 1
+                    }
                 if (cancelled.get() || settled.get()) return@executeAttempt
                 attempt.fold(
                     onSuccess = { translated ->
@@ -255,9 +256,9 @@ internal class OnlineBatchCoordinator(
                         }
                     },
                 )
-            }
-            synchronized(calls) {
-                if (!settled.get() && !cancelled.get()) calls += call else call.cancel()
+                }
+                callRef = returned
+                if (!settled.get() && !cancelled.get()) calls += returned else returned.cancel()
             }
         }
 

@@ -147,12 +147,13 @@ class OnlineLlmTranslationEngine(
             client.translateBatch(blocks = part, onResult = callback)
         }
         val finished = AtomicBoolean(false)
-        lateinit var logicalCall: TranslationCall
-        logicalCall = coordinator.translate(blocks) { result ->
+        var logicalCallRef: TranslationCall? = null
+        val logicalCall = coordinator.translate(blocks) { result ->
             finished.set(true)
-            activeCalls.remove(logicalCall)
+            logicalCallRef?.let(activeCalls::remove)
             onResult(result)
         }
+        logicalCallRef = logicalCall
         if (!finished.get()) {
             activeCalls += logicalCall
             if (closed.get()) logicalCall.cancel()
