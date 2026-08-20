@@ -10,6 +10,8 @@ import com.screentranslation.app.ml.OcrProfiles
 import com.screentranslation.app.ml.OcrRequest
 import com.screentranslation.app.ml.OcrSecondPassPolicy
 import com.screentranslation.app.ml.TranslationBackend
+import com.screentranslation.app.ml.BatchTranslationBackend
+import com.screentranslation.app.ml.TranslationBatchItem
 import com.screentranslation.app.ml.TranslationCall
 import com.screentranslation.app.util.OcrPunctuationRestorer
 import com.screentranslation.app.util.SegmentedTextPlan
@@ -487,13 +489,16 @@ class FullScreenFrameProcessor(
         translationQueue.synchronize(activeIds)
         publishBlocks()
 
-        currentBlocks.asSequence()
-            .filter { it.isStable && it.text.isNotBlank() }
-            .filter { block ->
-                synchronized(translations) { translations[block.id]?.sourceText != block.text }
-            }
-            .take(MAX_CHANGED_BLOCKS_PER_SCAN)
-            .forEach { block -> translationQueue.submit(block.id, block.text) }
+        translationQueue.submitAll(
+            currentBlocks.asSequence()
+                .filter { it.isStable && it.text.isNotBlank() }
+                .filter { block ->
+                    synchronized(translations) { translations[block.id]?.sourceText != block.text }
+                }
+                .take(MAX_CHANGED_BLOCKS_PER_SCAN)
+                .map { block -> block.id to block.text }
+                .toList(),
+        )
         gate.release()
     }
 
@@ -593,10 +598,10 @@ internal class BlockTranslationQueue(
     private val targetLanguageTag: String = "zh",
 ) : AutoCloseable {
     private data class Work(val id: Long, val text: String)
+    private data class PlannedWork(val work: Work, val plan: SegmentedTextPlan)
     private data class Active(
         val token: Long,
-        val work: Work,
-        val plan: SegmentedTextPlan,
+        val works: List<PlannedWork>,
         var call: TranslationCall,
         var performanceToken: CapturePerformanceTelemetry.TimingToken? = null,
     )
@@ -611,17 +616,31 @@ internal class BlockTranslationQueue(
     private var paused = false
     private var closed = false
 
-    fun submit(id: Long, text: String) {
+    fun submit(id: Long, text: String) = submitAll(listOf(id to text))
+
+    fun submitAll(items: List<Pair<Long, String>>) {
+        if (items.isEmpty()) return
         var callToCancel: TranslationCall? = null
         synchronized(this) {
             if (closed) return
             val current = active
-            if (current?.work?.id == id) {
-                if (current.work.text == text) return
+            val incoming = items.associate { (id, text) -> id to Work(id, text) }
+            val changedActive = current?.works?.any { planned ->
+                incoming[planned.work.id]?.text?.let { it != planned.work.text } == true
+            } == true
+            if (current != null && changedActive) {
                 active = null
                 callToCancel = current.call
+                current.works.filter { it.work.id !in incoming }.forEach { retained ->
+                    pending.putIfAbsent(retained.work.id, retained.work)
+                }
             }
-            pending[id] = Work(id, text)
+            incoming.forEach { (id, work) ->
+                val alreadyActive = !changedActive && current?.works?.any {
+                    it.work.id == id && it.work.text == work.text
+                } == true
+                if (!alreadyActive) pending[id] = work
+            }
         }
         callToCancel?.cancel()
         pump()
@@ -632,9 +651,12 @@ internal class BlockTranslationQueue(
         synchronized(this) {
             pending.keys.retainAll(activeIds)
             val current = active
-            if (current != null && current.work.id !in activeIds) {
+            if (current != null && current.works.any { it.work.id !in activeIds }) {
                 active = null
                 callToCancel = current.call
+                current.works.filter { it.work.id in activeIds }.forEach { retained ->
+                    pending.putIfAbsent(retained.work.id, retained.work)
+                }
             }
         }
         callToCancel?.cancel()
@@ -664,32 +686,80 @@ internal class BlockTranslationQueue(
     private fun pump() {
         val activeWork = synchronized(this) {
             if (closed || paused || active != null || pending.isEmpty()) return
-            val work = pending.entries.first().also { pending.remove(it.key) }.value
-            val plan = SegmentedTextPlanner.plan(
-                text = work.text,
-                sourceLanguageTag = sourceLanguageTag,
-                targetLanguageTag = targetLanguageTag,
-            )
-            if (plan.translatedSpanCount == 0) {
-                onTranslation(work.id, work.text, work.text)
-                return@synchronized null
+            val batchBackend = backend as? BatchTranslationBackend
+            val maximumItems = batchBackend?.maximumBatchItems ?: 1
+            val maximumCharacters = batchBackend?.maximumBatchCharacters ?: Int.MAX_VALUE
+            val planned = mutableListOf<PlannedWork>()
+            var characters = 0
+            val iterator = pending.entries.iterator()
+            while (iterator.hasNext() && planned.size < maximumItems) {
+                val entry = iterator.next()
+                val work = entry.value
+                val plan = SegmentedTextPlanner.plan(
+                    text = work.text,
+                    sourceLanguageTag = sourceLanguageTag,
+                    targetLanguageTag = targetLanguageTag,
+                )
+                if (plan.translatedSpanCount == 0) {
+                    iterator.remove()
+                    onTranslation(work.id, work.text, work.text)
+                    continue
+                }
+                val cached = synchronized(cache) { cache[plan.requestText] }
+                if (cached != null) {
+                    iterator.remove()
+                    performanceTelemetry?.recordTranslationCacheHit()
+                    onTranslation(work.id, work.text, cached)
+                    continue
+                }
+                if (
+                    planned.isNotEmpty() &&
+                    characters + plan.requestText.length > maximumCharacters
+                ) break
+                iterator.remove()
+                planned += PlannedWork(work, plan)
+                characters += plan.requestText.length
+                // An oversized single item falls back to the ordinary backend call below.
+                if (characters > maximumCharacters) break
             }
-            Active(nextToken++, work, plan, TranslationCall.NONE).also { active = it }
+            if (planned.isEmpty()) return@synchronized null
+            Active(nextToken++, planned, TranslationCall.NONE).also { active = it }
         }
         if (activeWork == null) {
             pump()
             return
         }
-        val cached = synchronized(cache) { cache[activeWork.plan.requestText] }
-        if (cached != null) {
-            performanceTelemetry?.recordTranslationCacheHit()
-            complete(activeWork.token, Result.success(cached))
-            return
-        }
-
         activeWork.performanceToken = performanceTelemetry?.startTranslation()
-        val call = backend.translate(activeWork.plan.requestText) { result ->
-            complete(activeWork.token, result.mapCatching(activeWork.plan::restore))
+        val batchBackend = backend as? BatchTranslationBackend
+        val useBatch = batchBackend != null &&
+            activeWork.works.sumOf { it.plan.requestText.length } <=
+            batchBackend.maximumBatchCharacters
+        val call = if (useBatch) {
+            val requestItems = activeWork.works.mapIndexed { index, planned ->
+                TranslationBatchItem("w${activeWork.token}_$index", planned.plan.requestText)
+            }
+            batchBackend.translateBatch(requestItems) { result ->
+                complete(
+                    activeWork.token,
+                    result.mapCatching { translations ->
+                        activeWork.works.mapIndexed { index, planned ->
+                            val key = "w${activeWork.token}_$index"
+                            key to planned.plan.restore(
+                                translations[key]
+                                    ?: throw IllegalArgumentException("Batch result is missing $key"),
+                            )
+                        }.toMap()
+                    },
+                )
+            }
+        } else {
+            val planned = activeWork.works.single()
+            backend.translate(planned.plan.requestText) { result ->
+                complete(
+                    activeWork.token,
+                    result.mapCatching { mapOf("single" to planned.plan.restore(it)) },
+                )
+            }
         }
         synchronized(this) {
             if (active?.token == activeWork.token) {
@@ -700,7 +770,7 @@ internal class BlockTranslationQueue(
         }
     }
 
-    private fun complete(token: Long, result: Result<String>) {
+    private fun complete(token: Long, result: Result<Map<String, String>>) {
         val completed = synchronized(this) {
             val current = active?.takeIf { it.token == token } ?: return
             active = null
@@ -710,9 +780,18 @@ internal class BlockTranslationQueue(
             current
         }
         result.fold(
-            onSuccess = { translated ->
-                synchronized(cache) { cache[completed.plan.requestText] = translated }
-                onTranslation(completed.work.id, completed.work.text, translated)
+            onSuccess = { translations ->
+                completed.works.forEachIndexed { index, planned ->
+                    val key = if (completed.works.size == 1 && "single" in translations) {
+                        "single"
+                    } else {
+                        "w${completed.token}_$index"
+                    }
+                    val translated = translations[key]
+                        ?: throw IllegalArgumentException("Completed batch is missing $key")
+                    synchronized(cache) { cache[planned.plan.requestText] = translated }
+                    onTranslation(planned.work.id, planned.work.text, translated)
+                }
             },
             onFailure = { error ->
                 if (error !is CancellationException) onError(error)

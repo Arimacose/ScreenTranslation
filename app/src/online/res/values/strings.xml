@@ -24,6 +24,8 @@
     <string name="online_endpoint_path_help">Base URL 示例：https://HOST/v1；API Key 留空会保留已保存密钥。应用会自动使用 /models 获取模型，并自动补充 /chat/completions 发送翻译请求。</string>
     <string name="online_user_data_flow_consent">我了解：应用会向该服务发送 API Key 以读取模型列表，并在翻译时发送框选区域中识别出的文字。</string>
     <string name="online_fetch_models">获取可用模型</string>
+    <string name="online_cancel_fetch">取消获取模型</string>
+    <string name="online_model_search_hint">搜索模型 ID、名称或提供方</string>
     <string name="online_model_selection_label">选择翻译模型</string>
     <string name="online_model_selection_placeholder">请选择模型</string>
     <string name="online_models_not_loaded">填写 Base URL 和 API Key 后获取模型列表。</string>
@@ -36,6 +38,7 @@
     <string name="online_consent_required">请先确认模型列表与 OCR 文字的数据传输说明。</string>
     <string name="online_save">保存配置</string>
     <string name="online_save_and_test">保存并测试翻译</string>
+    <string name="online_cancel_test">取消翻译测试</string>
     <string name="online_delete_key">删除已保存密钥</string>
     <string name="online_test_text_hint">连接测试原文（应与主页面原文语言一致）</string>
     <string name="online_default_test_text">The Online edition sends only recognized text, not screenshots.</string>
@@ -44,6 +47,7 @@
     <string name="online_test_running">正在发送一条文本翻译测试…</string>
     <string name="online_test_success">测试成功：\n%1$s</string>
     <string name="online_test_failed">测试失败：%1$s</string>
+    <string name="online_details_affordance">点按此处查看已脱敏的技术详情</string>
     <string name="online_key_deleted">已删除 API Key 密文和 Keystore 密钥。</string>
     <string name="online_config_summary">模式：%1$s\n服务：%2$s\n模型：%3$s\n密钥：%4$s</string>
     <string name="online_mode_user_api">用户 API</string>

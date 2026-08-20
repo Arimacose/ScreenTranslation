@@ -36,6 +36,19 @@ fun interface TranslationCall {
     }
 }
 
+data class TranslationBatchItem(val id: String, val text: String)
+
+/** Optional capability used by the full-screen queue; local editions keep single-item calls. */
+interface BatchTranslationBackend {
+    val maximumBatchItems: Int
+    val maximumBatchCharacters: Int
+
+    fun translateBatch(
+        items: List<TranslationBatchItem>,
+        onResult: (Result<Map<String, String>>) -> Unit,
+    ): TranslationCall
+}
+
 /** Common asynchronous contract shared by local and online backends. */
 interface TranslationBackend : AutoCloseable {
     val profile: TranslationProviderProfile

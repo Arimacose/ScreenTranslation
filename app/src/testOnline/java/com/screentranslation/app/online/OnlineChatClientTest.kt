@@ -170,7 +170,7 @@ class OnlineChatClientTest {
             endpoint = OpenAiEndpoint.parse("https://api.example.test/v1"),
             apiKey = "test-key",
         )
-        var result: Result<List<String>>? = null
+        var result: Result<List<OnlineModelDescriptor>>? = null
 
         client.fetchModels { result = it }
 
@@ -185,8 +185,43 @@ class OnlineChatClientTest {
 
         assertEquals(
             listOf("chat model", "chat-model-v2"),
-            checkNotNull(result).getOrThrow(),
+            checkNotNull(result).getOrThrow().map { it.id },
         )
+    }
+
+    @Test
+    fun `posts one bounded batch and records only aggregate metrics`() {
+        val factory = RecordingCallFactory()
+        val scheduler = Executors.newSingleThreadScheduledExecutor()
+        val metrics = mutableListOf<OnlineRequestMetric>()
+        try {
+            val client = OnlineChatClient(
+                callFactory = factory,
+                retryScheduler = scheduler,
+                endpoint = OpenAiEndpoint.parse("https://api.example.test/v1"),
+                modelId = "translation-model",
+                apiKey = "test-key",
+                sourceLanguage = "en",
+                targetLanguage = "zh",
+                metricsObserver = OnlineMetricsObserver { metrics += it },
+                elapsedRealtimeMillis = { 100L + metrics.size * 40L },
+            )
+            val blocks = listOf(OnlineBatchBlock("b1", "Hello"), OnlineBatchBlock("b2", "World"))
+            var result: Result<Map<String, String>>? = null
+            client.translateBatch(blocks = blocks) { result = it }
+
+            factory.lastCall.respond(
+                200,
+                """{"choices":[{"message":{"content":"{\"blocks\":[{\"id\":\"b1\",\"translation\":\"你好\"},{\"id\":\"b2\",\"translation\":\"世界\"}]}"}}],"usage":{"prompt_tokens":8,"completion_tokens":4}}""",
+            )
+            assertEquals(mapOf("b1" to "你好", "b2" to "世界"), checkNotNull(result).getOrThrow())
+            assertEquals(10, metrics.single().inputCharacters)
+            assertEquals(4, metrics.single().outputCharacters)
+            assertEquals(200, metrics.single().httpStatus)
+            assertEquals(8L, metrics.single().promptTokens)
+        } finally {
+            scheduler.shutdownNow()
+        }
     }
 
     private fun client(

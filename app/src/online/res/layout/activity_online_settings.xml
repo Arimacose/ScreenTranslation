@@ -102,6 +102,15 @@
                     android:layout_marginTop="12dp"
                     android:text="@string/online_fetch_models" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_online_cancel_fetch"
+                    style="@style/Widget.ScreenTranslation.Button.Outlined"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/online_cancel_fetch"
+                    android:visibility="gone" />
+
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
@@ -116,6 +125,22 @@
                     android:text="@string/online_model_selection_label"
                     android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                     android:textStyle="bold" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.ScreenTranslation.Input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/online_model_search_hint">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/edit_online_model_search"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:importantForAutofill="no"
+                        android:inputType="text"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
 
                 <Spinner
                     android:id="@+id/spinner_online_model"
@@ -196,6 +221,15 @@
                     android:layout_marginTop="12dp"
                     android:text="@string/online_save_and_test" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_online_cancel_test"
+                    style="@style/Widget.ScreenTranslation.Button.Outlined"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/online_cancel_test"
+                    android:visibility="gone" />
+
                 <TextView
                     android:id="@+id/text_online_result"
                     android:layout_width="match_parent"
@@ -208,6 +242,17 @@
                     android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                     android:textColor="?attr/colorOnPrimaryContainer"
                     android:textIsSelectable="true" />
+
+                <TextView
+                    android:id="@+id/text_online_details"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_status_pill"
+                    android:padding="10dp"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting"
+                    android:textIsSelectable="true"
+                    android:visibility="gone" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
