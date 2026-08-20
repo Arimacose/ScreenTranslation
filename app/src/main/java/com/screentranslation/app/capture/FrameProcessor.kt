@@ -5,6 +5,10 @@ import android.graphics.RectF
 import android.media.ImageReader
 import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
+import com.screentranslation.app.ml.OcrProfile
+import com.screentranslation.app.ml.OcrProfiles
+import com.screentranslation.app.ml.OcrRequest
+import com.screentranslation.app.ml.OcrSecondPassPolicy
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationInputMode
 import com.screentranslation.app.util.ClauseSplitter
@@ -15,6 +19,7 @@ import com.screentranslation.app.util.SourceTextFilter
 import com.screentranslation.app.util.StableTextGate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.roundToInt
 
 /**
  * Drains ImageReader frames, throttles work, and serializes the asynchronous
@@ -28,13 +33,14 @@ class FrameProcessor(
     private val translationEngine: TranslationBackend,
     private val sourceLanguageTag: String,
     private val targetLanguageTag: String,
+    private val ocrProfile: OcrProfile = OcrProfiles.BALANCED,
     private val stableTextGate: StableTextGate = StableTextGate(),
     frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
     private val onOriginalRecognized: (String) -> Unit = {},
     private val onTranslation: (FrameTranslation) -> Unit,
     private val onError: (Throwable) -> Unit = {},
     private val performanceTelemetry: CapturePerformanceTelemetry? = null,
-    elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
+    private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
 ) : FramePipeline {
     data class FrameTranslation(
         val originalText: String,
@@ -161,76 +167,131 @@ class FrameProcessor(
     }
 
     private fun recognize(bitmap: Bitmap, frameGeneration: Long) {
+        val request = OcrRequest(ocrProfile, passIndex = 1, roiIdentity = "region")
         val timing = performanceTelemetry?.startOcr(
             CapturePerformanceTelemetry.OcrPath.REGION,
             bitmap.width.toLong() * bitmap.height,
         )
-        ocrEngine.recognize(bitmap) { result ->
+        ocrEngine.recognize(bitmap, request) { result ->
             timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
-            bitmap.recycleSafely()
-
             if (!gate.isCurrent(frameGeneration)) {
+                bitmap.recycleSafely()
                 gate.release()
                 return@recognize
             }
-
             result.fold(
                 onSuccess = { recognition ->
-                    val recognitionBlocks = recognition.blocks.ifEmpty {
-                        recognition.regions.map { it.text }.ifEmpty {
-                            recognition.text.lineSequence().toList()
-                        }
-                    }
-                    val restoredBlocks = OcrPunctuationRestorer.restoreBlocks(
-                        recognitionBlocks,
-                        sourceLanguageTag,
-                    )
-                    val filteredBlocks = SourceTextFilter.filterBlocks(
-                        blocks = restoredBlocks,
-                        sourceLanguageTag = sourceLanguageTag,
-                        targetLanguageTag = targetLanguageTag,
-                    )
-                    val filteredText = filteredBlocks.joinToString("\n")
-                    if (filteredText.isBlank()) {
-                        clearWhenNoSourceText()
-                        gate.release()
-                        return@fold
-                    }
-
-                    // Stability is judged on the whole region: a partially
-                    // repainted UI should not be treated as settled just because
-                    // one block happens to match.
-                    val stableText = stableTextGate.offer(filteredText)
-                    if (stableText == null) {
-                        gate.release()
-                    } else if (
-                        translationEngine.inputMode == TranslationInputMode.WHOLE_REGION
-                    ) {
-                        // Online requests must not hold the capture single-flight
-                        // slot: newer stable OCR is allowed to replace an older
-                        // in-flight request through the coordinator.
-                        gate.release()
-                        hadAcceptedSource = true
-                        onOriginalRecognized(stableText)
-                        val plan = SegmentedTextPlanner.plan(
-                            text = stableText,
-                            sourceLanguageTag = sourceLanguageTag,
-                            targetLanguageTag = targetLanguageTag,
+                    if (OcrSecondPassPolicy.shouldRun(
+                            request,
+                            recognition,
+                            bitmap.width,
+                            bitmap.height,
                         )
-                        synchronized(wholeRegionPlans) {
-                            wholeRegionPlans[plan.requestText] = plan
-                        }
-                        checkNotNull(wholeRegionCoordinator).submit(plan.requestText)
+                    ) {
+                        recognizeRegionSecondPass(bitmap, recognition, frameGeneration)
                     } else {
-                        hadAcceptedSource = true
-                        translate(stableText, filteredBlocks, frameGeneration)
+                        bitmap.recycleSafely()
+                        processRecognition(recognition, frameGeneration)
                     }
                 },
                 onFailure = { error ->
+                    bitmap.recycleSafely()
                     gate.release()
                     onError(error)
                 },
             )
+        }
+    }
+
+    private fun recognizeRegionSecondPass(
+        bitmap: Bitmap,
+        first: OcrEngine.Recognition,
+        frameGeneration: Long,
+    ) {
+        val budget = checkNotNull(ocrProfile.secondPass)
+        val secondBitmap = Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width * budget.upscaleFactor).roundToInt().coerceAtLeast(1),
+            (bitmap.height * budget.upscaleFactor).roundToInt().coerceAtLeast(1),
+            true,
+        )
+        val deadline = elapsedRealtime() + budget.timeoutMillis
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.REGION_SECOND_PASS,
+            secondBitmap.width.toLong() * secondBitmap.height,
+        )
+        ocrEngine.recognize(
+            secondBitmap,
+            OcrRequest(ocrProfile, passIndex = 2, roiIdentity = "region"),
+        ) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
+            secondBitmap.recycleSafely()
+            bitmap.recycleSafely()
+            if (!gate.isCurrent(frameGeneration)) {
+                gate.release()
+                return@recognize
+            }
+            val second = result.getOrNull()
+            val withinDeadline = elapsedRealtime() <= deadline
+            if (!withinDeadline) performanceTelemetry?.recordSecondPassTimeout()
+            val merged = second
+                ?.takeIf { withinDeadline }
+                ?.let { secondResult ->
+                    OcrSecondPassPolicy.merge(first, secondResult).also { combined ->
+                        performanceTelemetry?.recordDeduplicatedOcrBlocks(
+                            first.regions.size + secondResult.regions.size - combined.regions.size,
+                        )
+                    }
+                }
+                ?: first
+            processRecognition(merged, frameGeneration)
+        }
+    }
+
+    private fun processRecognition(
+        recognition: OcrEngine.Recognition,
+        frameGeneration: Long,
+    ) {
+        val recognitionBlocks = recognition.blocks.ifEmpty {
+            recognition.regions.map { it.text }.ifEmpty {
+                recognition.text.lineSequence().toList()
+            }
+        }
+        val restoredBlocks = OcrPunctuationRestorer.restoreBlocks(
+            recognitionBlocks,
+            sourceLanguageTag,
+        )
+        val filteredBlocks = SourceTextFilter.filterBlocks(
+            blocks = restoredBlocks,
+            sourceLanguageTag = sourceLanguageTag,
+            targetLanguageTag = targetLanguageTag,
+        )
+        val filteredText = filteredBlocks.joinToString("\n")
+        if (filteredText.isBlank()) {
+            clearWhenNoSourceText()
+            gate.release()
+            return
+        }
+
+        val stableText = stableTextGate.offer(filteredText)
+        if (stableText == null) {
+            gate.release()
+        } else if (translationEngine.inputMode == TranslationInputMode.WHOLE_REGION) {
+            gate.release()
+            hadAcceptedSource = true
+            onOriginalRecognized(stableText)
+            val plan = SegmentedTextPlanner.plan(
+                text = stableText,
+                sourceLanguageTag = sourceLanguageTag,
+                targetLanguageTag = targetLanguageTag,
+            )
+            synchronized(wholeRegionPlans) {
+                wholeRegionPlans[plan.requestText] = plan
+            }
+            checkNotNull(wholeRegionCoordinator).submit(plan.requestText)
+        } else {
+            hadAcceptedSource = true
+            translate(stableText, filteredBlocks, frameGeneration)
         }
     }
 

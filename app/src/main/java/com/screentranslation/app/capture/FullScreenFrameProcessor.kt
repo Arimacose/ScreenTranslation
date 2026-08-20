@@ -5,6 +5,10 @@ import android.graphics.RectF
 import android.media.ImageReader
 import android.os.SystemClock
 import com.screentranslation.app.ml.OcrEngine
+import com.screentranslation.app.ml.OcrProfile
+import com.screentranslation.app.ml.OcrProfiles
+import com.screentranslation.app.ml.OcrRequest
+import com.screentranslation.app.ml.OcrSecondPassPolicy
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationCall
 import com.screentranslation.app.util.OcrPunctuationRestorer
@@ -14,6 +18,7 @@ import com.screentranslation.app.util.SourceTextFilter
 import java.util.concurrent.CancellationException
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Experimental full-screen pipeline.
@@ -28,6 +33,7 @@ class FullScreenFrameProcessor(
     private val translationEngine: TranslationBackend,
     private val sourceLanguageTag: String,
     private val targetLanguageTag: String,
+    private val ocrProfile: OcrProfile = OcrProfiles.BALANCED,
     frameIntervalMs: Long,
     private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
     private val onError: (Throwable) -> Unit = {},
@@ -219,7 +225,10 @@ class FullScreenFrameProcessor(
             CapturePerformanceTelemetry.OcrPath.FULL_FRAME,
             bitmap.width.toLong() * bitmap.height,
         )
-        ocrEngine.recognize(bitmap) { result ->
+        ocrEngine.recognize(
+            bitmap,
+            OcrRequest(ocrProfile, passIndex = 1, roiIdentity = "full_frame"),
+        ) { result ->
             timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
             if (!gate.isCurrent(generation)) {
                 bitmap.recycleSafely()
@@ -300,58 +309,167 @@ class FullScreenFrameProcessor(
             CapturePerformanceTelemetry.OcrPath.TILE,
             crop.width.toLong() * crop.height,
         )
-        ocrEngine.recognize(crop) { result ->
+        val request = OcrRequest(
+            ocrProfile,
+            passIndex = 1,
+            roiIdentity = "tile-${baseTile.index}",
+        )
+        ocrEngine.recognize(crop, request) { result ->
             timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
-            crop.recycleSafely()
             if (!gate.isCurrent(generation)) {
+                crop.recycleSafely()
                 bitmap.recycleSafely()
                 gate.release()
                 return@recognize
             }
             result.fold(
                 onSuccess = { recognition ->
-                    tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
-                        val sourceText = SourceTextFilter.filter(
-                            text = OcrPunctuationRestorer.restore(
-                                region.text,
-                                sourceLanguageTag,
-                            ),
-                            sourceLanguageTag = sourceLanguageTag,
-                            targetLanguageTag = targetLanguageTag,
-                        ) ?: return@mapNotNull null
-                        val bounds = mapTileRegionToScreen(
-                            tileCrop = cropTile,
-                            frameWidth = bitmap.width,
-                            frameHeight = bitmap.height,
-                            left = region.left,
-                            top = region.top,
-                            right = region.right,
-                            bottom = region.bottom,
+                    if (OcrSecondPassPolicy.shouldRun(
+                            request,
+                            recognition,
+                            crop.width,
+                            crop.height,
                         )
-                        val centerX = bounds.centerX * bitmap.width
-                        val centerY = bounds.centerY * bitmap.height
-                        if (!baseTile.contains(centerX, centerY)) {
-                            null
-                        } else {
-                            ScreenTextBlock(sourceText, bounds, region.confidence)
-                        }
+                    ) {
+                        recognizeTileSecondPass(
+                            bitmap = bitmap,
+                            crop = crop,
+                            cropTile = cropTile,
+                            baseTile = baseTile,
+                            tiles = tiles,
+                            tileIndices = tileIndices,
+                            naturallyChanged = naturallyChanged,
+                            generation = generation,
+                            position = position,
+                            first = recognition,
+                        )
+                    } else {
+                        crop.recycleSafely()
+                        finishTileRecognition(
+                            bitmap,
+                            cropTile,
+                            baseTile,
+                            tiles,
+                            tileIndices,
+                            naturallyChanged,
+                            generation,
+                            position,
+                            recognition,
+                        )
                     }
-                    recognizeTiles(
-                        bitmap,
-                        tiles,
-                        tileIndices,
-                        naturallyChanged,
-                        generation,
-                        position + 1,
-                    )
                 },
                 onFailure = { error ->
+                    crop.recycleSafely()
                     bitmap.recycleSafely()
                     gate.release()
                     onError(error)
                 },
             )
         }
+    }
+
+    private fun recognizeTileSecondPass(
+        bitmap: Bitmap,
+        crop: Bitmap,
+        cropTile: PixelTile,
+        baseTile: PixelTile,
+        tiles: List<PixelTile>,
+        tileIndices: List<Int>,
+        naturallyChanged: Set<Int>,
+        generation: Long,
+        position: Int,
+        first: OcrEngine.Recognition,
+    ) {
+        val budget = checkNotNull(ocrProfile.secondPass)
+        val secondBitmap = Bitmap.createScaledBitmap(
+            crop,
+            (crop.width * budget.upscaleFactor).roundToInt().coerceAtLeast(1),
+            (crop.height * budget.upscaleFactor).roundToInt().coerceAtLeast(1),
+            true,
+        )
+        crop.recycleSafely()
+        val startedAt = SystemClock.elapsedRealtime()
+        val timing = performanceTelemetry?.startOcr(
+            CapturePerformanceTelemetry.OcrPath.TILE_SECOND_PASS,
+            secondBitmap.width.toLong() * secondBitmap.height,
+        )
+        ocrEngine.recognize(
+            secondBitmap,
+            OcrRequest(ocrProfile, passIndex = 2, roiIdentity = "tile-${baseTile.index}"),
+        ) { result ->
+            timing?.let { performanceTelemetry?.finishOcr(it, result.isSuccess) }
+            secondBitmap.recycleSafely()
+            if (!gate.isCurrent(generation)) {
+                bitmap.recycleSafely()
+                gate.release()
+                return@recognize
+            }
+            val withinDeadline = SystemClock.elapsedRealtime() - startedAt <= budget.timeoutMillis
+            if (!withinDeadline) performanceTelemetry?.recordSecondPassTimeout()
+            val merged = result.getOrNull()
+                ?.takeIf { withinDeadline }
+                ?.let { second ->
+                    OcrSecondPassPolicy.merge(first, second).also { combined ->
+                        performanceTelemetry?.recordDeduplicatedOcrBlocks(
+                            first.regions.size + second.regions.size - combined.regions.size,
+                        )
+                    }
+                }
+                ?: first
+            finishTileRecognition(
+                bitmap,
+                cropTile,
+                baseTile,
+                tiles,
+                tileIndices,
+                naturallyChanged,
+                generation,
+                position,
+                merged,
+            )
+        }
+    }
+
+    private fun finishTileRecognition(
+        bitmap: Bitmap,
+        cropTile: PixelTile,
+        baseTile: PixelTile,
+        tiles: List<PixelTile>,
+        tileIndices: List<Int>,
+        naturallyChanged: Set<Int>,
+        generation: Long,
+        position: Int,
+        recognition: OcrEngine.Recognition,
+    ) {
+        tileBlocks[baseTile.index] = recognition.regions.mapNotNull { region ->
+            val sourceText = SourceTextFilter.filter(
+                text = OcrPunctuationRestorer.restore(region.text, sourceLanguageTag),
+                sourceLanguageTag = sourceLanguageTag,
+                targetLanguageTag = targetLanguageTag,
+            ) ?: return@mapNotNull null
+            val bounds = mapTileRegionToScreen(
+                tileCrop = cropTile,
+                frameWidth = bitmap.width,
+                frameHeight = bitmap.height,
+                left = region.left,
+                top = region.top,
+                right = region.right,
+                bottom = region.bottom,
+            )
+            val centerX = bounds.centerX * bitmap.width
+            val centerY = bounds.centerY * bitmap.height
+            if (!baseTile.contains(centerX, centerY)) null else {
+                ScreenTextBlock(sourceText, bounds, region.confidence)
+            }
+        }
+        recognizeTiles(
+            bitmap,
+            tiles,
+            tileIndices,
+            naturallyChanged,
+            generation,
+            position + 1,
+        )
     }
 
     private fun finishRecognition(naturallyChanged: Set<Int>, generation: Long) {

@@ -22,6 +22,13 @@
     <string name="capture_mode_full_screen">全屏增量覆盖（实验）</string>
     <string name="capture_mode_region_hint">授权后拖动选择区域，结果显示在可展开面板中。</string>
     <string name="capture_mode_full_screen_hint">实验功能：只重识别变化分块，并把译文直接覆盖在对应原文上方；当前验收基线为 Android 16 / 小米 15 Pro / HyperOS。</string>
+    <string name="ocr_profile">OCR 识别配置</string>
+    <string name="ocr_profile_balanced">均衡（默认）</string>
+    <string name="ocr_profile_small_subtitle">小字幕</string>
+    <string name="ocr_profile_document">文档</string>
+    <string name="ocr_profile_balanced_hint">640 长边，优先持续识别的耗电、延迟与稳定性。</string>
+    <string name="ocr_profile_small_subtitle_hint">960 长边；稳定小字区域最多追加 2 块、1.5 MP、900 ms 的二次识别。</string>
+    <string name="ocr_profile_document_hint">1280 长边；静态密集页面最多追加 4 块、3 MP、1400 ms 的二次识别。</string>
     <string name="frame_interval">识别帧间隔</string>
     <string name="frame_interval_value">%1$d 毫秒</string>
     <string name="frame_interval_hint">间隔越短响应越快，但耗电和发热也会增加。</string>

@@ -39,6 +39,7 @@ import com.google.android.material.color.MaterialColors
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.screentranslation.app.ml.ModelPreparationProgress
 import com.screentranslation.app.ml.ModelPreparationStage
+import com.screentranslation.app.ml.OcrProfileId
 import com.screentranslation.app.ml.TranslationBackend
 import com.screentranslation.app.ml.TranslationBackendFactory
 import com.screentranslation.app.model.LanguageOption
@@ -275,6 +276,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var targetSpinner: Spinner
     private lateinit var captureModeSpinner: Spinner
     private lateinit var captureModeHintView: TextView
+    private lateinit var ocrProfileSpinner: Spinner
+    private lateinit var ocrProfileHintView: TextView
     private lateinit var intervalSeekBar: SeekBar
     private lateinit var intervalValueView: TextView
     private lateinit var prepareModelsButton: Button
@@ -394,6 +397,7 @@ class MainActivity : AppCompatActivity() {
             interval,
             selectedCaptureMode(),
         )
+        preferences.setOcrProfile(selectedCaptureMode(), selectedOcrProfile())
 
         try {
             val serviceIntent = ScreenTranslationService.startIntent(
@@ -442,6 +446,7 @@ class MainActivity : AppCompatActivity() {
         configureAppearance()
         configureLanguageSelectors()
         configureCaptureMode()
+        configureOcrProfile()
         configureFrameInterval()
         configureActions()
         modelReadyFor = null
@@ -524,6 +529,8 @@ class MainActivity : AppCompatActivity() {
         targetSpinner = findViewById(R.id.spinner_target_language)
         captureModeSpinner = findViewById(R.id.spinner_capture_mode)
         captureModeHintView = findViewById(R.id.text_capture_mode_hint)
+        ocrProfileSpinner = findViewById(R.id.spinner_ocr_profile)
+        ocrProfileHintView = findViewById(R.id.text_ocr_profile_hint)
         intervalSeekBar = findViewById(R.id.seek_frame_interval)
         intervalValueView = findViewById(R.id.text_frame_interval)
         prepareModelsButton = findViewById(R.id.button_prepare_models)
@@ -752,12 +759,59 @@ class MainActivity : AppCompatActivity() {
                 id: Long,
             ) {
                 updateCaptureModeHint()
+                if (::ocrProfileSpinner.isInitialized && ocrProfileSpinner.adapter != null) {
+                    syncOcrProfileSelection()
+                }
                 persistCurrentConfiguration()
                 renderHomeReadiness()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
+    }
+
+    private fun configureOcrProfile() {
+        ocrProfileSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            listOf(
+                getString(R.string.ocr_profile_balanced),
+                getString(R.string.ocr_profile_small_subtitle),
+                getString(R.string.ocr_profile_document),
+            ),
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        syncOcrProfileSelection()
+        ocrProfileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long,
+            ) {
+                preferences.setOcrProfile(selectedCaptureMode(), selectedOcrProfile())
+                updateOcrProfileHint()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+    }
+
+    private fun syncOcrProfileSelection() {
+        val selected = preferences.ocrProfile(selectedCaptureMode())
+        ocrProfileSpinner.setSelection(selected.ordinal, false)
+        updateOcrProfileHint()
+    }
+
+    private fun updateOcrProfileHint() {
+        ocrProfileHintView.setText(
+            when (selectedOcrProfile()) {
+                OcrProfileId.BALANCED -> R.string.ocr_profile_balanced_hint
+                OcrProfileId.SMALL_SUBTITLE -> R.string.ocr_profile_small_subtitle_hint
+                OcrProfileId.DOCUMENT -> R.string.ocr_profile_document_hint
+            },
+        )
     }
 
     private fun configureActions() {
@@ -1486,6 +1540,7 @@ class MainActivity : AppCompatActivity() {
             frameIntervalMs = selectedFrameInterval(),
             captureMode = selectedCaptureMode(),
         )
+        preferences.setOcrProfile(selectedCaptureMode(), selectedOcrProfile())
     }
 
     private fun selectedSourceLanguage(): LanguageOption {
@@ -1516,6 +1571,10 @@ class MainActivity : AppCompatActivity() {
         CaptureMode.entries[
             captureModeSpinner.selectedItemPosition.coerceIn(0, CaptureMode.entries.lastIndex)
         ]
+
+    private fun selectedOcrProfile(): OcrProfileId = OcrProfileId.entries[
+        ocrProfileSpinner.selectedItemPosition.coerceIn(0, OcrProfileId.entries.lastIndex)
+    ]
 
     private fun updateCaptureModeHint() {
         captureModeHintView.setText(

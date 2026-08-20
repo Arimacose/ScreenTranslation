@@ -2,6 +2,7 @@ package com.screentranslation.app.prefs
 
 import android.content.Context
 import androidx.core.content.edit
+import com.screentranslation.app.ml.OcrProfileId
 import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.model.CaptureMode
 import com.screentranslation.app.model.UiStyle
@@ -53,6 +54,14 @@ class AppPreferences(context: Context) {
             preferences.edit { putString(KEY_CAPTURE_MODE, value.persistedValue) }
         }
 
+    fun ocrProfile(captureMode: CaptureMode): OcrProfileId = OcrProfileId.fromPersisted(
+        preferences.getString(ocrProfileKey(captureMode), OcrProfileId.BALANCED.persistedValue),
+    )
+
+    fun setOcrProfile(captureMode: CaptureMode, profileId: OcrProfileId) {
+        preferences.edit { putString(ocrProfileKey(captureMode), profileId.persistedValue) }
+    }
+
     var uiStyle: UiStyle
         get() = UiStyle.fromPersisted(
             preferences.getString(KEY_UI_STYLE, UiStyle.DEFAULT.persistedValue),
@@ -100,8 +109,15 @@ class AppPreferences(context: Context) {
         private const val KEY_TARGET_LANGUAGE = "target_language"
         private const val KEY_FRAME_INTERVAL_MS = "frame_interval_ms"
         private const val KEY_CAPTURE_MODE = "capture_mode"
+        private const val KEY_OCR_PROFILE_REGION = "ocr_profile_region"
+        private const val KEY_OCR_PROFILE_FULL_SCREEN = "ocr_profile_full_screen"
         private const val KEY_UI_STYLE = "ui_style"
         private const val KEY_MATERIAL_MONET_ENABLED = "material_monet_enabled"
         private const val KEY_IDLE_SHORTCUT_ENABLED = "idle_shortcut_enabled"
+
+        private fun ocrProfileKey(captureMode: CaptureMode): String = when (captureMode) {
+            CaptureMode.REGION -> KEY_OCR_PROFILE_REGION
+            CaptureMode.FULL_SCREEN_INCREMENTAL -> KEY_OCR_PROFILE_FULL_SCREEN
+        }
     }
 }

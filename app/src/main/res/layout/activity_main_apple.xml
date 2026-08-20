@@ -168,6 +168,25 @@
                     android:layout_height="wrap_content"
                     android:text="@string/capture_mode_region_hint"
                     android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:labelFor="@id/spinner_ocr_profile"
+                    android:text="@string/ocr_profile"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.RowTitle"
+                    android:textStyle="bold" />
+                <Spinner
+                    android:id="@+id/spinner_ocr_profile"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:spinnerMode="dropdown" />
+                <TextView
+                    android:id="@+id/text_ocr_profile_hint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ocr_profile_balanced_hint"
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Apple.Footnote" />
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"

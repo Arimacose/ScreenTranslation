@@ -45,6 +45,12 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
     override fun recognize(
         bitmap: Bitmap,
         onResult: (Result<OcrEngine.Recognition>) -> Unit,
+    ) = recognize(bitmap, OcrRequest(OcrProfiles.BALANCED), onResult)
+
+    override fun recognize(
+        bitmap: Bitmap,
+        request: OcrRequest,
+        onResult: (Result<OcrEngine.Recognition>) -> Unit,
     ) {
         if (closed.get()) {
             onResult(Result.failure(IllegalStateException("OCR engine is closed")))
@@ -59,7 +65,7 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
                     runCatching {
                         val activeRuntime = runtime
                             ?: createRuntime().also { runtime = it }
-                        recognizeSynchronously(bitmap, activeRuntime)
+                        recognizeSynchronously(bitmap, activeRuntime, request.profile)
                     }
                 }
                 try {
@@ -76,8 +82,9 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
     private fun recognizeSynchronously(
         bitmap: Bitmap,
         runtime: RuntimeState,
+        profile: OcrProfile,
     ): OcrEngine.Recognition {
-        val detectionInput = prepareDetectionInput(bitmap)
+        val detectionInput = prepareDetectionInput(bitmap, profile.detectionLongSide)
         val boxes = OnnxTensor.createTensor(
             runtime.environment,
             FloatBuffer.wrap(detectionInput.values),
@@ -121,7 +128,7 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
             boxes.zip(recognizeCrops(crops, runtime))
                 .mapNotNull { (box, decoded) ->
                     val text = decoded.text.trim()
-                    if (decoded.confidence < RECOGNITION_SCORE_THRESHOLD || text.isEmpty()) {
+                    if (decoded.confidence < profile.recognitionThreshold || text.isEmpty()) {
                         null
                     } else {
                         box to decoded.copy(text = text)
@@ -238,16 +245,16 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
         }
     }
 
-    private fun prepareDetectionInput(bitmap: Bitmap): DetectionInput {
+    private fun prepareDetectionInput(bitmap: Bitmap, detectionLongSide: Int): DetectionInput {
         val originalWidth = bitmap.width
         val originalHeight = bitmap.height
         // Screen captures already contain rasterized text at display density.
         // Avoid the generic OCR pipeline's short-side upscale: it multiplies
         // activation memory without helping these screen-text fixtures.
         val ratio = if (
-            max(originalWidth, originalHeight) > DETECTION_SCREEN_LONG_SIDE
+            max(originalWidth, originalHeight) > detectionLongSide
         ) {
-            DETECTION_SCREEN_LONG_SIDE.toFloat() /
+            detectionLongSide.toFloat() /
                 max(originalWidth, originalHeight)
         } else {
             1f
@@ -445,7 +452,6 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
         private const val RECOGNITION_MODEL_BYTES = 21_159_378L
         private const val CHARACTER_COUNT = 18_708
         private const val DETECTION_CHANNELS = 3
-        private const val DETECTION_SCREEN_LONG_SIDE = 640
         private const val RECOGNITION_CHANNELS = 3
         private const val RECOGNITION_HEIGHT = 48
         private const val BASE_RECOGNITION_WIDTH = 320
@@ -453,7 +459,6 @@ internal class PpOcrv6Engine(context: Context) : OcrEngine {
         private const val RECOGNITION_BATCH_SIZE = 1
         private const val CPU_THREADS = 4
         private const val CLOSE_TIMEOUT_SECONDS = 5L
-        private const val RECOGNITION_SCORE_THRESHOLD = 0.25f
         private val MODEL_COPY_LOCK = Any()
     }
 }
