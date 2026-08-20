@@ -44,8 +44,11 @@ verify it against `SHA256SUMS` from the same Release.
 
 [Play the v2.4.0 Xiaomi 15 Pro acceptance recording (MP4)](docs/assets/v2.4.0-xiaomi15pro-demo.mp4)
 
-This animation is a deterministic interaction preview. The v2.4.0 Xiaomi 15 Pro / Android 16 /
-HyperOS recording, device properties, acceptance logs, and hashes are published with the Release
+This animation is a deterministic interaction preview. The MP4 was recorded with
+`v2.4.0-lite-benchmark` on a Xiaomi 15 Pro running Android 16 / HyperOS
+`OS3.0.304.0.WOBCNXM` as physical-device interaction pre-acceptance before signed candidates were
+produced. Installed hashes, sustained-run evidence, device properties, and logs for the final signed
+APKs are published with the Release
 and in [`docs/V2_4_0_DEVICE_ACCEPTANCE.md`](docs/V2_4_0_DEVICE_ACCEPTANCE.md). Historical signed-Release
 evidence and the complete device gate are documented in
 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md). The final candidate is frozen as a signed

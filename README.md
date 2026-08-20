@@ -38,8 +38,9 @@
 
 [播放 v2.4.0 小米 15 Pro 真机验收录屏（MP4）](docs/assets/v2.4.0-xiaomi15pro-demo.mp4)
 
-该动画是确定性的交互预览。v2.4.0 的实际小米 15 Pro / Android 16 / HyperOS
-录屏、设备属性、验收日志与哈希随 Release 附件和
+该动画是确定性的交互预览。MP4 使用 `v2.4.0-lite-benchmark` 在小米 15 Pro /
+Android 16 / HyperOS `OS3.0.304.0.WOBCNXM` 上录制，用于签名候选生成前的真机
+交互预验收。最终签名 APK 的安装哈希、持续运行记录、设备属性与验收日志随 Release 附件和
 [`docs/V2_4_0_DEVICE_ACCEPTANCE.md`](docs/V2_4_0_DEVICE_ACCEPTANCE.md) 发布。历史签名
 Release 证据与完整门禁清单位于
 [`docs/DEVICE_TEST.md`](docs/DEVICE_TEST.md)。最终候选由带 source SHA 的签名
