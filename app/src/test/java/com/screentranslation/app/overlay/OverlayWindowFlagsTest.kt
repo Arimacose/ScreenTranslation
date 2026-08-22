@@ -1,6 +1,8 @@
 package com.screentranslation.app.overlay
 
 import android.view.WindowManager
+import android.view.KeyEvent
+import com.screentranslation.app.isSelectionGuardBackKey
 import com.screentranslation.app.selectionGestureGuardWindowFlags
 import com.screentranslation.app.selectionGestureGuardSystemUiFlags
 import org.junit.Assert.assertEquals
@@ -75,6 +77,12 @@ class OverlayWindowFlagsTest {
         assertTrue(flags and WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN != 0)
     }
 
+    @Test
+    fun `gesture guard consumes legacy and injected back key events`() {
+        assertTrue(isSelectionGuardBackKey(KeyEvent.KEYCODE_BACK))
+        assertEquals(false, isSelectionGuardBackKey(KeyEvent.KEYCODE_VOLUME_DOWN))
+    }
+
     @Suppress("DEPRECATION")
     @Test
     fun `gesture guard enters immersive mode for full edge exclusion`() {
@@ -90,6 +98,12 @@ class OverlayWindowFlagsTest {
         assertEquals(32f, MIN_SELECTION_SIZE_DP)
         assertTrue(isSelectionSizeAccepted(80, 80, 80f))
         assertEquals(false, isSelectionSizeAccepted(79, 80, 80f))
+    }
+
+    @Test
+    fun `selection exits only from its explicit button`() {
+        assertTrue(shouldExitSelection(SelectionExitTrigger.EXPLICIT_BUTTON))
+        assertEquals(false, shouldExitSelection(SelectionExitTrigger.SYSTEM_BACK))
     }
 
     @Test

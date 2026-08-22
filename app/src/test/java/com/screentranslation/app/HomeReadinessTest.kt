@@ -6,6 +6,37 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeReadinessTest {
+
+    @Test
+    fun `ready state hides both in-app actions`() {
+        assertEquals(
+            HomeActionVisibility(showPrimaryAction = false, showStopAction = false),
+            homeActionVisibility(HomePrimaryAction.READY_FOR_NOTIFICATION),
+        )
+    }
+
+    @Test
+    fun `running state leaves stop control to the translation overlay`() {
+        assertEquals(
+            HomeActionVisibility(showPrimaryAction = false, showStopAction = false),
+            homeActionVisibility(HomePrimaryAction.STOP_CAPTURE),
+        )
+    }
+
+    @Test
+    fun `setup states show only primary action`() {
+        HomePrimaryAction.entries
+            .filterNot {
+                it == HomePrimaryAction.READY_FOR_NOTIFICATION ||
+                    it == HomePrimaryAction.STOP_CAPTURE
+            }
+            .forEach { action ->
+                assertEquals(
+                    HomeActionVisibility(showPrimaryAction = true, showStopAction = false),
+                    homeActionVisibility(action),
+                )
+            }
+    }
     @Test
     fun `readiness follows task-first gate order`() {
         assertState(HomePrimaryAction.STOP_CAPTURE, false, serviceRunning = true)
@@ -23,7 +54,23 @@ class HomeReadinessTest {
             notificationGranted = false,
         )
         assertState(HomePrimaryAction.REQUEST_OVERLAY, false, overlayGranted = false)
-        assertState(HomePrimaryAction.REQUEST_PROJECTION, false)
+        assertState(HomePrimaryAction.READY_FOR_NOTIFICATION, true)
+    }
+
+    @Test
+    fun `ready home state delegates capture start to notification`() {
+        val state = resolveHomeReadiness(
+            serviceRunning = false,
+            sameLanguage = false,
+            onlineConfigurationReady = true,
+            modelTaskActive = false,
+            modelReady = true,
+            notificationGranted = true,
+            overlayGranted = true,
+        )
+
+        assertEquals(HomePrimaryAction.READY_FOR_NOTIFICATION, state.action)
+        assertTrue(state.blocked)
     }
 
     @Test

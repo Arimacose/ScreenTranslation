@@ -208,8 +208,8 @@ android {
         applicationId = "com.screentranslation.app"
         minSdk = 36
         targetSdk = 36
-        versionCode = 10
-        versionName = "2.4.0"
+        versionCode = 11
+        versionName = "2.4.1"
         buildConfigField("boolean", "BERGAMOT_LITE", "false")
         buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
         buildConfigField("boolean", "ONLINE_LLM", "false")
@@ -408,7 +408,7 @@ tasks.configureEach {
 dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.activity:activity-ktx:1.13.0")
-    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
 

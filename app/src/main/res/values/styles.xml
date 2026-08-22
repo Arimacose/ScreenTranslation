@@ -14,6 +14,12 @@
         <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
     </style>
 
+    <style name="TextAppearance.ScreenTranslation.Readiness" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
     <style name="Widget.ScreenTranslation.Card" parent="Widget.Material3.CardView.Filled">
         <item name="cardBackgroundColor">?attr/colorSurface</item>
         <item name="cardCornerRadius">?attr/screenCardCornerRadius</item>
@@ -88,6 +94,12 @@
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:textColor">@color/apple_on_surface_variant</item>
         <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="TextAppearance.ScreenTranslation.Apple.Readiness" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/apple_primary</item>
+        <item name="android:textSize">18sp</item>
     </style>
 
     <style name="Widget.ScreenTranslation.Apple.Group" parent="Widget.Material3.CardView.Filled">
