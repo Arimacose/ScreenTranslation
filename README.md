@@ -2,14 +2,14 @@
 
 **简体中文** | [English](README.en.md)
 
-> v2.4.0 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
+> v2.4.1 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
 > Monet 动态取色的 Material 3。参见 [UI 风格设计与边界](docs/UI_STYLES.md)。
 
 ![Apple、MIUIX 与 Material 3 静态设计预览](docs/assets/ui-style-comparison.png)
 
 面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面；默认只裁剪用户框选区域，Experimental 模式则对全屏变化分块增量识别。在本机完成 OCR 后，应用按所选 edition 进行端侧或在线翻译并用悬浮层显示结果。
 
-> 项目状态：`v2.4.0`，面向已验收的单一设备/ROM 基线。运行基线为 Android 16 / API 36，`minSdk` 与
+> 项目状态：`v2.4.1`，面向已验收的单一设备/ROM 基线。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
@@ -17,9 +17,9 @@
 
 | 你的需求 | 直接安装文件 | 说明 |
 |---|---|---|
-| 英语/日语离线翻译，优先体积与稳定性 | `ScreenTranslation-v2.4.0-lite.apk` | 推荐多数用户；Lite 可覆盖升级旧版同包名应用 |
-| 多语言离线直译，接受更大模型与 Experimental 标识 | `ScreenTranslation-v2.4.0-full.apk` | 独立包名，可与 Lite 并存；需下载约 1.06 GiB HY-MT2 Q4 模型 |
-| 使用自己的 OpenAI-compatible HTTPS API | `ScreenTranslation-v2.4.0-online.apk` | 独立包名；OCR 留在本机，仅向所选服务发送稳定文字 |
+| 英语/日语离线翻译，优先体积与稳定性 | `ScreenTranslation-v2.4.1-lite-bergamot.apk` | 推荐多数用户；Lite 可覆盖升级旧版同包名应用 |
+| 多语言离线直译，接受更大模型与 Experimental 标识 | `ScreenTranslation-v2.4.1-full-hymt2-q4-experimental.apk` | 独立包名，可与 Lite 并存；需下载约 1.06 GiB HY-MT2 Q4 模型 |
+| 使用自己的 OpenAI-compatible HTTPS API | `ScreenTranslation-v2.4.1-online-llm.apk` | 独立包名；OCR 留在本机，仅向所选服务发送稳定文字 |
 
 **APK** 是手机可直接安装的文件；**AAB** 是应用商店/开发者上传产物，手机文件管理器不能直接安装。
 普通用户请下载上表中的 APK，并从同一 Release 的 `SHA256SUMS` 核对哈希。
@@ -28,8 +28,9 @@
 
 1. 安装对应 APK，打开应用并确认当前 edition 与数据流说明。
 2. 在主页面准备离线模型，或在 Online 设置中获取并选择模型。
-3. 授予悬浮窗权限，点“开始识屏”，再在系统对话框确认共享整个屏幕。
-4. 默认拖动框选区域；需要连续阅读时切换“全屏增量覆盖（Experimental）”。
+3. 授予悬浮窗权限后先切换到要翻译的页面，再从常驻通知点“开始识屏”，并在系统对话框确认共享整个屏幕。
+4. 默认拖动框选区域；小于 32dp 会明确提示重画。框选阶段由全屏选择层接管手势，点右上角
+   “退出识屏”结束；成功框选后继续使用既有浮层工具栏。需要连续阅读时切换“全屏增量覆盖（Experimental）”。
 5. 从悬浮控制条或常驻通知停止；Android 会同时结束投影、图像读取、OCR、翻译和悬浮层。
 
 ## 真机工作流证据
@@ -316,7 +317,7 @@ x86_64 库。
 
 ### Lite · Bergamot
 
-Lite 使用 `com.screentranslation.app` 和 `2.4.0-lite`，可覆盖升级旧版同包名应用。
+Lite 使用 `com.screentranslation.app` 和 `2.4.1-lite`，可覆盖升级旧版同包名应用。
 APK 随包提供固定的 ARM64 Bergamot runner；构建时
 `verifyBergamotRunner` 校验其 8,416,304 bytes 与 SHA-256。英语→中文使用
 直模，日语→中文使用 `ja→en→zh` 级联。压缩模型和解压文件均校验长度与
@@ -328,7 +329,7 @@ SHA-256。
 
 ### Full · HY-MT2 Q4 Experimental
 
-Full 使用 `com.screentranslation.app.full` 和 `2.4.0-full`，可与 Lite
+Full 使用 `com.screentranslation.app.full` 和 `2.4.1-full`，可与 Lite
 并存。应用名称、标题、Banner、通知和 attribution 均包含
 `Full · HY-MT2 Q4 Experimental`。
 
@@ -341,7 +342,7 @@ Full 使用 `com.screentranslation.app.full` 和 `2.4.0-full`，可与 Lite
 
 ### Online · BYOK API
 
-Online 使用 `com.screentranslation.app.online` 和 `2.4.0-online`，可与 Lite/Full
+Online 使用 `com.screentranslation.app.online` 和 `2.4.1-online`，可与 Lite/Full
 并存。设置页只保留用户自带密钥（BYOK）链路：填写 HTTPS Base URL 与 API Key、
 确认数据流，再点击“获取可用模型”；应用通过 `GET /models` 获取并展示模型 ID，
 无需手工输入。根地址会自动补充 `/models` 和 `/chat/completions`。API Key 由

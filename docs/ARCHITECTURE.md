@@ -30,9 +30,9 @@ PP-OCRv6-small 与两套捕获/悬浮层实现：
 
 | Edition | applicationId | versionName | 翻译后端 | 语言范围 |
 |---|---|---|---|---|
-| Lite | `com.screentranslation.app` | `2.4.0-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
-| Full | `com.screentranslation.app.full` | `2.4.0-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
-| Online | `com.screentranslation.app.online` | `2.4.0-online` | 用户配置的 OpenAI-compatible LLM | 能力由用户选择的模型决定 |
+| Lite | `com.screentranslation.app` | `2.4.1-lite` | Bergamot | 英语直译简体中文；日语经英语级联到简体中文 |
+| Full | `com.screentranslation.app.full` | `2.4.1-full` | HY-MT2 1.8B Q4_K_M | 多语言直译简体中文；整个 edition 明确标注 **Experimental** |
+| Online | `com.screentranslation.app.online` | `2.4.1-online` | 用户配置的 OpenAI-compatible LLM | 能力由用户选择的模型决定 |
 
 Lite 保留基础包名以承接 v0.1.0 升级，Full/Online 使用 `.full`/`.online` 后缀，
 因此三者可在同一设备并存。产品 flavor 同时隔离源码、依赖与 native runtime：
@@ -46,7 +46,7 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 
 | 组件 | 职责 | 生命周期/线程约束 |
 |---|---|---|
-| `MainActivity` | 收集语言、采样间隔和系统授权结果；发送显式 Intent 启停服务 | 只在前台发起 MediaProjection 授权 |
+| `MainActivity` | 收集语言、采样间隔和前置权限；准备模型并展示会话状态 | 就绪和运行时均隐藏 APP 内捕获操作，不发起 MediaProjection 授权，也不与浮层重复提供停止入口 |
 | `ProjectionPermissionActivity` | 从常驻通知在当前目标应用上方请求新的屏幕共享授权 | 独立透明任务；授权完成即退出并回到目标应用 |
 | `ModelPreparationCoordinator` | 按 edition/语言/模型 revision/SHA-256 生成稳定任务 ID，并以唯一 WorkManager 任务排队、暂停、取消和恢复 | Activity 只观察 WorkInfo；任务和状态属于应用进程/WorkManager |
 | `ModelPreparationWorker` | 空间预检、下载/解压/校验、速度/ETA 与 dataSync 前台通知 | 先进入 FGS 再发布进度；`.part` 文件保留供下一次续传 |
@@ -82,7 +82,8 @@ ML Kit OCR 与 ML Kit Translate 仅存在于 `benchmark` build type，用于历�
 ```mermaid
 flowchart LR
     A["MainActivity：用户配置"] --> B["系统悬浮窗授权"]
-    B --> C["系统 MediaProjection 授权"]
+    B --> Z["切换到目标应用并点常驻通知"]
+    Z --> C["ProjectionPermissionActivity：系统 MediaProjection 授权"]
     C --> D["ScreenTranslationService：前台服务"]
     D --> E["MediaProjection + VirtualDisplay"]
     E --> F["ImageReader：最新屏幕帧"]
@@ -107,16 +108,24 @@ flowchart LR
 模型准备与捕获授权是两条独立链路：首页先根据语言/Online 配置解析
 `ModelPreparationDescriptor`，由 WorkManager 在 Activity 之外执行空间预检、下载、解压和
 SHA-256 校验；只有持久化的 verified identity 与当前文件重新计算的 identity 完全相等时，
-启动门才进入通知、悬浮窗和 MediaProjection。暂停/取消终止当前 Worker，但保留可复用的
+首页依次完成通知与悬浮窗前置条件；就绪后隐藏 APP 内启动操作，由用户切换到目标页面并
+点击常驻通知，才进入 MediaProjection；会话运行时首页继续隐藏捕获操作，停止由当前翻译
+浮层或运行通知承担，避免回到 APP 后出现两个同义按钮。暂停/取消终止当前 Worker，但保留可复用的
 `.part` 文件；取消同时清除 verified identity。
 
 ### 3.1 捕获
 
-1. Activity 在可见状态调用 `MediaProjectionManager.createScreenCaptureIntent()`。
-2. 用户同意后，Activity 把本次 `resultCode` 和授权 `Intent` 交给显式启动的服务。
+1. 用户在目标应用中点按常驻通知，透明 `ProjectionPermissionActivity` 在其上方调用
+   `MediaProjectionManager.createScreenCaptureIntent()`。
+2. 用户同意后，`ProjectionPermissionActivity` 把本次 `resultCode` 和授权 `Intent` 交给显式启动的服务并退出，目标应用重新可见。
 3. 服务先创建通知渠道并调用 `startForeground()`，然后取得 `MediaProjection`。
 4. 按物理显示尺寸建立 `ImageReader` 与 `VirtualDisplay`。
 5. `OnImageAvailableListener` 只获取最新一帧；处理繁忙时直接丢帧，不建立无界队列。
+
+区域框选期间，焦点型透明 `SelectionGestureGuardActivity` 与全屏选择窗口共同消费系统返回
+和底层页面手势；允许的交互只有框选拖动、系统保留的侧边工具入口和右上角显式“退出识屏”。
+小于 32dp 的选区不改变管线状态，并立即显示短 Toast。显式退出调用服务停止路径，而不是
+先收起框选层留下仍在运行的投影。
 
 用户从主页面明确选择捕获模式。`REGION` 是持久化默认值；
 `FULL_SCREEN_INCREMENTAL` 标注 Experimental，授权后跳过框选，直接建立全屏差分管线。
@@ -200,7 +209,8 @@ Android 15 QPR1+ 在锁屏时结束当前投影。服务在
 
 使用 `TYPE_APPLICATION_OVERLAY`，前置条件是 `Settings.canDrawOverlays()`：
 
-- **选择层**：可触摸，接收拖拽并绘制区域边框。
+- **选择层**：可触摸，接收拖拽并绘制区域边框；小选区显示 Toast，系统返回被消费，右上角
+  “退出识屏”是停止会话的显式出口。成功框选后该按钮消失，既有结果工具栏接管控制。
 - **结果层**：默认不可抢占目标应用输入，展示最新翻译。
 - 结果层不设置 `FLAG_SECURE`，使用户发起的系统截图和录屏能够包含译文。
 - 结果层把实际屏幕边界回报给服务。目标 HyperOS 会把应用悬浮层混入

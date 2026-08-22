@@ -208,8 +208,8 @@ android {
         applicationId = "com.screentranslation.app"
         minSdk = 36
         targetSdk = 36
-        versionCode = 10
-        versionName = "2.4.0"
+        versionCode = 11
+        versionName = "2.4.1"
         buildConfigField("boolean", "BERGAMOT_LITE", "false")
         buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
         buildConfigField("boolean", "ONLINE_LLM", "false")
