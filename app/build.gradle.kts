@@ -413,7 +413,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     // Production OCR: pinned PP-OCRv6 ONNX assets with an on-device ARM64 runtime.
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
 
     // ML Kit Translate remains isolated to the benchmark build type.
     add("benchmarkImplementation", "com.google.mlkit:translate:17.0.3")

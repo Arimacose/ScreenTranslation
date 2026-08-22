@@ -184,6 +184,12 @@ jobs:
           set -euo pipefail
           version="${{ steps.version.outputs.version_name }}"
           version_code="${{ steps.version.outputs.version_code }}"
+          ort_version="$(
+            sed -n \
+              's/.*com\.microsoft\.onnxruntime:onnxruntime-android:\([^\"]*\)".*/\1/p' \
+              app/build.gradle.kts
+          )"
+          [[ "$ort_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
           zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
@@ -279,9 +285,9 @@ jobs:
             assert_entry "$listing" \
               "assets/licenses/models/PP-OCRv6.md"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.28.0/LICENSE.txt"
+              "assets/licenses/onnxruntime-$ort_version/LICENSE.txt"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+              "assets/licenses/onnxruntime-$ort_version/ThirdPartyNotices.txt"
             assert_entry "$listing" "$required_backend"
             reject_entry "$listing" "$forbidden_backend"
             reject_entry "$listing" "lib/arm64-v8a/libtranslate_jni.so"
@@ -383,15 +389,15 @@ jobs:
           assert_entry "$lite_aab_listing" \
             "base/assets/licenses/bergamot-9271618/SOURCE-CODE.md"
           assert_entry "$lite_aab_listing" \
-            "base/assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+            "base/assets/licenses/onnxruntime-$ort_version/ThirdPartyNotices.txt"
           assert_entry "$full_aab_listing" \
             "base/assets/licenses/llama.cpp-caa596ab3/KLEIDIAI_NOTICE.txt"
           assert_entry "$full_aab_listing" \
-            "base/assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+            "base/assets/licenses/onnxruntime-$ort_version/ThirdPartyNotices.txt"
           assert_entry "$online_aab_listing" \
             "base/assets/licenses/ONLINE.md"
           assert_entry "$online_aab_listing" \
-            "base/assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+            "base/assets/licenses/onnxruntime-$ort_version/ThirdPartyNotices.txt"
 
           mkdir -p dist
           cp "$lite_apk" "dist/ScreenTranslation-$version-lite-bergamot.apk"
@@ -997,6 +1003,12 @@ jobs:
           version_code="${{ steps.promotion.outputs.version_code }}"
           tag_commit="${{ steps.promotion.outputs.tag_commit }}"
           comment_id="${{ steps.promotion.outputs.comment_id }}"
+          ort_version="$(
+            sed -n \
+              's/.*com\.microsoft\.onnxruntime:onnxruntime-android:\([^\"]*\)".*/\1/p' \
+              app/build.gradle.kts
+          )"
+          [[ "$ort_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt"
           zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
@@ -1064,7 +1076,7 @@ jobs:
             assert_entry "$listing" "assets/ppocrv6_small/characters.txt"
             assert_entry "$listing" "assets/licenses/COMMON.md"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+              "assets/licenses/onnxruntime-$ort_version/ThirdPartyNotices.txt"
             assert_entry "$listing" "$required_backend"
             reject_entry "$listing" "$forbidden_backend"
             reject_entry "$listing" "lib/arm64-v8a/libtranslate_jni.so"

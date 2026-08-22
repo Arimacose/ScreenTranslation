@@ -5,11 +5,11 @@ The complete project license is included as `APACHE-2.0.txt`.
 
 Lite, Full and Online contain:
 
-- ONNX Runtime for Android 1.28.0;
+- ONNX Runtime for Android 1.29.0;
 - PP-OCRv6-small detection and recognition ONNX weights;
 - AndroidX, Kotlin and Material runtime components resolved by Gradle.
 
-`onnxruntime-1.28.0/` contains the upstream MIT license and Microsoft's complete
+`onnxruntime-1.29.0/` contains the upstream MIT license and Microsoft's complete
 third-party notice file for the exact runtime version. `models/PP-OCRv6.md`
 records immutable model revisions and hashes.
 
