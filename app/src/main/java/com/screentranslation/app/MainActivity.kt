@@ -9,8 +9,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.media.projection.MediaProjectionConfig
-import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
@@ -33,6 +31,7 @@ import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.ViewModel
 import androidx.work.WorkInfo
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
@@ -49,12 +48,11 @@ import com.screentranslation.app.model.preparation.ModelPreparationCoordinator
 import com.screentranslation.app.model.preparation.ModelPreparationPhase
 import com.screentranslation.app.model.preparation.ModelPreparationSnapshot
 import com.screentranslation.app.prefs.AppPreferences
-import com.screentranslation.app.service.CapturePermissionPreconditions
-import com.screentranslation.app.service.CapturePermissionStep
 import com.screentranslation.app.service.CaptureShortcutNotification
 import com.screentranslation.app.service.ScreenTranslationService
 import com.screentranslation.app.ui.UiStyleController
 import com.screentranslation.app.vendor.HyperOsVendorAdapter
+import com.screentranslation.app.vendor.OverlayPermissionNavigator
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
@@ -263,7 +261,6 @@ internal fun shouldStartModelReadinessCheck(
 class MainActivity : AppCompatActivity() {
     private val modelReadinessViewModel: ModelReadinessViewModel by viewModels()
     private lateinit var preferences: AppPreferences
-    private lateinit var projectionManager: MediaProjectionManager
     private lateinit var modelPreparationCoordinator: ModelPreparationCoordinator
 
     private lateinit var experimentalBannerView: TextView
@@ -290,8 +287,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var experimentalSmokeTestButton: Button
     private lateinit var experimentalSmokeTestResultView: TextView
     private lateinit var notificationPermissionButton: Button
+    private lateinit var notificationPermissionButtonPalette: ButtonPalette
     private lateinit var notificationPermissionStatusView: TextView
     private lateinit var overlayPermissionButton: Button
+    private lateinit var overlayPermissionButtonPalette: ButtonPalette
     private lateinit var overlayPermissionStatusView: TextView
     private lateinit var batteryPolicyButton: Button
     private lateinit var batteryPolicyStatusView: TextView
@@ -313,7 +312,6 @@ class MainActivity : AppCompatActivity() {
 
     private var modelReadyFor: Pair<String, String>? = null
     private var modelPreparationWorkInfos: List<WorkInfo> = emptyList()
-    private var pendingStartAfterModelPreparation = false
     private val modelReadinessController =
         GenerationOwnedResourceController<TranslationBackend>()
     private val modelReadinessExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -322,9 +320,6 @@ class MainActivity : AppCompatActivity() {
     private var experimentalSmokeTestEngine: TranslationBackend? = null
     private var experimentalSmokeTestGeneration = 0
     private var languageListenersReady = false
-    private var pendingStartAfterNotificationPermission = false
-    private var pendingStartAfterOverlayPermission = false
-    private var projectionRequestInFlight = false
     private var sessionStateReceiverRegistered = false
     private var activityStarted = false
 
@@ -341,17 +336,12 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission(),
     ) {
         refreshPermissionState()
-        if (pendingStartAfterNotificationPermission) {
-            pendingStartAfterNotificationPermission = false
-            continueStartAfterNotificationPermission()
-        }
     }
 
     private val overlaySettingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
         refreshPermissionState()
-        maybeContinueAfterOverlayPermission()
     }
 
     private val onlineSettingsLauncher = registerForActivityResult(
@@ -377,51 +367,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val projectionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        projectionRequestInFlight = false
-        val projectionData = result.data
-        if (result.resultCode != Activity.RESULT_OK || projectionData == null) {
-            serviceStatusView.setText(R.string.capture_denied)
-            setServiceRunningUi(false)
-            return@registerForActivityResult
-        }
-
-        val source = selectedSourceLanguage()
-        val target = selectedTargetLanguage()
-        val interval = selectedFrameInterval()
-        preferences.save(
-            source.languageTag,
-            target.languageTag,
-            interval,
-            selectedCaptureMode(),
-        )
-        preferences.setOcrProfile(selectedCaptureMode(), selectedOcrProfile())
-
-        try {
-            val serviceIntent = ScreenTranslationService.startIntent(
-                context = this,
-                resultCode = result.resultCode,
-                resultData = projectionData,
-                sourceLanguage = source.languageTag,
-                targetLanguage = target.languageTag,
-                frameIntervalMs = interval,
-                captureMode = selectedCaptureMode(),
-            )
-            ContextCompat.startForegroundService(this, serviceIntent)
-            serviceStatusView.setText(R.string.service_starting)
-            setServiceRunningUi(true)
-        } catch (error: Exception) {
-            ScreenTranslationService.discardPendingStartRequest()
-            serviceStatusView.text = getString(
-                R.string.start_failed,
-                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
-            )
-            setServiceRunningUi(false)
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         val uiStyle = UiStyleController.apply(this)
         super.onCreate(savedInstanceState)
@@ -435,7 +380,6 @@ class MainActivity : AppCompatActivity() {
 
         preferences = AppPreferences(this)
         modelPreparationCoordinator = ModelPreparationCoordinator(this)
-        projectionManager = getSystemService(MediaProjectionManager::class.java)
         bindViews()
         taskSummaryView.isAccessibilityHeading = true
         ViewCompat.setAccessibilityPaneTitle(
@@ -485,7 +429,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (::overlayPermissionStatusView.isInitialized) {
             refreshPermissionState()
-            maybeContinueAfterOverlayPermission()
             refreshServiceStatus()
             refreshOnlineConfigurationStatus()
         }
@@ -560,9 +503,11 @@ class MainActivity : AppCompatActivity() {
         onlineSettingsButton.visibility = onlineVisibility
         onlineConfigStatusView.visibility = onlineVisibility
         notificationPermissionButton = findViewById(R.id.button_notification_permission)
+        notificationPermissionButtonPalette = ButtonPalette.capture(notificationPermissionButton)
         notificationPermissionStatusView =
             findViewById(R.id.text_notification_permission_status)
         overlayPermissionButton = findViewById(R.id.button_overlay_permission)
+        overlayPermissionButtonPalette = ButtonPalette.capture(overlayPermissionButton)
         overlayPermissionStatusView = findViewById(R.id.text_overlay_permission_status)
         batteryPolicyButton = findViewById(R.id.button_battery_policy)
         batteryPolicyStatusView = findViewById(R.id.text_battery_policy_status)
@@ -862,25 +807,17 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
-            HomePrimaryAction.PREPARE_MODEL -> prepareCurrentModels {
-                continueStartAfterModelPreparation()
-            }
-            HomePrimaryAction.REQUEST_NOTIFICATION -> {
-                pendingStartAfterNotificationPermission = true
-                requestNotificationPermission()
-            }
-            HomePrimaryAction.REQUEST_OVERLAY -> {
-                pendingStartAfterOverlayPermission = true
-                openOverlayPermissionSettings()
-            }
-            HomePrimaryAction.REQUEST_PROJECTION -> requestProjectionPermission()
+            HomePrimaryAction.PREPARE_MODEL -> prepareCurrentModels()
+            HomePrimaryAction.REQUEST_NOTIFICATION -> requestNotificationPermission()
+            HomePrimaryAction.REQUEST_OVERLAY -> openOverlayPermissionSettings()
             HomePrimaryAction.FIX_LANGUAGE_PAIR,
             HomePrimaryAction.WAIT_FOR_MODEL,
+            HomePrimaryAction.READY_FOR_NOTIFICATION,
             -> Unit
         }
     }
 
-    private fun prepareCurrentModels(onReady: (() -> Unit)? = null) {
+    private fun prepareCurrentModels() {
         val source = selectedSourceLanguage()
         val target = selectedTargetLanguage()
         if (source == target) {
@@ -891,7 +828,6 @@ class MainActivity : AppCompatActivity() {
         cancelModelReadinessCheck()
         modelReadinessViewModel.invalidate()
         modelReadyFor = null
-        pendingStartAfterModelPreparation = onReady != null
         runCatching {
             modelPreparationCoordinator.enqueue(
                 sourceLanguage = source.languageTag,
@@ -899,7 +835,6 @@ class MainActivity : AppCompatActivity() {
                 requireUnmeteredNetwork = false,
             )
         }.getOrElse { error ->
-            pendingStartAfterModelPreparation = false
             modelStatusView.text = getString(
                 R.string.model_failed,
                 com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
@@ -1062,55 +997,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun continueStartAfterModelPreparation() {
-        if (capturePermissionPreconditions().shouldRequestNotification) {
-            pendingStartAfterNotificationPermission = true
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return
-        }
-        continueStartAfterNotificationPermission()
-    }
-
-    private fun continueStartAfterNotificationPermission() {
-        when (capturePermissionPreconditions().nextBlockingStep) {
-            CapturePermissionStep.REQUEST_OVERLAY -> {
-                pendingStartAfterOverlayPermission = true
-                openOverlayPermissionSettings()
-            }
-
-            CapturePermissionStep.REQUEST_PROJECTION -> requestProjectionPermission()
-        }
-    }
-
-    private fun capturePermissionPreconditions(): CapturePermissionPreconditions =
-        CapturePermissionPreconditions(
-            notificationGranted = hasNotificationPermission(),
-            overlayGranted = Settings.canDrawOverlays(this),
-        )
-
-    private fun requestProjectionPermission() {
-        if (projectionRequestInFlight) return
-        projectionRequestInFlight = true
-        serviceStatusView.setText(R.string.service_requesting_capture)
-
-        // The flag is otherwise only cleared by the launcher callback. If the
-        // launch throws, that callback never arrives and both the in-flight
-        // guard above and the onResume status refresh stay stuck permanently.
-        try {
-            val captureIntent = projectionManager.createScreenCaptureIntent(
-                MediaProjectionConfig.createConfigForDefaultDisplay(),
-            )
-            projectionLauncher.launch(captureIntent)
-        } catch (error: Exception) {
-            projectionRequestInFlight = false
-            serviceStatusView.text = getString(
-                R.string.start_failed,
-                com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary,
-            )
-            setServiceRunningUi(false)
-        }
-    }
-
     private fun requestNotificationPermission() {
         if (!hasNotificationPermission()) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -1120,11 +1006,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openOverlayPermissionSettings() {
-        val packageUri = "package:$packageName".toUri()
-        val candidates = HyperOsVendorAdapter.overlayPermissionIntents(packageName) + listOf(
-            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri),
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri),
-            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+        val candidates = OverlayPermissionNavigator.intents(
+            packageName = packageName,
+            vendorAdapter = HyperOsVendorAdapter,
         )
 
         for (intent in candidates) {
@@ -1179,14 +1063,6 @@ class MainActivity : AppCompatActivity() {
                 .isPowerPolicyUnrestricted(this, packageName),
         )
 
-    private fun maybeContinueAfterOverlayPermission() {
-        if (!pendingStartAfterOverlayPermission) return
-        if (Settings.canDrawOverlays(this)) {
-            pendingStartAfterOverlayPermission = false
-            requestProjectionPermission()
-        }
-    }
-
     private fun stopTranslationService() {
         try {
             startService(ScreenTranslationService.stopIntent(this))
@@ -1209,13 +1085,21 @@ class MainActivity : AppCompatActivity() {
                 R.string.notification_denied
             },
         )
-        notificationPermissionButton.isEnabled = !notificationGranted
+        renderPermissionButton(
+            button = notificationPermissionButton,
+            palette = notificationPermissionButtonPalette,
+            granted = notificationGranted,
+        )
 
         val overlayGranted = Settings.canDrawOverlays(this)
         overlayPermissionStatusView.setText(
             if (overlayGranted) R.string.overlay_granted else R.string.overlay_denied,
         )
-        overlayPermissionButton.isEnabled = !overlayGranted
+        renderPermissionButton(
+            button = overlayPermissionButton,
+            palette = overlayPermissionButtonPalette,
+            granted = overlayGranted,
+        )
 
         // Keep this enabled so users can change or review the vendor policy even
         // after the current HyperOS value has been recognized.
@@ -1241,10 +1125,41 @@ class MainActivity : AppCompatActivity() {
         renderHomeReadiness()
     }
 
+    private fun renderPermissionButton(
+        button: Button,
+        palette: ButtonPalette,
+        granted: Boolean,
+    ) {
+        if (granted) {
+            button.backgroundTintList = ColorStateList.valueOf(
+                MaterialColors.getColor(
+                    button,
+                    com.google.android.material.R.attr.colorSurfaceVariant,
+                ),
+            )
+            button.setTextColor(
+                MaterialColors.getColor(
+                    button,
+                    com.google.android.material.R.attr.colorOnSurfaceVariant,
+                ),
+            )
+            (button as? MaterialButton)?.strokeColor = ColorStateList.valueOf(
+                MaterialColors.getColor(
+                    button,
+                    com.google.android.material.R.attr.colorOutlineVariant,
+                ),
+            )
+        } else {
+            button.backgroundTintList = palette.backgroundTint
+            button.setTextColor(palette.textColors)
+            (button as? MaterialButton)?.strokeColor = palette.strokeColor
+        }
+        button.isEnabled = !granted
+    }
+
     private fun invalidatePreparedModel() {
         cancelModelReadinessCheck()
         modelReadinessViewModel.invalidate()
-        pendingStartAfterModelPreparation = false
         modelReadyFor = null
         setServiceRunningUi(ScreenTranslationService.isRunning)
         modelStatusView.setText(
@@ -1466,10 +1381,6 @@ class MainActivity : AppCompatActivity() {
                     modelReadyFor = pair
                     modelReadinessViewModel.markReady(pair, identity)
                     showSelectedPairReady()
-                    if (pendingStartAfterModelPreparation) {
-                        pendingStartAfterModelPreparation = false
-                        continueStartAfterModelPreparation()
-                    }
                 } else {
                     modelReadyFor = null
                     modelReadinessViewModel.invalidate()
@@ -1477,7 +1388,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             ModelPreparationPhase.FAILED -> {
-                pendingStartAfterModelPreparation = false
                 modelReadyFor = null
                 modelStatusView.text = getString(
                     R.string.model_failed,
@@ -1485,7 +1395,6 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             ModelPreparationPhase.CANCELLED -> {
-                pendingStartAfterModelPreparation = false
                 modelReadyFor = null
                 modelStatusView.setText(R.string.model_progress_cancelled)
             }
@@ -1688,13 +1597,17 @@ class MainActivity : AppCompatActivity() {
                 R.string.home_action_notification to R.string.home_reason_notification
             HomePrimaryAction.REQUEST_OVERLAY ->
                 R.string.home_action_overlay to R.string.home_reason_overlay
-            HomePrimaryAction.REQUEST_PROJECTION ->
-                R.string.home_action_start to R.string.home_reason_start
+            HomePrimaryAction.READY_FOR_NOTIFICATION ->
+                R.string.home_action_notification_only to R.string.home_reason_notification_only
             HomePrimaryAction.STOP_CAPTURE ->
                 R.string.stop_translation to R.string.home_reason_running
         }
         startButton.setText(actionAndReason.first)
+        val actionVisibility = homeActionVisibility(state.action)
+        startButton.visibility = if (actionVisibility.showPrimaryAction) View.VISIBLE else View.GONE
         startButton.isEnabled = !state.blocked
+        stopButton.visibility = if (actionVisibility.showStopAction) View.VISIBLE else View.GONE
+        stopButton.isEnabled = actionVisibility.showStopAction
         readinessSummaryView.setText(actionAndReason.second)
         ViewCompat.setStateDescription(readinessSummaryView, readinessSummaryView.text)
         ViewCompat.setStateDescription(startButton, readinessSummaryView.text)
@@ -1725,7 +1638,6 @@ class MainActivity : AppCompatActivity() {
         if (!::serviceStatusView.isInitialized) return
         val serviceRunning = ScreenTranslationService.isRunning
         setServiceRunningUi(serviceRunning)
-        if (projectionRequestInFlight) return
         serviceStatusView.setText(
             when {
                 serviceRunning -> R.string.service_running
@@ -1760,5 +1672,19 @@ class MainActivity : AppCompatActivity() {
             "Although the committee acknowledged that the proposal could reduce costs " +
                 "in the short term, it postponed the vote because no one could explain " +
                 "how the system would protect users whose accounts had been flagged by mistake."
+    }
+
+    private data class ButtonPalette(
+        val backgroundTint: ColorStateList?,
+        val textColors: ColorStateList,
+        val strokeColor: ColorStateList?,
+    ) {
+        companion object {
+            fun capture(button: Button): ButtonPalette = ButtonPalette(
+                backgroundTint = button.backgroundTintList,
+                textColors = button.textColors,
+                strokeColor = (button as? MaterialButton)?.strokeColor,
+            )
+        }
     }
 }

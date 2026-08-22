@@ -66,6 +66,14 @@ private const val REGION_ACTION_MAX_COLUMNS = 3
 internal fun <T> regionActionRows(actions: List<T>): List<List<T>> =
     actions.chunked(REGION_ACTION_MAX_COLUMNS)
 
+internal enum class SelectionExitTrigger {
+    EXPLICIT_BUTTON,
+    SYSTEM_BACK,
+}
+
+internal fun shouldExitSelection(trigger: SelectionExitTrigger): Boolean =
+    trigger == SelectionExitTrigger.EXPLICIT_BUTTON
+
 /**
  * Region-mode requests are latest-wins, but a transient Online failure must
  * not erase the last useful translation while the next source is pending.
@@ -141,6 +149,7 @@ class OverlayController(
 
     private var rootView: FrameLayout? = null
     private var selectionView: RegionSelectionView? = null
+    private var selectionExitButton: Button? = null
     private var controlPanel: LinearLayout? = null
     private var statusView: TextView? = null
     private var originalView: TextView? = null
@@ -168,7 +177,7 @@ class OverlayController(
     private var panelDragging = false
     private var registeredBackDispatcher: OnBackInvokedDispatcher? = null
     private val selectionBackCallback = OnBackInvokedCallback {
-        cancelSelectionFromBack()
+        handleSelectionExit(SelectionExitTrigger.SYSTEM_BACK)
     }
 
     val isShowing: Boolean
@@ -198,7 +207,12 @@ class OverlayController(
             }
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, _ ->
-                selectionModeActive && keyCode == KeyEvent.KEYCODE_BACK
+                if (selectionModeActive && keyCode == KeyEvent.KEYCODE_BACK) {
+                    handleSelectionExit(SelectionExitTrigger.SYSTEM_BACK)
+                    true
+                } else {
+                    false
+                }
             }
         }
         val selector = RegionSelectionView(appContext).apply {
@@ -208,7 +222,18 @@ class OverlayController(
                 switchToCompactMode()
             }
             onSelectionRejected = {
-                updateStatus(appContext.getString(R.string.overlay_selection_too_small))
+                val message = appContext.getString(R.string.overlay_selection_too_small)
+                updateStatus(message)
+                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+            }
+        }
+        val selectionExit = createOverlayButton(destructive = true).apply {
+            text = appContext.getString(R.string.overlay_exit_selection)
+            contentDescription = appContext.getString(R.string.overlay_exit_selection_description)
+            visibility = View.GONE
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.REJECT)
+                handleSelectionExit(SelectionExitTrigger.EXPLICIT_BUTTON)
             }
         }
         val panel = createControlPanel()
@@ -227,12 +252,24 @@ class OverlayController(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
+        root.addView(
+            selectionExit,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END,
+            ).apply {
+                topMargin = dp(84)
+                marginEnd = dp(16)
+            },
+        )
 
         val params = createLayoutParams()
         return try {
             windowManager.addView(root, params)
             rootView = root
             selectionView = selector
+            selectionExitButton = selectionExit
             controlPanel = panel
             layoutParams = params
             requestRegionSelection()
@@ -269,6 +306,7 @@ class OverlayController(
             // result/control panel avoids duplicating the hint or covering the
             // very subtitle the user is trying to locate.
             panel.visibility = View.GONE
+            selectionExitButton?.visibility = View.VISIBLE
 
             currentStatus = appContext.getString(R.string.overlay_status_selecting)
             statusView?.text = currentStatus
@@ -286,7 +324,9 @@ class OverlayController(
             safelyUpdateViewLayout(root, params)
             root.requestFocus()
             root.post { registerSelectionBackCallback(root) }
-            SelectionGestureGuardActivity.show(appContext, ::cancelSelectionFromBack)
+            SelectionGestureGuardActivity.show(appContext) {
+                handleSelectionExit(SelectionExitTrigger.SYSTEM_BACK)
+            }
         }
     }
 
@@ -394,6 +434,7 @@ class OverlayController(
         SelectionGestureGuardActivity.dismiss()
         unregisterSelectionBackCallback()
         selectionModeActive = false
+        selectionExitButton?.visibility = View.GONE
         panel.visibility = View.VISIBLE
         setPanelGravity(panel, Gravity.TOP)
         applyTextExpansion()
@@ -929,9 +970,13 @@ class OverlayController(
         registeredBackDispatcher = null
     }
 
-    private fun cancelSelectionFromBack() {
+    private fun handleSelectionExit(trigger: SelectionExitTrigger) {
         if (!selectionModeActive) return
-        runOnMain { collapseToPanel(showResults = false) }
+        if (!shouldExitSelection(trigger)) return
+        runOnMain {
+            onStop()
+            close()
+        }
     }
 
     private fun runOnMain(action: () -> Unit) {
@@ -958,6 +1003,7 @@ class OverlayController(
         onOverlayBoundsChanged(null)
         rootView = null
         selectionView = null
+        selectionExitButton = null
         controlPanel = null
         statusView = null
         originalView = null

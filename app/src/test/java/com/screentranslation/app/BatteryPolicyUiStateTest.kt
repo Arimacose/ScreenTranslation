@@ -2,12 +2,36 @@ package com.screentranslation.app
 
 import com.screentranslation.app.model.LanguageOption
 import com.screentranslation.app.vendor.HyperOsVendorAdapter
+import com.screentranslation.app.vendor.OverlayPermissionNavigator
+import com.screentranslation.app.vendor.OverlayPermissionRoute
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BatteryPolicyUiStateTest {
+
+    @Test
+    fun `modern overlay navigation opens the dedicated overlay list before broad routes`() {
+        assertEquals(
+            listOf(
+                OverlayPermissionRoute.APP_SPECIFIC_OVERLAY,
+                OverlayPermissionRoute.HIGHLIGHTED_VENDOR_EDITOR,
+                OverlayPermissionRoute.HIGHLIGHTED_APP_DETAILS,
+                OverlayPermissionRoute.OVERLAY_APP_LIST,
+            ),
+            OverlayPermissionNavigator.routeOrder(packageScopedOverlaySupported = false),
+        )
+        assertEquals("system_alert_window", OverlayPermissionNavigator.OVERLAY_PREFERENCE_KEY)
+    }
+
+    @Test
+    fun `legacy overlay navigation retains the direct package route`() {
+        assertEquals(
+            OverlayPermissionRoute.APP_SPECIFIC_OVERLAY,
+            OverlayPermissionNavigator.routeOrder(packageScopedOverlaySupported = true).first(),
+        )
+    }
 
     @Test
     fun `absence from AOSP allowlist does not mean HyperOS policy is restricted`() {

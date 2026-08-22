@@ -110,6 +110,19 @@ class AppleLayoutContractTest {
     }
 
     @Test
+    fun `home readiness guidance is large and uses the active primary color`() {
+        val standard = source("src/main/res/layout/activity_main.xml")
+        val apple = source("src/main/res/layout/activity_main_apple.xml")
+        val styles = source("src/main/res/values/styles.xml")
+
+        assertTrue("TextAppearance.ScreenTranslation.Readiness" in standard)
+        assertTrue("TextAppearance.ScreenTranslation.Apple.Readiness" in apple)
+        assertTrue("<item name=\"android:textSize\">18sp</item>" in styles)
+        assertTrue("<item name=\"android:textColor\">?attr/colorPrimary</item>" in styles)
+        assertTrue("<item name=\"android:textColor\">@color/apple_primary</item>" in styles)
+    }
+
+    @Test
     fun `v2 3 accessibility contract keeps targets states and fast labels separated`() {
         val standard = source("src/main/res/layout/activity_main.xml")
         val apple = source("src/main/res/layout/activity_main_apple.xml")

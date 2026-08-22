@@ -119,8 +119,10 @@
     <string name="overlay_window_title">识屏翻译悬浮层</string>
     <string name="overlay_region_selector_description">拖动选择需要翻译的屏幕区域</string>
     <string name="overlay_drag_instruction">拖动框选要识别的区域（最小 32dp）</string>
-    <string name="overlay_status_selecting">拖动画框选择区域；边缘返回手势可取消本次框选</string>
+    <string name="overlay_status_selecting">拖动画框选择区域；点右上角“退出识屏”结束</string>
     <string name="overlay_selection_too_small">选区太小，请按住并拖动画出方框（至少 32dp）</string>
+    <string name="overlay_exit_selection">退出识屏</string>
+    <string name="overlay_exit_selection_description">停止识屏并关闭框选层</string>
     <string name="overlay_status_idle">已收起。切换到目标应用后，点「重选区域」开始识别</string>
     <string name="overlay_expand">展开</string>
     <string name="overlay_collapse">收起</string>
@@ -217,9 +219,9 @@
     <string name="home_reason_notification">先解释并申请通知权限，用于前台服务与快捷入口。</string>
     <string name="home_action_overlay">授予悬浮窗权限</string>
     <string name="home_reason_overlay">允许后才能在目标应用上显示选区与译文。</string>
-    <string name="home_action_start">授权屏幕共享并开始</string>
-    <string name="home_reason_start">模型与前置权限已就绪；下一步才会打开系统 MediaProjection 授权页。</string>
-    <string name="home_reason_running">识屏翻译正在运行；主操作会完整释放投屏、虚拟显示、OCR、翻译与悬浮层。</string>
+    <string name="home_action_notification_only">请从通知栏开始</string>
+    <string name="home_reason_notification_only">配置已就绪。先切换到要翻译的页面，再从常驻通知点“开始识屏”。</string>
+    <string name="home_reason_running">识屏翻译正在运行；停止请使用当前翻译浮层或运行通知。</string>
     <string name="idle_shortcut_label">保留空闲快捷通知（默认开启）</string>
     <string name="model_task_idle">当前没有模型准备任务。</string>
     <string name="model_inventory_preparation_running">模型任务正在独立运行；为避免与下载/校验争用磁盘，任务完成或暂停后再刷新清单。</string>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -47,6 +48,15 @@ class SelectionGestureGuardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (!guardRequested) finishWithoutAnimation()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
+        if (isSelectionGuardBackKey(keyCode)) true else super.onKeyDown(keyCode, event)
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (!isSelectionGuardBackKey(keyCode)) return super.onKeyUp(keyCode, event)
+        if (!event.isCanceled) requestSelectionCancel()
+        return true
     }
 
     override fun onDestroy() {
@@ -130,6 +140,9 @@ internal fun selectionGestureGuardWindowFlags(): Int =
     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+internal fun isSelectionGuardBackKey(keyCode: Int): Boolean =
+    keyCode == KeyEvent.KEYCODE_BACK
 
 @Suppress("DEPRECATION")
 internal fun selectionGestureGuardSystemUiFlags(): Int =

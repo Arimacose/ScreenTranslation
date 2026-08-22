@@ -7,7 +7,7 @@ internal enum class HomePrimaryAction {
     WAIT_FOR_MODEL,
     REQUEST_NOTIFICATION,
     REQUEST_OVERLAY,
-    REQUEST_PROJECTION,
+    READY_FOR_NOTIFICATION,
     STOP_CAPTURE,
 }
 
@@ -15,6 +15,26 @@ internal data class HomeReadinessState(
     val action: HomePrimaryAction,
     val blocked: Boolean,
 )
+
+internal data class HomeActionVisibility(
+    val showPrimaryAction: Boolean,
+    val showStopAction: Boolean,
+)
+
+internal fun homeActionVisibility(action: HomePrimaryAction): HomeActionVisibility = when (action) {
+    HomePrimaryAction.READY_FOR_NOTIFICATION -> HomeActionVisibility(
+        showPrimaryAction = false,
+        showStopAction = false,
+    )
+    HomePrimaryAction.STOP_CAPTURE -> HomeActionVisibility(
+        showPrimaryAction = false,
+        showStopAction = false,
+    )
+    else -> HomeActionVisibility(
+        showPrimaryAction = true,
+        showStopAction = false,
+    )
+}
 
 internal fun resolveHomeReadiness(
     serviceRunning: Boolean,
@@ -34,5 +54,5 @@ internal fun resolveHomeReadiness(
     !notificationGranted ->
         HomeReadinessState(HomePrimaryAction.REQUEST_NOTIFICATION, blocked = false)
     !overlayGranted -> HomeReadinessState(HomePrimaryAction.REQUEST_OVERLAY, blocked = false)
-    else -> HomeReadinessState(HomePrimaryAction.REQUEST_PROJECTION, blocked = false)
+    else -> HomeReadinessState(HomePrimaryAction.READY_FOR_NOTIFICATION, blocked = true)
 }
