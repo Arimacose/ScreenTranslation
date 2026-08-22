@@ -151,10 +151,16 @@ jobs:
           expected_version_code="$(
             printf '%s\n' "$version_info" | sed -n 's/^versionCode=//p'
           )"
+          ort_version="$(
+            sed -n \
+              's/.*com\.microsoft\.onnxruntime:onnxruntime-android:\([^\"]*\)".*/\1/p' \
+              app/build.gradle.kts
+          )"
           test -x "$apkanalyzer"
           test -x "$aapt"
           [[ "$expected_version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$expected_version_code" =~ ^[1-9][0-9]*$ ]]
+          [[ "$ort_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 
           find_apk() {
             local edition="$1"
@@ -211,9 +217,9 @@ jobs:
             assert_entry "$listing" \
               "assets/licenses/models/PP-OCRv6.md"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.28.0/LICENSE.txt"
+              "assets/licenses/onnxruntime-$ort_version/LICENSE.txt"
             assert_entry "$listing" \
-              "assets/licenses/onnxruntime-1.28.0/ThirdPartyNotices.txt"
+              "assets/licenses/onnxruntime-$ort_version/ThirdPartyNotices.txt"
 
             if grep -Eiq \
               '^assets/.+\.(gguf|bin|marian|model|npz|safetensors|spm)$' \
