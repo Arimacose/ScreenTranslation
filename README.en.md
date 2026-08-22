@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-> v2.4.0 includes three switchable visual languages: an Apple-inspired default,
+> v2.4.1 includes three switchable visual languages: an Apple-inspired default,
 > MIUIX, and Material 3 with optional Monet dynamic colors. See
 > [UI styles and implementation boundaries](docs/UI_STYLES.md).
 
@@ -13,7 +13,7 @@ ScreenTranslation is a native screen OCR and translation app currently targeted 
 session and approves Android's `MediaProjection` prompt. Screenshots are processed in
 memory by PP-OCRv6-small; translation is provided by one of three isolated editions.
 
-> Project status: `v2.4.0`, for the accepted single device/ROM baseline.
+> Project status: `v2.4.1`, for the accepted single device/ROM baseline.
 > `minSdk` and `targetSdk` are 36, `compileSdk` is
 > 37, and release APKs are currently ARM64-only. Source code is Apache-2.0; bundled and
 > downloaded third-party components retain their own licenses.
@@ -22,9 +22,9 @@ memory by PP-OCRv6-small; translation is provided by one of three isolated editi
 
 | Your need | Direct-install file | Notes |
 |---|---|---|
-| Offline English/Japanese translation with the smallest stable edition | `ScreenTranslation-v2.4.0-lite.apk` | Recommended for most users; upgrades the historical Lite application ID |
-| Offline direct multilingual translation with a larger Experimental model | `ScreenTranslation-v2.4.0-full.apk` | Separate app; downloads the approximately 1.06 GiB HY-MT2 Q4 model |
-| Your own OpenAI-compatible HTTPS API | `ScreenTranslation-v2.4.0-online.apk` | Separate app; OCR stays local and only stable text is sent to the selected service |
+| Offline English/Japanese translation with the smallest stable edition | `ScreenTranslation-v2.4.1-lite-bergamot.apk` | Recommended for most users; upgrades the historical Lite application ID |
+| Offline direct multilingual translation with a larger Experimental model | `ScreenTranslation-v2.4.1-full-hymt2-q4-experimental.apk` | Separate app; downloads the approximately 1.06 GiB HY-MT2 Q4 model |
+| Your own OpenAI-compatible HTTPS API | `ScreenTranslation-v2.4.1-online-llm.apk` | Separate app; OCR stays local and only stable text is sent to the selected service |
 
 An **APK** installs directly on a phone. An **AAB** is a Play Store/developer upload artifact and
 is not directly installed by a phone's file manager. Most users should choose an APK above and
@@ -34,8 +34,11 @@ verify it against `SHA256SUMS` from the same Release.
 
 1. Install one APK, open it, and confirm its edition and data-flow description.
 2. Prepare the local model, or fetch and select a model in Online settings.
-3. Grant overlay permission, tap Start, and approve whole-screen sharing in Android's prompt.
-4. Drag a region by default; switch to Full-screen incremental overlay (Experimental) for continuous reading.
+3. Grant overlay permission, switch to the target app, tap Start capture in the persistent notification, and approve whole-screen sharing in Android's prompt.
+4. Drag a region by default; selections below 32dp show an explicit retry message. While selecting,
+   the full-screen selector owns gestures and the top-right Exit capture button ends the session;
+   after a valid selection, use the existing overlay toolbar. Switch to Full-screen incremental overlay
+   (Experimental) for continuous reading.
 5. Stop from the overlay controls or persistent notification; projection, frame reader, OCR, translation, and overlays are released together.
 
 ## Physical-device workflow evidence
@@ -224,8 +227,9 @@ HY-MT2 do not expose x86_64 local runtimes. Production Release APKs remain ARM64
 3. Prepare the current translation model, or configure the Online BYOK endpoint.
 4. Grant notification and display-over-other-apps permissions.
 5. On HyperOS, set the app battery policy to **Unrestricted**.
-6. Tap **Start**, approve the Android screen-sharing dialog, then select a region if Region
-   mode is active. Full-screen mode starts its tile scan directly.
+6. Switch to the target app, tap **Start capture** in the persistent notification, approve the
+   Android screen-sharing dialog, then select a region if Region mode is active. Full-screen
+   mode starts its tile scan directly.
 7. Stop from the overlay/control bar, app, or notification.
 
 ## Online BYOK configuration
@@ -272,4 +276,4 @@ feature from Experimental to supported. Release procedure: [`docs/RELEASING.md`]
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE)
-- [v2.4.0 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/6)
+- [v2.4.1 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/7)

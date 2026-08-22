@@ -50,7 +50,7 @@
                     android:layout_marginTop="6dp"
                     android:accessibilityLiveRegion="polite"
                     android:text="@string/home_reason_prepare_model"
-                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Supporting" />
+                    android:textAppearance="@style/TextAppearance.ScreenTranslation.Readiness" />
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -70,6 +70,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:enabled="false"
+                        android:visibility="gone"
                         android:text="@string/stop_translation" />
                 </LinearLayout>
                 <TextView

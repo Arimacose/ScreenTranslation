@@ -4,12 +4,14 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.color.MaterialColors
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -57,6 +59,7 @@ class MainActivityLaunchInstrumentedTest {
             assertEquals(activity.getString(R.string.service_idle), serviceStatus.text.toString())
             assertTrue(start.isEnabled)
             assertFalse(stop.isEnabled)
+            assertEquals(View.GONE, stop.visibility)
         }
     }
 
@@ -79,6 +82,16 @@ class MainActivityLaunchInstrumentedTest {
             }
             val readiness = activity.findViewById<TextView>(R.id.text_readiness_summary)
             val service = activity.findViewById<TextView>(R.id.text_service_status)
+            val readinessSizeSp = readiness.textSize /
+                activity.resources.displayMetrics.scaledDensity
+            assertTrue("readiness text is below 18sp", readinessSizeSp >= 17.9f)
+            assertEquals(
+                MaterialColors.getColor(
+                    readiness,
+                    androidx.appcompat.R.attr.colorPrimary,
+                ),
+                readiness.currentTextColor,
+            )
             assertTrue(readiness.accessibilityLiveRegion != android.view.View.ACCESSIBILITY_LIVE_REGION_NONE)
             assertTrue(service.accessibilityLiveRegion != android.view.View.ACCESSIBILITY_LIVE_REGION_NONE)
             assertTrue(!readiness.stateDescription.isNullOrBlank())

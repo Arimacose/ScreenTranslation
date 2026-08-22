@@ -20,6 +20,42 @@
 换包。发布证据保存在版本对应的 issue 评论与 Release notes，源码文档保留可重复步骤和字段
 约束，避免为了回写测试结论再次移动已经验收的 commit。
 
+## v2.4.1 交互补丁最终签名验收矩阵（Issue #88）
+
+### 候选与版本
+
+1. 候选来自最终 `origin/main` 的签名构建，版本身份为 `versionCode=11`、
+   `versionName=2.4.1`，并记录 run ID、source SHA、Artifact ID 和 Artifact digest；
+2. 三份 APK 的包名、版本、release signer、base.apk SHA-256 必须等于同一签名 Artifact；
+3. 本补丁的运行时验收只覆盖本节列出的新增交互与 fatal 日志，不重复 v2.4.0 的持续运行、
+   OCR 精度、温控、性能或其他产品设计矩阵；
+4. `accepted_issues=88`，证据评论晚于 build run，Issue #88 在评论发布并移除
+   `status:needs-verification` 后关闭；milestone 为 `v2.4.1`。
+
+### 权限和通知启动
+
+1. 在签名 Lite 包中依次准备模型并授予通知、悬浮窗权限；悬浮窗入口应直接到系统
+   “显示在其他应用的上层”类别，记录实际组件、目标行可见性和厂商后备入口；
+   两项权限已授予后，对应按钮必须为灰底灰字、不可点击；
+2. 模型与前置权限就绪后，首页只显示“先切换到要翻译的页面，再从常驻通知点开始识屏”
+   原因文本，APP 内启动操作不进入可见或可访问性树；
+3. 切换到目标应用，点常驻通知“开始识屏”，确认系统 MediaProjection 对话框覆盖在目标页
+   上方；授权后底层仍为该目标页，服务、投影和 `ScreenTranslationCapture` 均存在；
+4. Region 框选阶段确认右上角“退出识屏”可见；拖出小于 32dp 的选区必须显示 Toast。发送
+   系统返回/边缘返回后框选层、服务和投影继续存在，底层目标页不接收该手势；点“退出识屏”
+   后服务、投影、VirtualDisplay、GestureGuard 与悬浮层全部收敛；
+5. 重新启动并完成有效 Region 框选，结果面板的复制、展开、冻结、预设、重选区域与停止全部完整；
+   此时回到 APP，主页不得再显示第二个“停止”，屏幕上只保留当前翻译浮层的停止入口；
+6. 点击停止，5 秒收敛后服务、MediaProjection、VirtualDisplay 与悬浮层全部消失，空闲通知恢复；
+7. 从安装签名候选开始清空 logcat；完成上述流程后，应用 PID 与系统 crash/dropbox 记录中
+   `FATAL EXCEPTION`、native fatal、ANR 与崩溃记录均为 0。
+
+### 补丁发布判定
+
+新增交互逐项通过、停止资源收敛且 fatal/ANR/crash 计数为 0 即满足 v2.4.1 真机门禁。
+任一必需断言失败时保持 Issue #88 打开并保留 `status:needs-verification`，修复后从新的
+`origin/main` source commit 重新生成签名 Artifact。
+
 ## v2.4.0 混合文字、OCR profiles、Online batch 与 E2E 最终签名验收矩阵（Issues #76/#77/#78/#79）
 
 本节在 `docs/V2_4_0_DESIGN.md` 的非真机合同全部通过后执行。设计文档、JVM、模拟器、
@@ -193,8 +229,10 @@ open issue 为 0；为同一 source commit 创建 annotated `v2.3.0` tag，再�
 
 ### 首页、通知、Tile 与信任中心（#71/#72/#45）
 
-1. 清除应用数据后按主按钮依次完成模型/Online BYOK、通知、悬浮窗和投影授权，所有返回
-   都恢复到正确下一步；准备中按钮显示阻塞原因，运行中同一主按钮执行停止；
+1. 清除应用数据后按主按钮依次完成模型/Online BYOK、通知和悬浮窗前置条件，所有返回
+   都恢复到正确下一步；就绪时 APP 内启动操作消失，并提示先切换目标页面、再从常驻通知
+   进入投影授权；准备中按钮显示阻塞原因，运行中主页不重复显示停止，停止由翻译浮层或
+   运行通知承担；
 2. Apple、MIUIX、Material 3（含 Monet 开/关）分别覆盖日/夜、font scale 1.0/2.0、
    竖屏/横屏；任务摘要、原因文本、主按钮和 About 长文均可访问且不截断关键动作；
 3. 默认空闲通知存在；关闭开关后空闲通知消失，但活动捕获 FGS 通知继续存在；
