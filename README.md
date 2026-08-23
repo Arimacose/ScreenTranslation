@@ -93,7 +93,7 @@ GitHub Release。
 | 项目 | 版本/配置 |
 |---|---|
 | Android Gradle Plugin | application 9.3.1 / library 9.3.1 |
-| Gradle Wrapper | 9.6.1 |
+| Gradle Wrapper | 9.7.0 |
 | JDK | 17 |
 | Kotlin | AGP 9.3 内置 Kotlin（不应用 `org.jetbrains.kotlin.android`） |
 | compile / min / target SDK | 37 / 36 / 36 |

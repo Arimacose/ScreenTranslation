@@ -12,7 +12,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.InterruptedIOException
+import java.net.UnknownHostException
 import java.util.concurrent.CancellationException
+import javax.net.ssl.SSLException
 
 class OnlineV24ContractsTest {
     @Test
@@ -50,6 +53,33 @@ class OnlineV24ContractsTest {
         assertTrue(mapped.all { it.summary.isNotBlank() && it.technicalCode.isNotBlank() })
         assertTrue(mapped.all { "visible" !in it.redactedDetail })
         assertTrue(mapped.last().summary.contains("取消"))
+    }
+
+    @Test
+    fun `blank endpoint model HTTP DNS TLS and timeout failures keep exact localized summaries`() {
+        val fixtures = listOf(
+            IllegalArgumentException("Test text is blank") to
+                ("REQUEST_CONTRACT" to "服务不接受当前请求"),
+            OnlineHttpPolicy.failureForStatus(404) to
+                ("HTTP_404" to "服务地址、模型列表或所选模型错误"),
+            OnlineHttpPolicy.failureForStatus(401) to
+                ("HTTP_401" to "API Key 无效、权限不足或账户额度不可用，请检查密钥与余额"),
+            OnlineHttpPolicy.failureForStatus(503) to
+                ("HTTP_503" to "翻译服务暂时异常"),
+            UnknownHostException("token=visible") to
+                ("DNS" to "服务主机解析失败"),
+            SSLException("Bearer visible") to
+                ("TLS" to "TLS 连接失败"),
+            InterruptedIOException("api_key=visible") to
+                ("TIMEOUT" to "翻译请求在 90 秒内未完成，请检查服务状态或改用响应更快的模型"),
+        )
+
+        fixtures.forEach { (error, expected) ->
+            val mapped = OnlineFailureMapper.map(error)
+            assertEquals(expected.first, mapped.technicalCode)
+            assertEquals(expected.second, mapped.summary)
+            assertFalse(mapped.redactedDetail.contains("visible"))
+        }
     }
 
     @Test

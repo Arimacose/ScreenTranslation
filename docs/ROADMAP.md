@@ -24,7 +24,7 @@
   15 分钟温升验收绑定到签名 Release 证据（[#39](https://github.com/Arimacose/ScreenTranslation/issues/39)；
   [A/B 报告](PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md)）
 - [x] 构建 Firefox Translations / Bergamot Android arm64 运行时并完成真机比较
-- [ ] 在实验特性开关后实现 Bergamot JNI 适配器，并与 PP-OCRv6 联合做内存/温升验收
+- [x] 将 Bergamot JNI 适配器与 PP-OCRv6 集成到 Lite 生产路径，并完成内存、温升与签名真机验收
 - [x] 在翻译前遮蔽、翻译后恢复版本号、邮箱、金额、日期和 URL
 - [x] 让原文与译文面板可复制
 - [x] 在不保存历史的前提下增加长结果展开与限高滚动
