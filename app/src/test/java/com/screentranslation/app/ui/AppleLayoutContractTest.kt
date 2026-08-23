@@ -129,8 +129,11 @@ class AppleLayoutContractTest {
         val model = source("src/main/res/layout/activity_model_management.xml")
         val online = source("src/online/res/layout/activity_online_settings.xml")
         val styles = source("src/main/res/values/styles.xml")
-        val overlay = source(
+        val fullScreenOverlay = source(
             "src/main/java/com/screentranslation/app/overlay/FullScreenOverlayController.kt",
+        )
+        val regionOverlay = source(
+            "src/main/java/com/screentranslation/app/overlay/OverlayController.kt",
         )
         val mainActivity = source("src/main/java/com/screentranslation/app/MainActivity.kt")
 
@@ -138,10 +141,11 @@ class AppleLayoutContractTest {
             assertTrue("44dp target remains in an interactive layout", "minHeight=\"44dp\"" !in layout)
         }
         assertTrue("screenControlMinHeight" in styles)
-        assertTrue("minHeight = dp(48)" in overlay)
-        assertTrue("IMPORTANT_FOR_ACCESSIBILITY_NO" in overlay)
-        assertTrue("renderReadingSurface" in overlay)
-        assertTrue("full_screen_reading_item_description" in overlay)
+        assertTrue("minHeight = dp(48)" in regionOverlay)
+        assertTrue("minHeight = dp(48)" in fullScreenOverlay)
+        assertTrue("IMPORTANT_FOR_ACCESSIBILITY_NO" in fullScreenOverlay)
+        assertTrue("renderReadingSurface" in fullScreenOverlay)
+        assertTrue("full_screen_reading_item_description" in fullScreenOverlay)
         assertTrue("ViewCompat.setStateDescription" in mainActivity)
     }
 

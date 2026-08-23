@@ -165,7 +165,7 @@ Core design notes:
 | Component | Version/configuration |
 |---|---|
 | Android Gradle Plugin | 9.3.1 |
-| Gradle Wrapper | 9.6.1 |
+| Gradle Wrapper | 9.7.0 |
 | JDK | 17 |
 | compile / min / target SDK | 37 / 36 / 36 |
 | Production ABI | `arm64-v8a` |
