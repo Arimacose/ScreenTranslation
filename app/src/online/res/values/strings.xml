@@ -47,6 +47,7 @@
     <string name="online_test_running">正在发送一条文本翻译测试…</string>
     <string name="online_test_success">测试成功：\n%1$s</string>
     <string name="online_test_failed">测试失败：%1$s</string>
+    <string name="online_error_toast">Online 请求失败：%1$s</string>
     <string name="online_details_affordance">点按此处查看已脱敏的技术详情</string>
     <string name="online_key_deleted">已删除 API Key 密文和 Keystore 密钥。</string>
     <string name="online_config_summary">模式：%1$s\n服务：%2$s\n模型：%3$s\n密钥：%4$s</string>

@@ -8,6 +8,7 @@ import com.screentranslation.app.ml.TranslationBatchItem
 import com.screentranslation.app.ml.TranslationProviderProfile
 import com.screentranslation.app.ml.TranslationProviderProfiles
 import com.screentranslation.app.capture.BlockTranslationQueue
+import com.screentranslation.app.util.UserFacingErrorMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -80,6 +81,27 @@ class OnlineV24ContractsTest {
             assertEquals(expected.second, mapped.summary)
             assertFalse(mapped.redactedDetail.contains("visible"))
         }
+    }
+
+    @Test
+    fun `endpoint and API key configuration failures stay classified through service mapper`() {
+        val endpoint = runCatching { OpenAiEndpoint.parse("http://api.example.test/v1") }
+            .exceptionOrNull() as OnlineConfigurationException
+        val credentials = OnlineConfigurationException(
+            OnlineFailureCategory.CREDENTIALS,
+            "API key is not configured",
+        )
+
+        val endpointUi = UserFacingErrorMapper.map(endpoint)
+        val credentialsUi = UserFacingErrorMapper.map(credentials)
+
+        assertEquals("ENDPOINT_OR_MODEL", endpointUi.technicalCode)
+        assertEquals("服务地址、模型列表或所选模型错误", endpointUi.summary)
+        assertEquals("CREDENTIALS", credentialsUi.technicalCode)
+        assertEquals(
+            "API Key 无效、权限不足或账户额度不可用，请检查密钥与余额",
+            credentialsUi.summary,
+        )
     }
 
     @Test

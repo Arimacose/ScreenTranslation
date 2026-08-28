@@ -1,6 +1,7 @@
 package com.screentranslation.app.online
 
 import okhttp3.OkHttpClient
+import com.screentranslation.app.util.UserFacingFailureMetadata
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.UnknownHostException
@@ -36,7 +37,10 @@ internal class OnlineTranslationException(
         statusCode?.let { append(" (HTTP $it)") }
     },
     cause,
-)
+), UserFacingFailureMetadata {
+    override val userFacingSummary: String = category.displayMessage
+    override val userFacingTechnicalCode: String = statusCode?.let { "HTTP_$it" } ?: category.name
+}
 
 internal object OnlineHttpPolicy {
     const val MAX_ATTEMPTS = 2

@@ -14,19 +14,42 @@ internal class OpenAiEndpoint private constructor(
     companion object {
         fun parse(rawBaseUrl: String): OpenAiEndpoint {
             val raw = rawBaseUrl.trim()
-            require(raw.isNotEmpty()) { "Base URL is blank" }
-            require(raw.length <= MAX_BASE_URL_LENGTH) { "Base URL is too long" }
+            requireOnlineConfiguration(raw.isNotEmpty(), OnlineFailureCategory.ENDPOINT_OR_MODEL) {
+                "Base URL is blank"
+            }
+            requireOnlineConfiguration(
+                raw.length <= MAX_BASE_URL_LENGTH,
+                OnlineFailureCategory.ENDPOINT_OR_MODEL,
+            ) { "Base URL is too long" }
             val parsed = raw.toHttpUrlOrNull()
-                ?: throw IllegalArgumentException("Base URL is invalid")
-            require(parsed.scheme.lowercase(Locale.ROOT) == "https") {
+                ?: throw OnlineConfigurationException(
+                    OnlineFailureCategory.ENDPOINT_OR_MODEL,
+                    "Base URL is invalid",
+                )
+            requireOnlineConfiguration(
+                parsed.scheme.lowercase(Locale.ROOT) == "https",
+                OnlineFailureCategory.ENDPOINT_OR_MODEL,
+            ) {
                 "Base URL must use HTTPS"
             }
-            require(parsed.host.isNotBlank()) { "Base URL host is missing" }
-            require(parsed.username.isEmpty() && parsed.password.isEmpty()) {
+            requireOnlineConfiguration(
+                parsed.host.isNotBlank(),
+                OnlineFailureCategory.ENDPOINT_OR_MODEL,
+            ) { "Base URL host is missing" }
+            requireOnlineConfiguration(
+                parsed.username.isEmpty() && parsed.password.isEmpty(),
+                OnlineFailureCategory.ENDPOINT_OR_MODEL,
+            ) {
                 "Base URL must not contain credentials"
             }
-            require(parsed.query == null) { "Base URL must not contain a query" }
-            require(parsed.fragment == null) { "Base URL must not contain a fragment" }
+            requireOnlineConfiguration(
+                parsed.query == null,
+                OnlineFailureCategory.ENDPOINT_OR_MODEL,
+            ) { "Base URL must not contain a query" }
+            requireOnlineConfiguration(
+                parsed.fragment == null,
+                OnlineFailureCategory.ENDPOINT_OR_MODEL,
+            ) { "Base URL must not contain a fragment" }
 
             val normalized = parsed.toString().removeSuffix("/")
             val base = when {

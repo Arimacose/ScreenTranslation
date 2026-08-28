@@ -26,9 +26,11 @@ import android.os.IBinder
 import android.service.quicksettings.TileService
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.text.format.Formatter
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import com.screentranslation.app.MainActivity
 import com.screentranslation.app.R
 import com.screentranslation.app.model.CaptureMode
@@ -50,6 +52,8 @@ import com.screentranslation.app.prefs.AppPreferences
 import com.screentranslation.app.prefs.RegionPresetOrientation
 import com.screentranslation.app.prefs.RegionPresetStore
 import com.screentranslation.app.util.StableTextGate
+import com.screentranslation.app.util.UserFacingErrorMapper
+import com.screentranslation.app.util.UserFeedbackThrottle
 import java.io.FileDescriptor
 import java.io.PrintWriter
 import java.util.concurrent.atomic.AtomicReference
@@ -62,6 +66,8 @@ import java.util.concurrent.atomic.AtomicReference
 class ScreenTranslationService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val lifecycle = CaptureLifecycleStateMachine()
+    private val feedbackThrottle = UserFeedbackThrottle(FEEDBACK_DUPLICATE_COOLDOWN_MS)
+    private var activeFeedbackToast: Toast? = null
 
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
@@ -356,6 +362,7 @@ class ScreenTranslationService : Service() {
                         }
                     }
                 },
+                onNoValidText = ::reportNoValidText,
                 onError = ::reportProcessingError,
                 performanceTelemetry = performanceTelemetry,
             )
@@ -402,6 +409,7 @@ class ScreenTranslationService : Service() {
                         }
                     }
                 },
+                onNoValidText = ::reportNoValidText,
                 onError = ::reportProcessingError,
                 performanceTelemetry = performanceTelemetry,
             )
@@ -509,9 +517,11 @@ class ScreenTranslationService : Service() {
                     onFailure = { error ->
                         lifecycle.dispatch(CaptureLifecycleEvent.ModelUnavailable)
                         processor.setEnabled(false)
+                        val failure = UserFacingErrorMapper.map(error)
                         updateOverlayStatus(
-                            "模型准备失败：${com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary}",
+                            "模型准备失败：${failure.summary}",
                         )
+                        showFeedbackToast("model:${failure.technicalCode}", failure.summary)
                     },
                 )
             }
@@ -522,11 +532,32 @@ class ScreenTranslationService : Service() {
         performanceTelemetry?.recordProcessingError()
         mainHandler.post {
             if (!closing) {
+                val failure = UserFacingErrorMapper.map(error)
                 overlayController?.preserveContentAfterFailure()
                 updateOverlayStatus(
-                    "处理失败：${com.screentranslation.app.util.UserFacingErrorMapper.map(error).summary}",
+                    "处理失败：${failure.summary}",
+                )
+                showFeedbackToast("processing:${failure.technicalCode}", failure.summary)
+            }
+        }
+    }
+
+    private fun reportNoValidText() {
+        mainHandler.post {
+            if (!closing) {
+                showFeedbackToast(
+                    key = "ocr:no-valid-text",
+                    message = getString(R.string.ocr_no_valid_text_toast),
                 )
             }
+        }
+    }
+
+    private fun showFeedbackToast(key: String, message: String) {
+        if (!feedbackThrottle.shouldShow(key, SystemClock.elapsedRealtime())) return
+        activeFeedbackToast?.cancel()
+        activeFeedbackToast = Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).also {
+            it.show()
         }
     }
 
@@ -945,6 +976,9 @@ class ScreenTranslationService : Service() {
         ocrEngine?.close()
         overlayController?.close()
         fullScreenOverlayController?.close()
+        activeFeedbackToast?.cancel()
+        activeFeedbackToast = null
+        feedbackThrottle.reset()
         captureThread?.quitSafely()
         performanceTelemetry?.let { telemetry ->
             Log.i(PERFORMANCE_TAG, telemetry.snapshot("final").toJsonLine())
@@ -1048,6 +1082,7 @@ class ScreenTranslationService : Service() {
         private const val PERFORMANCE_TAG = "ScreenTranslationPerf"
         private const val PERFORMANCE_DUMP_PREFIX = "SCREEN_TRANSLATION_PERF_V1"
         private const val PERFORMANCE_LOG_INTERVAL_MS = 60_000L
+        private const val FEEDBACK_DUPLICATE_COOLDOWN_MS = 8_000L
 
         private const val ACTION_START =
             "com.screentranslation.app.action.START_SCREEN_TRANSLATION"

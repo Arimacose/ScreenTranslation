@@ -38,6 +38,7 @@ class FullScreenFrameProcessor(
     private val ocrProfile: OcrProfile = OcrProfiles.BALANCED,
     frameIntervalMs: Long,
     private val onBlocks: (List<TranslatedScreenBlock>) -> Unit,
+    private val onNoValidText: () -> Unit = {},
     private val onError: (Throwable) -> Unit = {},
     private val performanceTelemetry: CapturePerformanceTelemetry? = null,
     elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
@@ -58,6 +59,7 @@ class FullScreenFrameProcessor(
     )
 
     private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
+    private val noValidTextNotifier = NoValidTextNotifier(onNoValidText)
     private val adaptiveInterval = AdaptiveFrameInterval(frameIntervalMs)
     private val signatureDiffer = TileSignatureDiffer()
     private val blockTracker = IncrementalBlockTracker()
@@ -111,6 +113,7 @@ class FullScreenFrameProcessor(
         verificationTiles = emptySet()
         lastExclusions = emptyList()
         currentBlocks = emptyList()
+        noValidTextNotifier.reset()
         translationQueue.reset()
         synchronized(translations) { translations.clear() }
         onBlocks(emptyList())
@@ -483,6 +486,7 @@ class FullScreenFrameProcessor(
             rawBlocks = tileBlocks.values.flatten(),
             invalidatedTiles = naturallyChanged,
         )
+        noValidTextNotifier.observe(currentBlocks.any { it.text.isNotBlank() })
         verificationTiles = verificationTileIndices(naturallyChanged, currentBlocks)
         val activeIds = currentBlocks.mapTo(linkedSetOf()) { it.id }
         synchronized(translations) { translations.keys.retainAll(activeIds) }

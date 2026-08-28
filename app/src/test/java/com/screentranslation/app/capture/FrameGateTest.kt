@@ -206,4 +206,22 @@ class FrameGateTest {
 
         assertNotNull(gate.tryAcquire())
     }
+
+    @Test
+    fun `no valid text notification fires once per empty episode`() {
+        var notifications = 0
+        val notifier = NoValidTextNotifier { notifications += 1 }
+
+        notifier.observe(hasValidText = false)
+        notifier.observe(hasValidText = false)
+        assertEquals(1, notifications)
+
+        notifier.observe(hasValidText = true)
+        notifier.observe(hasValidText = false)
+        assertEquals(2, notifications)
+
+        notifier.reset()
+        notifier.observe(hasValidText = false)
+        assertEquals(3, notifications)
+    }
 }
