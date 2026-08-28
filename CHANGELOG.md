@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-08-28
+
+### Added
+
+- OCR 或翻译模型处理超时时显示去重的超时 Toast；识屏没有识别到有效文字时按空白阶段仅提示一次。
+- Online 配置与翻译链路为无效 API Key、错误端点/模型、限流、服务端、超时、DNS、TLS 和响应格式错误提供可操作 Toast，且不暴露密钥或响应正文。
+
+### Changed
+
+- Full · HY-MT2 Q4 从 Experimental 提升为正式基线：供应方状态改为 `SHIPPING`，移除应用标签、标题、通知、attribution、模型名、User-Agent、发布资产名与 Release notes 中的 Experimental 标识；HY-MT2 Q4 集成自检继续保留。
+- 签名发布验收门禁升级为 `screen-translation-device-v3`，本轮只绑定新增 Toast、Full 基线身份、三份同源 APK 和目标应用 fatal=0，验收窗口不超过 300 秒。
+
+### Verification
+
+- Lite、Full、Online 单元测试、Release lint、R8 APK/AAB、SBOM、签名、16 KiB 对齐与 edition 隔离由 CI 和签名 acceptance workflow 核验。
+- 小米 15 Pro / Android 16 / HyperOS 真机安装同一签名 Artifact，验证新增 Toast、Full 基线标签以及目标包无 Java/native fatal、ANR 或 crash 后原样发布。
 ## [2.4.1] - 2026-08-22
 
 ### Changed

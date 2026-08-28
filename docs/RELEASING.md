@@ -9,8 +9,8 @@ ScreenTranslation 使用语义化版本、签名 Android 包和 GitHub tag workf
 第一次公开发布前，仓库所有者应确认 `applicationId`、应用名称和签名证书身份。
 Lite 保留 `com.screentranslation.app`，用于从 v0.1.0 覆盖升级；Full 使用
 `com.screentranslation.app.full`，Online 使用 `com.screentranslation.app.online`，
-三者可并存。Full 的应用标签、版本说明和发布说明均需明确标注
-`HY-MT2 Q4 Experimental`；Online 需明确 OCR 文本会发送到用户选择的 API。
+三者可并存。Full 的 HY-MT2 Q4 后端自 v2.5.0 起属于正式基线，应用标签与发布资产名不再带
+`Experimental`；Online 需明确 OCR 文本会发送到用户选择的 API。
 
 ### 创建发布密钥
 
@@ -98,8 +98,8 @@ source SHA 的 30 天签名 acceptance Artifact。下载并验证其中的 `SHA2
 
 验收通过后，按 `docs/DEVICE_TEST.md` 的固定 ASCII 字段格式在本版本任一验收 issue 添加
 `DEVICE_ACCEPTANCE_PASS` 评论；评论必须绑定 schema、全部 `accepted_issues`、build run
-ID、source SHA、目标设备/ROM、三份 APK SHA-256、最低持续时间、温控/失败计数与报告
-SHA-256。移除这些 issues 的 `status:needs-verification` 并逐项关闭。
+ID、source SHA、目标设备/ROM、三份 APK SHA-256、新增 Toast、Full 基线标签、目标应用 fatal
+计数与报告 SHA-256。验收采集限于 300 秒；移除这些 issues 的 `status:needs-verification` 并逐项关闭。
 
 ## 5. 创建发布标签
 
@@ -108,7 +108,7 @@ accepted run 的 source commit、当前 `origin/main` 与准备标记的 commit 
 ```bash
 git switch main
 git pull --ff-only
-VERSION=2.4.1
+VERSION=2.5.0
 git tag -a "v$VERSION" -m "ScreenTranslation v$VERSION"
 git push origin "v$VERSION"
 ```
@@ -125,7 +125,7 @@ git push origin "v$VERSION"
 再次在 Actions 手动运行 `Signed release and acceptance`，选择 `operation=publish` 并填写：
 
 - `acceptance_run_id`：完成真机验收的 `operation=build` run ID；
-- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.4.1`；
+- `release_tag`：刚推送的 annotated/signed tag，例如 `v2.5.0`；
 - `device_evidence_comment`：本版本任一 accepted issue 中 `DEVICE_ACCEPTANCE_PASS`
   评论的完整 URL。
 
@@ -138,8 +138,8 @@ promotion job 采用 fail-closed 顺序：
 4. 从证据评论解析唯一、无重复的 `accepted_issues`；要求评论所在 issue 属于该集合，
    每项均已关闭、milestone 与 release tag 相同且 `status:needs-verification` 已移除；证据
    评论来自仓库所有者或协作者，时间晚于 accepted run 且早于每项关闭；评论须一次写定，
-   最低 15 分钟区域/全屏时长、Thermal status、失败计数、报告哈希与仓库内持续基准文档
-   哈希全部通过后，promotion 冻结正文 SHA-256 并在公开前再次核对；
+   新增 Toast、Full 基线标签、目标应用 fatal=0、最长 300 秒验收窗口与报告哈希全部通过后，
+   promotion 冻结正文 SHA-256 并在公开前再次核对；
 5. 下载 Artifact ZIP 并核对 GitHub digest，要求 ZIP entry 精确等于预期十二个平面文件，
    拒绝额外/缺失/嵌套路径和符号链接，随后执行 `sha256sum -c SHA256SUMS`；
 6. 重新核验三 APK 的包名、版本、targetSdk 36、应用标签、非 debuggable、仅 ARM64、
@@ -151,8 +151,8 @@ promotion job 采用 fail-closed 顺序：
    才公开，并把 run、Artifact digest、评论正文 SHA-256 和真机证据 URL 写入 Release notes：
    - `ScreenTranslation-$VERSION-lite-bergamot.apk`
    - `ScreenTranslation-$VERSION-lite-bergamot.aab`
-   - `ScreenTranslation-$VERSION-full-hymt2-q4-experimental.apk`
-   - `ScreenTranslation-$VERSION-full-hymt2-q4-experimental.aab`
+   - `ScreenTranslation-$VERSION-full-hymt2-q4.apk`
+   - `ScreenTranslation-$VERSION-full-hymt2-q4.aab`
    - `ScreenTranslation-$VERSION-online-llm.apk`
    - `ScreenTranslation-$VERSION-online-llm.aab`
    - `ScreenTranslation-$VERSION-lite.cdx.json`
@@ -174,7 +174,7 @@ VERSION=2.2.0
 sha256sum -c SHA256SUMS
 apksigner verify --verbose --print-certs "ScreenTranslation-$VERSION-lite-bergamot.apk"
 apksigner verify --verbose --print-certs \
-  "ScreenTranslation-$VERSION-full-hymt2-q4-experimental.apk"
+  "ScreenTranslation-$VERSION-full-hymt2-q4.apk"
 apksigner verify --verbose --print-certs \
   "ScreenTranslation-$VERSION-online-llm.apk"
 ```

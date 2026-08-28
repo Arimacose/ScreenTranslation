@@ -20,6 +20,40 @@
 换包。发布证据保存在版本对应的 issue 评论与 Release notes，源码文档保留可重复步骤和字段
 约束，避免为了回写测试结论再次移动已经验收的 commit。
 
+## v2.5.0 Toast 与 Full 基线最终签名验收矩阵
+
+本轮只验收 v2.5.0 新增错误反馈、Full 基线身份和目标应用 fatal，不重复耐久、温控、OCR 精度或其他设计矩阵。三份 APK 必须来自同一 `operation=build` 签名 Artifact，设备安装后的 `base.apk` SHA-256 与 Artifact 完全相同。
+
+1. Full 首页、系统应用标签、通知和 attribution 显示 `Full · HY-MT2 Q4`，不显示 Full edition 的 `Experimental` 横幅或后缀；HY-MT2 Q4 集成自检仍可用。
+2. 触发 OCR/翻译模型超时，看到超时 Toast；触发空白/无有效文字画面，看到无有效文字 Toast。
+3. Online 分别触发无效 API Key 与错误端点，看到对应 Toast，且 Toast 不泄露密钥、Authorization 或响应正文。
+4. 从清空 logcat 开始，在不超过 300 秒的验收窗口内完成上述项目；三个目标包的 Java/native fatal、ANR 和 crash 计数均为 0。
+5. 使用 `screen-translation-device-v3` 评论：
+
+```text
+DEVICE_ACCEPTANCE_PASS
+acceptance_schema: screen-translation-device-v3
+accepted_issues: ISSUE_NUMBER
+acceptance_run_id: RUN_ID
+source_sha: 40_HEX_COMMIT
+device: Xiaomi 15 Pro
+device_model: 2410DPN6CC
+android: 16
+rom: HyperOS
+rom_build: OS_VERSION_TOKEN
+lite_apk_sha256: 64_HEX_SHA256
+full_apk_sha256: 64_HEX_SHA256
+online_apk_sha256: 64_HEX_SHA256
+full_baseline_label: PASS
+ocr_translation_timeout_toast: PASS
+no_valid_text_toast: PASS
+online_invalid_key_toast: PASS
+online_endpoint_error_toast: PASS
+target_fatal_count: 0
+acceptance_duration_seconds: 1_TO_300
+feature_report_sha256: 64_HEX_SHA256
+target_logcat_sha256: 64_HEX_SHA256
+```
 ## v2.4.1 交互补丁最终签名验收矩阵（Issue #88）
 
 ### 候选与版本

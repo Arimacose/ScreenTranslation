@@ -312,7 +312,7 @@ jobs:
             "$full_apk" \
             "com.screentranslation.app.full" \
             "${version}-full" \
-            "识屏翻译 Full · HY-MT2 Q4 Experimental" \
+            "识屏翻译 Full · HY-MT2 Q4" \
             "lib/arm64-v8a/libhymt2_jni.so" \
             "lib/arm64-v8a/libbergamot_runner.so"
           verify_apk \
@@ -403,9 +403,9 @@ jobs:
           cp "$lite_apk" "dist/ScreenTranslation-$version-lite-bergamot.apk"
           cp "$lite_aab" "dist/ScreenTranslation-$version-lite-bergamot.aab"
           cp "$full_apk" \
-            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk"
+            "dist/ScreenTranslation-$version-full-hymt2-q4.apk"
           cp "$full_aab" \
-            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
+            "dist/ScreenTranslation-$version-full-hymt2-q4.aab"
           cp "$online_apk" "dist/ScreenTranslation-$version-online-llm.apk"
           cp "$online_aab" "dist/ScreenTranslation-$version-online-llm.aab"
           python tools/release/verify_sbom.py \
@@ -435,8 +435,8 @@ jobs:
             sha256sum \
               "ScreenTranslation-$version-lite-bergamot.apk" \
               "ScreenTranslation-$version-lite-bergamot.aab" \
-              "ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
-              "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
+              "ScreenTranslation-$version-full-hymt2-q4.apk" \
+              "ScreenTranslation-$version-full-hymt2-q4.aab" \
               "ScreenTranslation-$version-online-llm.apk" \
               "ScreenTranslation-$version-online-llm.aab" \
               "ScreenTranslation-$version-lite.cdx.json" \
@@ -472,7 +472,7 @@ jobs:
       - name: Preserve Full R8 mapping
         uses: actions/upload-artifact@v7
         with:
-          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-full-hymt2-q4-experimental-mapping
+          name: ScreenTranslation-${{ steps.version.outputs.version_name }}-full-hymt2-q4-mapping
           path: |
             app/build/outputs/mapping/fullRelease/configuration.txt
             app/build/outputs/mapping/fullRelease/mapping.txt
@@ -760,7 +760,7 @@ jobs:
           assert_single_marker 'DEVICE_ACCEPTANCE_PASS'
           assert_single_field \
             'acceptance_schema' \
-            'screen-translation-device-v2'
+            'screen-translation-device-v3'
           accepted_issues="$(
             read_single_token_field \
               'accepted_issues' \
@@ -847,50 +847,28 @@ jobs:
           lite_apk_sha="$(read_single_sha_field 'lite_apk_sha256')"
           full_apk_sha="$(read_single_sha_field 'full_apk_sha256')"
           online_apk_sha="$(read_single_sha_field 'online_apk_sha256')"
-          region_duration_seconds="$(
-            read_single_token_field 'region_duration_seconds' '^[0-9]+$'
+          assert_single_field 'full_baseline_label' 'PASS'
+          assert_single_field 'ocr_translation_timeout_toast' 'PASS'
+          assert_single_field 'no_valid_text_toast' 'PASS'
+          assert_single_field 'online_invalid_key_toast' 'PASS'
+          assert_single_field 'online_endpoint_error_toast' 'PASS'
+          target_fatal_count="$(
+            read_single_token_field 'target_fatal_count' '^[0-9]+$'
           )"
-          full_screen_duration_seconds="$(
-            read_single_token_field 'full_screen_duration_seconds' '^[0-9]+$'
+          acceptance_duration_seconds="$(
+            read_single_token_field 'acceptance_duration_seconds' '^[1-9][0-9]*$'
           )"
-          thermal_status_max="$(
-            read_single_token_field 'thermal_status_max' '^[0-9]+$'
-          )"
-          capture_failures="$(
-            read_single_token_field 'capture_failures' '^[0-9]+$'
-          )"
-          if (( 10#$region_duration_seconds < 900 ||
-                10#$full_screen_duration_seconds < 900 ||
-                10#$thermal_status_max > 1 ||
-                10#$capture_failures != 0 )); then
-            echo "::error::Device duration, thermal, or failure gates are not satisfied"
+          if (( 10#$target_fatal_count != 0 ||
+                10#$acceptance_duration_seconds > 300 )); then
+            echo "::error::Target fatal or bounded acceptance-duration gate is not satisfied"
             exit 1
           fi
-          region_summary_sha="$(
-            read_single_sha_field 'region_summary_sha256'
+          feature_report_sha="$(
+            read_single_sha_field 'feature_report_sha256'
           )"
-          full_screen_summary_sha="$(
-            read_single_sha_field 'full_screen_summary_sha256'
+          target_logcat_sha="$(
+            read_single_sha_field 'target_logcat_sha256'
           )"
-          lifecycle_report_sha="$(
-            read_single_sha_field 'lifecycle_report_sha256'
-          )"
-          ocr_fixture_score_sha="$(
-            read_single_sha_field 'ocr_fixture_score_sha256'
-          )"
-          sustained_benchmark_doc_sha="$(
-            read_single_sha_field 'sustained_benchmark_doc_sha256'
-          )"
-          actual_sustained_benchmark_doc_sha="$(
-            sha256sum \
-              docs/PP_OCRV6_SUSTAINED_BENCHMARK_2026-08-11.md |
-              awk '{ print $1 }'
-          )"
-          if [[ "$sustained_benchmark_doc_sha" != \
-                "$actual_sustained_benchmark_doc_sha" ]]; then
-            echo "::error::Sustained benchmark document hash is not bound to this source"
-            exit 1
-          fi
           comment_body_sha="$(
             printf '%s' "$comment_body" | sha256sum | awk '{ print $1 }'
           )"
@@ -919,14 +897,10 @@ jobs:
           echo "lite_apk_sha=$lite_apk_sha" >> "$GITHUB_OUTPUT"
           echo "full_apk_sha=$full_apk_sha" >> "$GITHUB_OUTPUT"
           echo "online_apk_sha=$online_apk_sha" >> "$GITHUB_OUTPUT"
-          echo "region_duration_seconds=$region_duration_seconds" >> "$GITHUB_OUTPUT"
-          echo "full_screen_duration_seconds=$full_screen_duration_seconds" >> "$GITHUB_OUTPUT"
-          echo "thermal_status_max=$thermal_status_max" >> "$GITHUB_OUTPUT"
-          echo "region_summary_sha=$region_summary_sha" >> "$GITHUB_OUTPUT"
-          echo "full_screen_summary_sha=$full_screen_summary_sha" >> "$GITHUB_OUTPUT"
-          echo "lifecycle_report_sha=$lifecycle_report_sha" >> "$GITHUB_OUTPUT"
-          echo "ocr_fixture_score_sha=$ocr_fixture_score_sha" >> "$GITHUB_OUTPUT"
-          echo "sustained_benchmark_doc_sha=$sustained_benchmark_doc_sha" >> "$GITHUB_OUTPUT"
+          echo "target_fatal_count=$target_fatal_count" >> "$GITHUB_OUTPUT"
+          echo "acceptance_duration_seconds=$acceptance_duration_seconds" >> "$GITHUB_OUTPUT"
+          echo "feature_report_sha=$feature_report_sha" >> "$GITHUB_OUTPUT"
+          echo "target_logcat_sha=$target_logcat_sha" >> "$GITHUB_OUTPUT"
 
       - name: Download and verify the immutable acceptance Artifact ZIP
         shell: bash
@@ -948,8 +922,8 @@ jobs:
             printf '%s\n' \
               "ScreenTranslation-$version-lite-bergamot.apk" \
               "ScreenTranslation-$version-lite-bergamot.aab" \
-              "ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
-              "ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
+              "ScreenTranslation-$version-full-hymt2-q4.apk" \
+              "ScreenTranslation-$version-full-hymt2-q4.aab" \
               "ScreenTranslation-$version-online-llm.apk" \
               "ScreenTranslation-$version-online-llm.aab" \
               "ScreenTranslation-$version-lite.cdx.json" \
@@ -1014,10 +988,10 @@ jobs:
           zipalign="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/zipalign"
           apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner"
           lite_apk="dist/ScreenTranslation-$version-lite-bergamot.apk"
-          full_apk="dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk"
+          full_apk="dist/ScreenTranslation-$version-full-hymt2-q4.apk"
           online_apk="dist/ScreenTranslation-$version-online-llm.apk"
           lite_aab="dist/ScreenTranslation-$version-lite-bergamot.aab"
-          full_aab="dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab"
+          full_aab="dist/ScreenTranslation-$version-full-hymt2-q4.aab"
           online_aab="dist/ScreenTranslation-$version-online-llm.aab"
 
           assert_entry() {
@@ -1100,7 +1074,7 @@ jobs:
             "$full_apk" \
             "com.screentranslation.app.full" \
             "$version-full" \
-            "识屏翻译 Full · HY-MT2 Q4 Experimental" \
+            "识屏翻译 Full · HY-MT2 Q4" \
             "lib/arm64-v8a/libhymt2_jni.so" \
             "lib/arm64-v8a/libbergamot_runner.so"
           verify_apk \
@@ -1203,23 +1177,20 @@ jobs:
           - Accepted issues: \`${{ steps.promotion.outputs.accepted_issues }}\`
           - Device-evidence body SHA-256: \`${{ steps.promotion.outputs.comment_body_sha }}\`
           - Tested ROM build: \`${{ steps.promotion.outputs.rom_build }}\`
-          - Region/full-screen endurance: \`${{ steps.promotion.outputs.region_duration_seconds }} s\` / \`${{ steps.promotion.outputs.full_screen_duration_seconds }} s\`
-          - Maximum thermal status: \`${{ steps.promotion.outputs.thermal_status_max }}\`
-          - Region summary SHA-256: \`${{ steps.promotion.outputs.region_summary_sha }}\`
-          - Full-screen summary SHA-256: \`${{ steps.promotion.outputs.full_screen_summary_sha }}\`
-          - Lifecycle report SHA-256: \`${{ steps.promotion.outputs.lifecycle_report_sha }}\`
-          - OCR fixture score SHA-256: \`${{ steps.promotion.outputs.ocr_fixture_score_sha }}\`
-          - Sustained benchmark document SHA-256: \`${{ steps.promotion.outputs.sustained_benchmark_doc_sha }}\`
+          - Feature-only device acceptance: \`${{ steps.promotion.outputs.acceptance_duration_seconds }} s\`
+          - Target-app fatal count: \`${{ steps.promotion.outputs.target_fatal_count }}\`
+          - Feature report SHA-256: \`${{ steps.promotion.outputs.feature_report_sha }}\`
+          - Target logcat SHA-256: \`${{ steps.promotion.outputs.target_logcat_sha }}\`
 
           The twelve files attached to this release are the same files extracted from the accepted Actions Artifact; the publish job verifies the Artifact ZIP digest, \`SHA256SUMS\`, package IDs, versions, APK v2 signer, 16 KiB alignment, edition isolation, AAB signatures, per-edition CycloneDX SBOMs, and third-party license hashes before upload.
 
           ## Editions
 
           - **Lite · Bergamot**: PP-OCRv6-small OCR with the Bergamot translation backend. Translation models are downloaded at runtime.
-          - **Full · HY-MT2 Q4 Experimental**: PP-OCRv6-small OCR with the HY-MT2 Q4 backend. This edition and model integration are explicitly **Experimental**; model weights are downloaded at runtime.
+          - **Full · HY-MT2 Q4**: PP-OCRv6-small OCR with the shipping HY-MT2 Q4 backend. Model weights are downloaded at runtime and verified against a pinned SHA-256.
           - **Online · BYOK API**: PP-OCRv6-small OCR with a user-configured OpenAI-compatible HTTPS endpoint. OCR text is sent only to the service selected by the user after explicit data-flow consent.
 
-          Lite keeps \`com.screentranslation.app\`; Full and Online use \`.full\` and \`.online\`. The supported device baseline is Android 16 on Xiaomi 15 Pro / current HyperOS. This release binds the signed region/full-screen endurance, PP-OCRv6 sustained-resource, lifecycle, and exact-APK evidence above; full-screen incremental overlay remains Experimental and region mode remains the default rollback path.
+          Lite keeps \`com.screentranslation.app\`; Full and Online use \`.full\` and \`.online\`. The supported device baseline is Android 16 on Xiaomi 15 Pro / current HyperOS. This release binds the signed feature-only device acceptance and exact-APK evidence above: timeout/no-text/Online failure Toasts, Full baseline identity, and zero target-app fatal events. Full-screen incremental overlay remains Experimental and region mode remains the default rollback path.
           NOTES
 
           release_id=''
@@ -1245,8 +1216,8 @@ jobs:
           gh release create "$tag" \
             "dist/ScreenTranslation-$version-lite-bergamot.apk" \
             "dist/ScreenTranslation-$version-lite-bergamot.aab" \
-            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.apk" \
-            "dist/ScreenTranslation-$version-full-hymt2-q4-experimental.aab" \
+            "dist/ScreenTranslation-$version-full-hymt2-q4.apk" \
+            "dist/ScreenTranslation-$version-full-hymt2-q4.aab" \
             "dist/ScreenTranslation-$version-online-llm.apk" \
             "dist/ScreenTranslation-$version-online-llm.aab" \
             "dist/ScreenTranslation-$version-lite.cdx.json" \

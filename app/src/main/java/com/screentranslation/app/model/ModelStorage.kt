@@ -74,7 +74,7 @@ object ModelStorageManagerFactory {
     fun create(context: Context): ModelStorageManager {
         val className = when {
             BuildConfig.ONLINE_LLM -> ONLINE_MANAGER_CLASS
-            BuildConfig.HYMT2_Q4_EXPERIMENTAL -> HYMT2_MANAGER_CLASS
+            BuildConfig.HYMT2_Q4_FULL -> HYMT2_MANAGER_CLASS
             BuildConfig.BERGAMOT_LITE -> BERGAMOT_MANAGER_CLASS
             else -> error("No model storage manager is configured for this edition")
         }

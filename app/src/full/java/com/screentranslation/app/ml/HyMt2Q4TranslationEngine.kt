@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Experimental multilingual-to-Chinese backend backed by Hy-MT2 1.8B Q4_K_M.
+ * Shipping multilingual-to-Chinese backend backed by Hy-MT2 1.8B Q4_K_M.
  *
  * The official model is downloaded into app-private no-backup storage and
  * verified before llama.cpp mmaps it. Keeping the model in internal storage
@@ -49,7 +49,7 @@ class HyMt2Q4TranslationEngine(
     init {
         require(sourceLanguageCode.isNotBlank()) { "Source language is blank" }
         require(targetLanguageCode == TARGET_LANGUAGE) {
-            "Hy-MT2 Q4 experimental currently targets Chinese only"
+            "Hy-MT2 Q4 currently targets Chinese only"
         }
         require(sourceLanguageCode != targetLanguageCode) {
             "Source language and target language must differ"
@@ -428,7 +428,7 @@ private class HyMt2Q4ModelStore(
             requestMethod = "GET"
             setRequestProperty(
                 "User-Agent",
-                "ScreenTranslation-Full-HY-MT2-Q4-Experimental/0.2.1",
+                "ScreenTranslation-Full-HY-MT2-Q4/2.5.0",
             )
             if (existingBytes > 0L) {
                 setRequestProperty("Range", "bytes=$existingBytes-")
@@ -678,7 +678,7 @@ internal fun classifyHyMt2Q4Candidate(
 }
 
 /**
- * Immutable release coordinates used by the Full experimental edition.
+ * Immutable release coordinates used by the Full baseline edition.
  *
  * Keeping the revision, byte count and digest together makes accidental
  * floating-revision downloads visible to both code review and unit tests.

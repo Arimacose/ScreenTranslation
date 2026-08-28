@@ -301,7 +301,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serviceStatusView: TextView
 
     private val targetsChineseOnly =
-        BuildConfig.BERGAMOT_LITE || BuildConfig.HYMT2_Q4_EXPERIMENTAL
+        BuildConfig.BERGAMOT_LITE || BuildConfig.HYMT2_Q4_FULL
     private val availableSourceOptions: List<LanguageOption> =
         sourceOptionsForEdition(
             isBergamotLite = BuildConfig.BERGAMOT_LITE,
@@ -459,7 +459,7 @@ class MainActivity : AppCompatActivity() {
         taskSummaryView = findViewById(R.id.text_task_summary)
         readinessSummaryView = findViewById(R.id.text_readiness_summary)
         experimentalBannerView.visibility = if (
-            BuildConfig.HYMT2_Q4_EXPERIMENTAL || BuildConfig.ONLINE_LLM
+            BuildConfig.ONLINE_LLM
         ) {
             View.VISIBLE
         } else {
@@ -492,7 +492,7 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.text_experimental_smoke_test_result)
         // A process recreation must not resurrect an in-progress self-test label.
         experimentalSmokeTestResultView.isSaveEnabled = false
-        val experimentalVisibility = if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+        val experimentalVisibility = if (BuildConfig.HYMT2_Q4_FULL) {
             View.VISIBLE
         } else {
             View.GONE
@@ -870,7 +870,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun runExperimentalSmokeTest() {
-        if (!BuildConfig.HYMT2_Q4_EXPERIMENTAL) return
+        if (!BuildConfig.HYMT2_Q4_FULL) return
         if (ScreenTranslationService.isRunning) {
             experimentalSmokeTestResultView.setText(
                 R.string.experimental_smoke_test_service_running,
@@ -1548,7 +1548,7 @@ class MainActivity : AppCompatActivity() {
         onlineSettingsButton.isEnabled =
             !running && operationIdle && BuildConfig.ONLINE_LLM
         experimentalSmokeTestButton.isEnabled =
-            !running && operationIdle && BuildConfig.HYMT2_Q4_EXPERIMENTAL
+            !running && operationIdle && BuildConfig.HYMT2_Q4_FULL
         if (running && serviceStatusView.text == getString(R.string.service_idle)) {
             serviceStatusView.setText(R.string.service_running)
         }
