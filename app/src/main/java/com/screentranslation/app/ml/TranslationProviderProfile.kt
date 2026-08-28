@@ -774,8 +774,8 @@ object TranslationProviderProfiles {
 
     val hyMt2Q4Full = TranslationProviderProfile(
         id = TranslationProviderId.HY_MT2_Q4_FULL,
-        displayName = "HY-MT2 Q4 Full Experimental",
-        availability = TranslationProviderAvailability.EXPERIMENTAL,
+        displayName = "HY-MT2 Q4 Full",
+        availability = TranslationProviderAvailability.SHIPPING,
         languages = TranslationLanguageCapability.AnySourceToTargets(setOf("zh")),
         evaluatedRoutes = setOf(enZh, jaZh),
         input = TranslationInputCapability(

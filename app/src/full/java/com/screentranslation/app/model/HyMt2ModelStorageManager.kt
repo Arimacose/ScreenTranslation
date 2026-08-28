@@ -31,7 +31,7 @@ class HyMt2ModelStorageManager(context: Context) : ModelStorageManager {
         return listOf(
             ManagedModel(
                 id = "hymt2-q4",
-                displayName = "HY-MT2 1.8B Q4_K_M Experimental",
+                displayName = "HY-MT2 1.8B Q4_K_M",
                 revision = HyMt2Q4ModelDescriptor.MODEL_REVISION,
                 state = when {
                     verification.ready -> ModelDownloadState.READY

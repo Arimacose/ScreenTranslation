@@ -2,14 +2,14 @@
 
 **简体中文** | [English](README.en.md)
 
-> v2.4.1 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
+> v2.5.0 提供三套可切换界面：Apple 风格默认主题、MIUIX，以及支持可关闭
 > Monet 动态取色的 Material 3。参见 [UI 风格设计与边界](docs/UI_STYLES.md)。
 
 ![Apple、MIUIX 与 Material 3 静态设计预览](docs/assets/ui-style-comparison.png)
 
 面向 **Android 16（API 36）/ 小米 15 Pro / HyperOS** 的实时识屏翻译原生应用。用户在前台主动启动一次任务后，应用通过 Android 的屏幕共享授权读取画面；默认只裁剪用户框选区域，Experimental 模式则对全屏变化分块增量识别。在本机完成 OCR 后，应用按所选 edition 进行端侧或在线翻译并用悬浮层显示结果。
 
-> 项目状态：`v2.4.1`，面向已验收的单一设备/ROM 基线。运行基线为 Android 16 / API 36，`minSdk` 与
+> 项目状态：`v2.5.0`，面向已验收的单一设备/ROM 基线。运行基线为 Android 16 / API 36，`minSdk` 与
 > `targetSdk` 为 36，`compileSdk` 为 37。源代码采用
 > [Apache License 2.0](LICENSE)，各第三方组件仍受自身条款约束。
 
@@ -17,9 +17,9 @@
 
 | 你的需求 | 直接安装文件 | 说明 |
 |---|---|---|
-| 英语/日语离线翻译，优先体积与稳定性 | `ScreenTranslation-v2.4.1-lite-bergamot.apk` | 推荐多数用户；Lite 可覆盖升级旧版同包名应用 |
-| 多语言离线直译，接受更大模型与 Experimental 标识 | `ScreenTranslation-v2.4.1-full-hymt2-q4-experimental.apk` | 独立包名，可与 Lite 并存；需下载约 1.06 GiB HY-MT2 Q4 模型 |
-| 使用自己的 OpenAI-compatible HTTPS API | `ScreenTranslation-v2.4.1-online-llm.apk` | 独立包名；OCR 留在本机，仅向所选服务发送稳定文字 |
+| 英语/日语离线翻译，优先体积与稳定性 | `ScreenTranslation-v2.5.0-lite-bergamot.apk` | 推荐多数用户；Lite 可覆盖升级旧版同包名应用 |
+| 多语言离线直译，接受更大模型 | `ScreenTranslation-v2.5.0-full-hymt2-q4.apk` | 独立包名，可与 Lite 并存；需下载约 1.06 GiB HY-MT2 Q4 模型 |
+| 使用自己的 OpenAI-compatible HTTPS API | `ScreenTranslation-v2.5.0-online-llm.apk` | 独立包名；OCR 留在本机，仅向所选服务发送稳定文字 |
 
 **APK** 是手机可直接安装的文件；**AAB** 是应用商店/开发者上传产物，手机文件管理器不能直接安装。
 普通用户请下载上表中的 APK，并从同一 Release 的 `SHA256SUMS` 核对哈希。
@@ -72,7 +72,7 @@ GitHub Release。
 - 内置 PP-OCRv6 small 多语言检测/识别模型，通过 ONNX Runtime 在设备端运行。
 - **Lite · Bergamot**：英语直译中文、日语经英语级联译中文；保留 v0.1.0
   包名并支持签名升级。
-- **Full · HY-MT2 Q4 Experimental**：多语言直接译为简体中文，使用独立
+- **Full · HY-MT2 Q4**：多语言直接译为简体中文，使用独立
   `.full` 包名，可与 Lite 并存安装。
 - **Online · BYOK API**：使用独立 `.online` 包名；填写 OpenAI-compatible
   HTTPS Base URL 与 API Key，自动拉取模型后翻译；区域模式发送稳定整段文字，
@@ -101,7 +101,7 @@ GitHub Release。
 | Production OCR | PP-OCRv6 small ONNX，固定检测/识别模型提交 |
 | OCR runtime | ONNX Runtime Android `1.29.0` |
 | Lite translation | Bergamot `v0.4.5+9271618` + Firefox en→zh / ja→en `base-memory` |
-| Full translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181`，Experimental |
+| Full translation | Hy-MT2 1.8B Q4_K_M + llama.cpp `b10181`，Shipping |
 | Online translation | OkHttp `5.4.0` + 用户配置的 OpenAI-compatible Chat Completions |
 | Benchmark baseline | ML Kit Translate `17.0.3` |
 | Low-bit translation PoC | Hy-MT2 1.8B STQ1_0 1.25-bit + llama.cpp PR `#22836` |
@@ -130,7 +130,7 @@ challenge，以及伪名评分者尚未验签、缺少 canonical incumbent pin /
 可信 runner attestation 时 `release_ready: false` 的边界见
 [`docs/TRANSLATION_QUALITY_REGRESSION.md`](docs/TRANSLATION_QUALITY_REGRESSION.md)。
 
-Hy-MT2 1.8B Q4_K_M 已进入 Full Experimental edition；STQ1_0
+Hy-MT2 1.8B Q4_K_M 已进入 Full 基线 edition；STQ1_0
 1.25-bit 仍为受 fail-closed gate 约束的 standalone PoC：当前 llama.cpp PR
 `#22836` 是 `OPEN`，仓库 gitlink `caa596…` 也没有 merge-ancestry 证据；只有 PR
 变为 `MERGED`，且 CI 证明实际 gitlink 包含 merge 并核对 runnable GGUF hash 后才重新开放候选验收。Q4 是当前质量上限；1.25-bit 相对
@@ -327,13 +327,13 @@ SHA-256。
 `app/src/lite/cpp/build-prebuilt.sh` 从固定 Bergamot commit 与 NDK r23b
 重建 runner；脚本要求生成结果命中发布清单哈希。
 
-### Full · HY-MT2 Q4 Experimental
+### Full · HY-MT2 Q4
 
-Full 使用 `com.screentranslation.app.full` 和 `2.4.1-full`，可与 Lite
+Full 使用 `com.screentranslation.app.full` 和 `2.5.0-full`，可与 Lite
 并存。应用名称、标题、Banner、通知和 attribution 均包含
-`Full · HY-MT2 Q4 Experimental`。
+`Full · HY-MT2 Q4`。
 
-首次点击“准备 Hy-MT2 Q4 实验模型”或“运行 Hy-MT2 Q4
+首次点击“准备 Hy-MT2 Q4 模型”或“运行 Hy-MT2 Q4
 集成自检”时，应用从固定版本下载官方 `Hy-MT2-1.8B-Q4_K_M.gguf`，校验
 `1,133,080,448` 字节及 SHA-256
 `dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699`，

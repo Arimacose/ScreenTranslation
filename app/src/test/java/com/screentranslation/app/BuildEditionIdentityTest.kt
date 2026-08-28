@@ -9,7 +9,7 @@ class BuildEditionIdentityTest {
     fun `each variant exposes exactly one coherent translation edition`() {
         val selected = listOf(
             BuildConfig.BERGAMOT_LITE,
-            BuildConfig.HYMT2_Q4_EXPERIMENTAL,
+            BuildConfig.HYMT2_Q4_FULL,
             BuildConfig.ONLINE_LLM,
         ).count { it }
         assertEquals(1, selected)
@@ -21,7 +21,7 @@ class BuildEditionIdentityTest {
                 "bergamot-lite"
             }
             "full" -> {
-                assertTrue(BuildConfig.HYMT2_Q4_EXPERIMENTAL)
+                assertTrue(BuildConfig.HYMT2_Q4_FULL)
                 "hymt2-q4"
             }
             "online" -> {

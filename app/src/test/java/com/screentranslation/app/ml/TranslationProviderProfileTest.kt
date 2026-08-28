@@ -66,7 +66,7 @@ class TranslationProviderProfileTest {
             profile.modelStorage.expectedLocalBytes,
         )
         assertTrue(profile.modelStorage.userRemovableFromApp)
-        assertEquals(TranslationProviderAvailability.EXPERIMENTAL, profile.availability)
+        assertEquals(TranslationProviderAvailability.SHIPPING, profile.availability)
         assertEquals(
             TranslationCloseBehavior.MARK_CLOSED_DRAIN_EXECUTOR_THEN_RELEASE_RUNTIME,
             profile.cancellation.onClose,
@@ -98,7 +98,7 @@ class TranslationProviderProfileTest {
     fun factoryProfileIsTheSelectedEditionSingleton() {
         val expected = when {
             BuildConfig.BERGAMOT_LITE -> TranslationProviderProfiles.bergamotLite
-            BuildConfig.HYMT2_Q4_EXPERIMENTAL -> TranslationProviderProfiles.hyMt2Q4Full
+            BuildConfig.HYMT2_Q4_FULL -> TranslationProviderProfiles.hyMt2Q4Full
             BuildConfig.ONLINE_LLM -> TranslationProviderProfiles.onlineByok
             else -> error("Test variant has no provider flag")
         }

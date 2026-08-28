@@ -169,7 +169,7 @@ object TranslationBackendFactory {
         get() {
             val configured = buildList {
                 if (BuildConfig.ONLINE_LLM) add(TranslationProviderProfiles.onlineByok)
-                if (BuildConfig.HYMT2_Q4_EXPERIMENTAL) {
+                if (BuildConfig.HYMT2_Q4_FULL) {
                     add(TranslationProviderProfiles.hyMt2Q4Full)
                 }
                 if (BuildConfig.BERGAMOT_LITE) add(TranslationProviderProfiles.bergamotLite)

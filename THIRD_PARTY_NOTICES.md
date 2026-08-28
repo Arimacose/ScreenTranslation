@@ -26,7 +26,7 @@ ScreenTranslation 自有源代码采用 Apache License 2.0。构建与运行还�
 | Firefox Translations en→zh model | `en-zh/llmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g` + per-file SHA-256 | Mozilla Public License 2.0 |
 | Firefox Translations ja→en `base-memory` model | `ja-en/cjk_retrain_base-memory_NLRJLD_pQFyrvgKtbie2nA` + per-file SHA-256 | Mozilla Public License 2.0 |
 
-## Full / HY-MT2 Q4 Experimental 依赖
+## Full / HY-MT2 Q4 依赖
 
 以下组件进入 Full edition。模型从固定 revision 按需下载，不写入 APK/AAB：
 
@@ -103,7 +103,7 @@ Android NDK shared C++ runtime。对应 MIT 文本、Arm copyright 与 NDK notic
 进入 Full `assets/licenses/`。Hy-MT2 Q4 模型只在用户准备模型时从 Tencent
 固定 revision 下载，并由应用固定文件名、长度和 SHA-256；该 revision 的 Tencent
 copyright 与 Apache-2.0 原文也在 Full license bundle 中。Full 的界面、包名与
-发布说明均标记为 Experimental / HY-MT2 Q4。
+Full edition 自 v2.5.0 起进入正式基线；HY-MT2 Q4 模型权重仍按固定哈希下载与校验。
 
 三个 edition 共同把以下材料打入 `assets/licenses/`：
 

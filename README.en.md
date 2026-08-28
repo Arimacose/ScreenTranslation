@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-> v2.4.1 includes three switchable visual languages: an Apple-inspired default,
+> v2.5.0 includes three switchable visual languages: an Apple-inspired default,
 > MIUIX, and Material 3 with optional Monet dynamic colors. See
 > [UI styles and implementation boundaries](docs/UI_STYLES.md).
 
@@ -13,7 +13,7 @@ ScreenTranslation is a native screen OCR and translation app currently targeted 
 session and approves Android's `MediaProjection` prompt. Screenshots are processed in
 memory by PP-OCRv6-small; translation is provided by one of three isolated editions.
 
-> Project status: `v2.4.1`, for the accepted single device/ROM baseline.
+> Project status: `v2.5.0`, for the accepted single device/ROM baseline.
 > `minSdk` and `targetSdk` are 36, `compileSdk` is
 > 37, and release APKs are currently ARM64-only. Source code is Apache-2.0; bundled and
 > downloaded third-party components retain their own licenses.
@@ -22,9 +22,9 @@ memory by PP-OCRv6-small; translation is provided by one of three isolated editi
 
 | Your need | Direct-install file | Notes |
 |---|---|---|
-| Offline English/Japanese translation with the smallest stable edition | `ScreenTranslation-v2.4.1-lite-bergamot.apk` | Recommended for most users; upgrades the historical Lite application ID |
-| Offline direct multilingual translation with a larger Experimental model | `ScreenTranslation-v2.4.1-full-hymt2-q4-experimental.apk` | Separate app; downloads the approximately 1.06 GiB HY-MT2 Q4 model |
-| Your own OpenAI-compatible HTTPS API | `ScreenTranslation-v2.4.1-online-llm.apk` | Separate app; OCR stays local and only stable text is sent to the selected service |
+| Offline English/Japanese translation with the smallest stable edition | `ScreenTranslation-v2.5.0-lite-bergamot.apk` | Recommended for most users; upgrades the historical Lite application ID |
+| Offline direct multilingual translation with a larger baseline model | `ScreenTranslation-v2.5.0-full-hymt2-q4.apk` | Separate app; downloads the approximately 1.06 GiB HY-MT2 Q4 model |
+| Your own OpenAI-compatible HTTPS API | `ScreenTranslation-v2.5.0-online-llm.apk` | Separate app; OCR stays local and only stable text is sent to the selected service |
 
 An **APK** installs directly on a phone. An **AAB** is a Play Store/developer upload artifact and
 is not directly installed by a phone's file manager. Most users should choose an APK above and
@@ -64,7 +64,7 @@ and the release workflow promotes those exact bytes to GitHub Releases.
 | Edition | Application ID | Translation | Language scope |
 |---|---|---|---|
 | Lite | `com.screentranslation.app` | Bergamot / Firefox Translations | English → Chinese; Japanese → English → Chinese |
-| Full Experimental | `com.screentranslation.app.full` | HY-MT2 1.8B Q4_K_M through llama.cpp | Supported source languages → Simplified Chinese |
+| Full | `com.screentranslation.app.full` | HY-MT2 1.8B Q4_K_M through llama.cpp | Supported source languages → Simplified Chinese |
 | Online BYOK | `com.screentranslation.app.online` | User-selected OpenAI-compatible API model | Determined by the selected provider/model |
 
 All three editions use the same PP-OCRv6-small ONNX OCR pipeline. OCR assets are bundled
@@ -257,7 +257,7 @@ See [`PRIVACY.md`](PRIVACY.md) and [`SECURITY.md`](SECURITY.md) for the complete
 - The supported and repeatedly measured device baseline remains Xiaomi 15 Pro / Android 16 /
   HyperOS. Other ROM work is intentionally out of scope for the current milestone.
 - Full HY-MT2 Q4 has a GiB-class model and roughly 2.3 GiB measured process memory; it is a
-  quality experiment, not the daily default.
+  shipping baseline, though Lite remains the default for lower memory use.
 - Lite Japanese → Chinese is a two-hop route with higher latency and weaker context fidelity.
 - Full-screen incremental mode remains Experimental. Its plane-first signature path skips
   full-frame Bitmap construction for unchanged frames, and label placement avoids system

@@ -208,10 +208,10 @@ android {
         applicationId = "com.screentranslation.app"
         minSdk = 36
         targetSdk = 36
-        versionCode = 11
-        versionName = "2.4.1"
+        versionCode = 12
+        versionName = "2.5.0"
         buildConfigField("boolean", "BERGAMOT_LITE", "false")
-        buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "false")
+        buildConfigField("boolean", "HYMT2_Q4_FULL", "false")
         buildConfigField("boolean", "ONLINE_LLM", "false")
         buildConfigField("String", "EDITION_ID", "\"unknown\"")
         buildConfigField("String", "OCR_BACKEND_ID", "\"ppocrv6-small-onnx\"")
@@ -246,7 +246,7 @@ android {
             dimension = "edition"
             applicationIdSuffix = ".full"
             versionNameSuffix = "-full"
-            buildConfigField("boolean", "HYMT2_Q4_EXPERIMENTAL", "true")
+            buildConfigField("boolean", "HYMT2_Q4_FULL", "true")
             buildConfigField("String", "EDITION_ID", "\"full\"")
             buildConfigField("String", "TRANSLATION_BACKEND_ID", "\"hymt2-q4\"")
         }
