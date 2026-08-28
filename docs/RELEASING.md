@@ -81,7 +81,7 @@ apksigner verify --verbose --print-certs app/build/outputs/apk/online/release/ap
 `b58712578045532158d45b847ab7ed1be041236b5a7a0bd1a1db5480fbe0439f`。
 同时核验 PP-OCRv6-small 三个资产存在、每份 APK 只含对应翻译后端，且翻译模型权重由运行时下载。
 
-在声明支持的 Android 16 / HyperOS 真机上执行 `docs/DEVICE_TEST.md` 核心矩阵，并记录：
+在声明支持的 Android 16 或兼容 Android 17 / HyperOS 真机上执行 `docs/DEVICE_TEST.md` 核心矩阵，并记录：
 
 - commit 和版本；
 - APK SHA-256 与签名证书摘要；

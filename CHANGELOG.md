@@ -20,7 +20,8 @@
 ### Verification
 
 - Lite、Full、Online 单元测试、Release lint、R8 APK/AAB、SBOM、签名、16 KiB 对齐与 edition 隔离由 CI 和签名 acceptance workflow 核验。
-- 小米 15 Pro / Android 16 / HyperOS 真机安装同一签名 Artifact，验证新增 Toast、Full 基线标签以及目标包无 Java/native fatal、ANR 或 crash 后原样发布。
+- 小米 15 Pro / Android 17 / HyperOS 真机安装同一签名 Artifact，验证新增 Toast、Full 基线标签以及目标包无 Java/native fatal、ANR 或 crash 后原样发布。
+
 ## [2.4.1] - 2026-08-22
 
 ### Changed

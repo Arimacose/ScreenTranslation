@@ -837,7 +837,9 @@ jobs:
           assert_single_field 'source_sha' "$tag_commit"
           assert_single_field 'device' 'Xiaomi 15 Pro'
           assert_single_field 'device_model' '2410DPN6CC'
-          assert_single_field 'android' '16'
+          android_version="$(
+            read_single_token_field 'android' '^(16|17)$'
+          )"
           assert_single_field 'rom' 'HyperOS'
           rom_build="$(
             read_single_token_field \
@@ -893,6 +895,7 @@ jobs:
           echo "comment_body_sha=$comment_body_sha" >> "$GITHUB_OUTPUT"
           echo "accepted_issues=$accepted_issues" >> "$GITHUB_OUTPUT"
           echo "evidence_issue_number=$evidence_issue_number" >> "$GITHUB_OUTPUT"
+          echo "android_version=$android_version" >> "$GITHUB_OUTPUT"
           echo "rom_build=$rom_build" >> "$GITHUB_OUTPUT"
           echo "lite_apk_sha=$lite_apk_sha" >> "$GITHUB_OUTPUT"
           echo "full_apk_sha=$full_apk_sha" >> "$GITHUB_OUTPUT"
@@ -1176,7 +1179,7 @@ jobs:
           - Target-device evidence: ${{ inputs.device_evidence_comment }}
           - Accepted issues: \`${{ steps.promotion.outputs.accepted_issues }}\`
           - Device-evidence body SHA-256: \`${{ steps.promotion.outputs.comment_body_sha }}\`
-          - Tested ROM build: \`${{ steps.promotion.outputs.rom_build }}\`
+          - Tested Android / ROM build: \`${{ steps.promotion.outputs.android_version }} / ${{ steps.promotion.outputs.rom_build }}\`
           - Feature-only device acceptance: \`${{ steps.promotion.outputs.acceptance_duration_seconds }} s\`
           - Target-app fatal count: \`${{ steps.promotion.outputs.target_fatal_count }}\`
           - Feature report SHA-256: \`${{ steps.promotion.outputs.feature_report_sha }}\`
