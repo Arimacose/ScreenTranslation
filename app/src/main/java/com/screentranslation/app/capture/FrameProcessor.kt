@@ -21,6 +21,26 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
 
+/** Emits once when capture enters a no-valid-text state, then rearms after valid text appears. */
+internal class NoValidTextNotifier(
+    private val onNoValidText: () -> Unit,
+) {
+    private var currentlyEmpty = false
+
+    fun observe(hasValidText: Boolean) {
+        if (hasValidText) {
+            currentlyEmpty = false
+        } else if (!currentlyEmpty) {
+            currentlyEmpty = true
+            onNoValidText()
+        }
+    }
+
+    fun reset() {
+        currentlyEmpty = false
+    }
+}
+
 /**
  * Drains ImageReader frames, throttles work, and serializes the asynchronous
  * OCR -> stability -> translation pipeline.
@@ -38,6 +58,7 @@ class FrameProcessor(
     frameIntervalMs: Long = DEFAULT_FRAME_INTERVAL_MS,
     private val onOriginalRecognized: (String) -> Unit = {},
     private val onTranslation: (FrameTranslation) -> Unit,
+    private val onNoValidText: () -> Unit = {},
     private val onError: (Throwable) -> Unit = {},
     private val performanceTelemetry: CapturePerformanceTelemetry? = null,
     private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
@@ -48,6 +69,7 @@ class FrameProcessor(
     )
 
     private val gate = FrameGate(frameIntervalMs, elapsedRealtime)
+    private val noValidTextNotifier = NoValidTextNotifier(onNoValidText)
     private var hadAcceptedSource = false
     private val wholeRegionCoordinator =
         if (translationEngine.inputMode == TranslationInputMode.WHOLE_REGION) {
@@ -109,6 +131,7 @@ class FrameProcessor(
         if (!value) {
             wholeRegionCoordinator?.reset()
             stableTextGate.reset()
+            noValidTextNotifier.reset()
             synchronized(wholeRegionPlans) { wholeRegionPlans.clear() }
             hadAcceptedSource = false
         }
@@ -118,6 +141,7 @@ class FrameProcessor(
         performanceTelemetry?.recordLifecycleReset()
         gate.invalidate()
         stableTextGate.reset()
+        noValidTextNotifier.reset()
         wholeRegionCoordinator?.reset()
         synchronized(wholeRegionPlans) { wholeRegionPlans.clear() }
         hadAcceptedSource = false
@@ -267,6 +291,7 @@ class FrameProcessor(
             targetLanguageTag = targetLanguageTag,
         )
         val filteredText = filteredBlocks.joinToString("\n")
+        noValidTextNotifier.observe(filteredText.isNotBlank())
         if (filteredText.isBlank()) {
             clearWhenNoSourceText()
             gate.release()

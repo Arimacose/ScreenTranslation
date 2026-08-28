@@ -12,6 +12,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.widget.doAfterTextChanged
@@ -287,10 +288,12 @@ class OnlineSettingsActivity : AppCompatActivity() {
             onFailure = { error ->
                 setModelOptions(emptyList(), null)
                 modelCatalogBaseUrl = ""
+                val failure = OnlineFailureMapper.map(error)
                 modelStatusView.text = getString(
                     R.string.online_models_failed,
-                    OnlineFailureMapper.map(error).summary,
+                    failure.summary,
                 )
+                showOnlineFailureToast(failure)
             },
         )
         updateActionState()
@@ -500,10 +503,12 @@ class OnlineSettingsActivity : AppCompatActivity() {
         fetchingModels = false
         updateActionState()
         refreshKeyStatus()
+        val failure = OnlineFailureMapper.map(error)
         modelStatusView.text = getString(
             R.string.online_models_failed,
-            OnlineFailureMapper.map(error).summary,
+            failure.summary,
         )
+        showOnlineFailureToast(failure)
     }
 
     private fun showFailure(error: Throwable) {
@@ -517,6 +522,15 @@ class OnlineSettingsActivity : AppCompatActivity() {
         ) + "\n" + getString(R.string.online_details_affordance)
         detailsView.text = "${failure.technicalCode}\n${failure.redactedDetail}"
         detailsView.visibility = View.GONE
+        showOnlineFailureToast(failure)
+    }
+
+    private fun showOnlineFailureToast(failure: OnlineUserFacingFailure) {
+        Toast.makeText(
+            applicationContext,
+            getString(R.string.online_error_toast, failure.summary),
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     private fun cancelTranslationTest(showOutcome: Boolean) {

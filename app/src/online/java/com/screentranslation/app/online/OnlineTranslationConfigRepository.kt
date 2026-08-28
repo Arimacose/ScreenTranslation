@@ -31,8 +31,14 @@ internal class OnlineTranslationConfigRepository(
     ): OnlineTranslationConfig {
         val endpoint = OpenAiEndpoint.parse(baseUrl)
         val normalizedModel = modelId.trim()
-        require(normalizedModel.isNotEmpty()) { "Model ID is blank" }
-        require(normalizedModel.length <= MAX_ONLINE_MODEL_ID_LENGTH) { "Model ID is too long" }
+        requireOnlineConfiguration(
+            normalizedModel.isNotEmpty(),
+            OnlineFailureCategory.ENDPOINT_OR_MODEL,
+        ) { "Model ID is blank" }
+        requireOnlineConfiguration(
+            normalizedModel.length <= MAX_ONLINE_MODEL_ID_LENGTH,
+            OnlineFailureCategory.ENDPOINT_OR_MODEL,
+        ) { "Model ID is too long" }
 
         val previous = load()
         val hostChanged = previous.consentHost != endpoint.consentIdentity
@@ -40,7 +46,9 @@ internal class OnlineTranslationConfigRepository(
             !hostChanged &&
                 previous.consentVersion == OnlineTranslationConfig.CURRENT_CONSENT_VERSION
             )
-        require(consentValid) { "Data-flow consent is required for this service host" }
+        requireOnlineConfiguration(consentValid, OnlineFailureCategory.REQUEST_CONTRACT) {
+            "Data-flow consent is required for this service host"
+        }
 
         newApiKey?.trim()?.takeIf { it.isNotEmpty() }?.let { apiKey ->
             validateApiKey(apiKey)
@@ -67,20 +75,27 @@ internal class OnlineTranslationConfigRepository(
     fun requireReady(): ReadyOnlineTranslationConfig {
         val config = load()
         val endpoint = OpenAiEndpoint.parse(config.baseUrl)
-        require(config.modelId.isNotBlank()) { "Model ID is not configured" }
-        require(
+        requireOnlineConfiguration(
+            config.modelId.isNotBlank(),
+            OnlineFailureCategory.ENDPOINT_OR_MODEL,
+        ) { "Model ID is not configured" }
+        requireOnlineConfiguration(
             config.consentVersion == OnlineTranslationConfig.CURRENT_CONSENT_VERSION &&
                 config.consentHost == endpoint.consentIdentity,
+            OnlineFailureCategory.REQUEST_CONTRACT,
         ) {
             "Data-flow consent is required for this service host"
         }
         val apiKey = secretStore.load()
-        require(!apiKey.isNullOrBlank()) { "API key is not configured" }
+        requireOnlineConfiguration(!apiKey.isNullOrBlank(), OnlineFailureCategory.CREDENTIALS) {
+            "API key is not configured"
+        }
+        val presentApiKey = checkNotNull(apiKey)
         return ReadyOnlineTranslationConfig(
             config = config,
             endpoint = endpoint,
             modelId = config.modelId,
-            apiKey = apiKey,
+            apiKey = presentApiKey,
         )
     }
 
@@ -89,7 +104,9 @@ internal class OnlineTranslationConfigRepository(
     fun resolveApiKey(newApiKey: String?): String {
         val apiKey = newApiKey?.trim()?.takeIf { it.isNotEmpty() }
             ?: secretStore.load()?.trim().orEmpty()
-        require(apiKey.isNotEmpty()) { "API key is not configured" }
+        requireOnlineConfiguration(apiKey.isNotEmpty(), OnlineFailureCategory.CREDENTIALS) {
+            "API key is not configured"
+        }
         validateApiKey(apiKey)
         return apiKey
     }
@@ -99,8 +116,14 @@ internal class OnlineTranslationConfigRepository(
     }
 
     private fun validateApiKey(apiKey: String) {
-        require(apiKey.length <= MAX_API_KEY_LENGTH) { "API key is too long" }
-        require('\r' !in apiKey && '\n' !in apiKey) {
+        requireOnlineConfiguration(
+            apiKey.length <= MAX_API_KEY_LENGTH,
+            OnlineFailureCategory.CREDENTIALS,
+        ) { "API key is too long" }
+        requireOnlineConfiguration(
+            '\r' !in apiKey && '\n' !in apiKey,
+            OnlineFailureCategory.CREDENTIALS,
+        ) {
             "API key contains invalid characters"
         }
     }

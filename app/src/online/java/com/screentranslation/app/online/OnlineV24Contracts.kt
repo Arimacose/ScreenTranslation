@@ -5,7 +5,24 @@ import java.net.UnknownHostException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
 import com.screentranslation.app.ml.TranslationCall
+import com.screentranslation.app.util.UserFacingFailureMetadata
 import javax.net.ssl.SSLException
+
+internal class OnlineConfigurationException(
+    val category: OnlineFailureCategory,
+    detail: String,
+) : IllegalArgumentException(detail), UserFacingFailureMetadata {
+    override val userFacingSummary: String = category.displayMessage
+    override val userFacingTechnicalCode: String = category.name
+}
+
+internal inline fun requireOnlineConfiguration(
+    condition: Boolean,
+    category: OnlineFailureCategory,
+    lazyDetail: () -> String,
+) {
+    if (!condition) throw OnlineConfigurationException(category, lazyDetail())
+}
 
 internal data class OnlineModelDescriptor(
     val id: String,
@@ -67,6 +84,7 @@ internal object OnlineFailureMapper {
     fun map(error: Throwable): OnlineUserFacingFailure {
         val category = when (error) {
             is OnlineTranslationException -> error.category
+            is OnlineConfigurationException -> error.category
             is CancellationException -> OnlineFailureCategory.NETWORK
             is InterruptedIOException -> OnlineFailureCategory.TIMEOUT
             is UnknownHostException -> OnlineFailureCategory.DNS
