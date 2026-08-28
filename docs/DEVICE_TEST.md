@@ -1,4 +1,4 @@
-# 小米 15 Pro / HyperOS / Android 16 真机验收
+# 小米 15 Pro / HyperOS / Android 16–17 真机验收
 
 本文是目标 ROM 的可重复验收清单。不要用模拟器结果替代 MediaProjection、HyperOS 悬浮窗、后台策略和温控测试。
 
@@ -38,7 +38,7 @@ acceptance_run_id: RUN_ID
 source_sha: 40_HEX_COMMIT
 device: Xiaomi 15 Pro
 device_model: 2410DPN6CC
-android: 16
+android: 16_OR_17
 rom: HyperOS
 rom_build: OS_VERSION_TOKEN
 lite_apk_sha256: 64_HEX_SHA256
