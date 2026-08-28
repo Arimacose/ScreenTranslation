@@ -276,4 +276,4 @@ feature from Experimental to supported. Release procedure: [`docs/RELEASING.md`]
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE)
-- [v2.4.1 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/7)
+- [v2.5.0 milestone](https://github.com/Arimacose/ScreenTranslation/milestone/8)
