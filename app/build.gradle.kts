@@ -431,7 +431,7 @@ dependencies {
     add("benchmarkImplementation", "com.google.mlkit:text-recognition-korean:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20260719")
+    testImplementation("org.json:json:20260814")
     add("testOnlineImplementation", "com.squareup.okhttp3:mockwebserver3:5.4.0")
     add("testOnlineImplementation", "com.squareup.okhttp3:okhttp-tls:5.4.0")
 
