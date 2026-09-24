@@ -92,7 +92,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6.3.0
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@v4.0.4
 
       - name: Install Android 16 and native toolchains
         shell: bash
@@ -542,7 +542,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@v4.0.4
 
       - name: Install release verification tools
         shell: bash
